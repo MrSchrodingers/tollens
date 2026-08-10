@@ -22,6 +22,7 @@ trap 'rm -f "$TMP"' EXIT
   for t in tests/unit/regressao-gate.sh tests/unit/document-tools.sh tests/unit/supply-chain.sh \
            tests/unit/reprodutibilidade.sh tests/unit/concorrencia.sh tests/unit/claims.sh \
            tests/unit/propriedades.sh tests/unit/fronteira-externa.sh tests/unit/managed.sh \
+           tests/unit/conformidade-managed.sh tests/unit/arnes-de-mutacao.sh \
            tests/unit/run.sh; do
     bash "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
@@ -40,6 +41,9 @@ trap 'rm -f "$TMP"' EXIT
   printf '| instalador | %s | %s |\n' "${mi:-?}" "$?"
   mf="$(grep -c '^mutante MF' tests/mutation/fronteira.sh)"; bash tests/mutation/fronteira.sh >/dev/null 2>&1
   printf '| fronteira externa | %s | %s |\n' "$mf" "$?"
+  mcm="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/conformidade.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/conformidade.sh >/dev/null 2>&1
+  printf '| conformidade de dois escopos | %s | %s |\n' "${mcm:-?}" "$?"
 
   printf '\n## Componentes\n\n| Tipo | Qtd |\n|---|---:|\n'
   awk -F'\t' '!/^#/{c[$1]++} END{for(t in c) printf "| %s | %s |\n", t, c[t]}' install/manifest.lock | sort

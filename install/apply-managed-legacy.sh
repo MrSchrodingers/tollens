@@ -268,14 +268,28 @@ trap 'rm -rf "$STAGE" 2>/dev/null || true' EXIT
 rm -rf "$STAGE" || exit 1
 mkdir -p "$STAGE" "$ETC" || exit 1
 RAIZ="$STAGE"          # a partir daqui, validar significa validar o STAGING
+# RETORNO VERIFICADO EM TODA ESCRITA DO STAGING. Este arquivo nao tem `set -e` (linha 34), e
+# ate 2026-08-10 `mkdir`, `cp` e `chmod` aqui eram as unicas escritas do caminho privilegiado
+# sem retorno conferido. O ADR 0026 fechou a CONSEQUENCIA - a pos-condicao passou a verificar
+# modos exatos, entao um `chmod` mudo vira falha de commit e rollback. Mas a pos-condicao e
+# checagem de runtime; a causa e a chamada sem `||`. Corrigir na fonte deixa o erro atribuivel
+# ao componente que falhou, em vez de aparecer como "modo inesperado" a tres estagios de
+# distancia. Falhar aqui e seguro: o staging e descartavel e o trap da linha 267 o remove.
 while IFS=$'\t' read -r _tipo origem destino _sha; do
   alvo="$STAGE/$(destino_managed "$destino")"
-  mkdir -p "$(dirname "$alvo")"
-  if [ -d "$origem" ]; then rm -rf "$alvo"; cp -a "$origem" "$alvo"
-  else cp -f "$origem" "$alvo"; fi
-  case "$alvo" in *.sh|*/document-tools/*) chmod 0755 "$alvo" ;; *) chmod 0644 "$alvo" ;; esac
+  mkdir -p "$(dirname "$alvo")" || { echo "ERRO: mkdir do staging falhou: $alvo" >&2; exit 1; }
+  if [ -d "$origem" ]; then
+    rm -rf "$alvo" || { echo "ERRO: limpeza do staging falhou: $alvo" >&2; exit 1; }
+    cp -a "$origem" "$alvo" || { echo "ERRO: copia de diretorio falhou: $origem" >&2; exit 1; }
+  else
+    cp -f "$origem" "$alvo" || { echo "ERRO: copia de arquivo falhou: $origem" >&2; exit 1; }
+  fi
+  case "$alvo" in
+    *.sh|*/document-tools/*) chmod 0755 "$alvo" ;;
+    *)                       chmod 0644 "$alvo" ;;
+  esac || { echo "ERRO: chmod do staging falhou: $alvo" >&2; exit 1; }
 done < <(tipos_politica)
-find "$STAGE" -type d -exec chmod 0755 {} + 2>/dev/null || true
+find "$STAGE" -type d -exec chmod 0755 {} + || { echo "ERRO: chmod de diretorio do staging falhou" >&2; exit 1; }
 # POSSE APLICADA NO STAGING, e nao depois da publicacao: se `chown` falhasse com a arvore ja
 # ativa, o resultado seria uma politica ativa com arquivos do ator - o oposto da garantia.
 if [ "$REAL" -eq 1 ]; then chown -R root:root "$STAGE" || exit 1; fi
