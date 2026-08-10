@@ -17,7 +17,7 @@ ORIG="control/hooks/session-integrity.sh"
 REG="tests/unit/conformidade-managed.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.sh"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=3
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=6
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -82,8 +82,31 @@ sem-resumo'
 # `drift` sao estados distintos, e nao um so.
 mutante MC3 "ausencia de managed nao e drift" \
   "sem arvore managed, hook fica calado" \
-  troca 'if [ -d "$MTREE" ] && [ -x "$REPO/install/apply-managed.sh" ]; then' \
-        'if [ -x "$REPO/install/apply-managed.sh" ]; then'
+  troca 'if { [ -d "$MTREE" ] || [ -f "$MSET" ]; } && [ -f "$REPO/install/apply-managed.sh" ]; then' \
+        'if [ -f "$REPO/install/apply-managed.sh" ]; then'
+
+# MC4 - a guarda volta a testar SO a arvore. Reintroduz o achado critico da revisao
+# independente: politica viva com arvore apagada - o pior drift possivel - passa por `absent`,
+# o estado que o codigo define como benigno e silencioso.
+mutante MC4 "a guarda e a UNIAO dos artefatos julgados" \
+  "politica orfa (sem arvore) NAO passa por 'absent'" \
+  troca 'if { [ -d "$MTREE" ] || [ -f "$MSET" ]; } && [ -f "$REPO/install/apply-managed.sh" ]; then' \
+        'if [ -d "$MTREE" ] && [ -f "$REPO/install/apply-managed.sh" ]; then'
+
+# MC5 - recusa de verificar volta a ser coagida para `drift`. O alerta passa a AFIRMAR
+# divergencia exibindo resumo verde e nenhuma evidencia: alerta sem referente.
+mutante MC5 "recusa de verificar e not_verified, nao drift" \
+  "estado e not_verified (nao drift)" \
+  troca '    1) MSTATE="drift" ;;
+    *) MSTATE="not_verified" ;;' \
+        '    *) MSTATE="drift" ;;'
+
+# MC6 - a guarda volta a exigir bit de execucao num arquivo invocado com `bash`. Fail-open:
+# perder o bit desliga a verificacao managed inteira, em silencio.
+mutante MC6 "guarda usa -f, coerente com a chamada por bash" \
+  "sem bit +x, a verificacao NAO e pulada em silencio" \
+  troca '[ -f "$REPO/install/apply-managed.sh" ]; then' \
+        '[ -x "$REPO/install/apply-managed.sh" ]; then'
 
 cp -f "$TMP/orig.sh" "$ORIG"
 echo

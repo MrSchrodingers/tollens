@@ -36,9 +36,15 @@ trap 'rm -f "$TMP"' EXIT
   printf '| gate | %s | %s |\n' "$mg" "$?"
   mc="$(grep -c '^mutante M' tests/mutation/contrato.sh)"; bash tests/mutation/contrato.sh >/dev/null 2>&1
   printf '| contrato de subagente | %s | %s |\n' "$mc" "$?"
+  # EXIT AMBIENTE-DEPENDENTE NAO ENTRA COMO NUMERO FIXO. MI4/MI5 exigem oraculo root; sem sudo
+  # sem senha a suite sai 1, com sudo sai 0. Como este arquivo e commitado e conferido por
+  # `--check` na CI, um numero aqui so podia ser verde no ambiente que o gerou - e obrigava quem
+  # regenerasse localmente a escrever um valor que NAO observou. Rotulo constante e honesto e a
+  # unica forma de o artefato ser reproduzivel nos dois ambientes. Mesmo tratamento ja dado a
+  # `managed-root-trust.sh`, e a `reprodutibilidade.sh` na coluna de assercoes.
   mi="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/install.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/install.sh >/dev/null 2>&1
-  printf '| instalador | %s | %s |\n' "${mi:-?}" "$?"
+  printf '| instalador | %s | variavel (sudo) |\n' "${mi:-?}"
   mf="$(grep -c '^mutante MF' tests/mutation/fronteira.sh)"; bash tests/mutation/fronteira.sh >/dev/null 2>&1
   printf '| fronteira externa | %s | %s |\n' "$mf" "$?"
   mcm="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/conformidade.sh | head -1 | cut -d= -f2)"

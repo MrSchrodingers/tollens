@@ -18,7 +18,9 @@ cat >/dev/null 2>&1 || true   # drena stdin
 
 REPO="${EVIDENCE_GATE_REPO:-$HOME/claude-mecanismo}"
 [ -d "$REPO" ] || REPO="$HOME/evidence-gate"
-[ -x "$REPO/install/verify.sh" ] || exit 0
+# `-f`, nao `-x`: a chamada e `bash install/verify.sh`. Exigir o bit de execucao numa guarda
+# que a chamada nao exige e fail-open - perder o bit desligava o comparador em silencio.
+[ -f "$REPO/install/verify.sh" ] || exit 0
 
 OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 
@@ -34,11 +36,32 @@ OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 # `absent` NAO e `conformant`: maquina sem fase managed e o caso comum, e reportar drift ali
 # seria o falso positivo que faz o operador desligar o mecanismo. Os tres estados sao distintos
 # no heartbeat justamente para que "nao ha managed" nunca seja lido como "managed confere".
-MTREE="${MANAGED_PREFIX:-}/opt/evidence-gate"
+# A GUARDA E A UNIAO DOS ARTEFATOS JULGADOS, nao um deles. O verificador managed julga DUAS
+# metades - a arvore em $OPT e a politica em managed-settings.json (apply-managed-legacy.sh:249:
+# "ActiveState = (arvore em $OPT, politica em $SETTINGS). AS DUAS metades"). Testar so a arvore
+# fazia o PIOR drift possivel passar por benigno: com a politica viva e a arvore apagada - estado
+# que o proprio legacy documenta como resultado de SIGKILL entre os dois renames, e que `rm -rf`
+# manual reproduz - o hook gravava `absent` e calava. Com allowManagedHooksOnly=true isso e o
+# mecanismo inteiro desligado, apontando para caminhos inexistentes, reportado como conformidade.
+#
+# `-f` e nao `-x`: a chamada abaixo e `bash install/apply-managed.sh`, que nao precisa do bit de
+# execucao. Exigir `-x` na guarda e depois nao precisar dele na chamada e fail-open silencioso -
+# um `cp` sem `-p`, um tarball ou um FS sem modo POSIX desligava a verificacao inteira sem sinal.
+MPFX="${MANAGED_PREFIX:-}"
+MTREE="$MPFX/opt/evidence-gate"
+MSET="$MPFX/etc/claude-code/managed-settings.json"
 MOUT=""; MRC=0; MSTATE="absent"
-if [ -d "$MTREE" ] && [ -x "$REPO/install/apply-managed.sh" ]; then
+if { [ -d "$MTREE" ] || [ -f "$MSET" ]; } && [ -f "$REPO/install/apply-managed.sh" ]; then
   MOUT="$(cd "$REPO" && bash install/apply-managed.sh --verify 2>&1)"; MRC=$?
-  [ "$MRC" -eq 0 ] && MSTATE="conformant" || MSTATE="drift"
+  # EXIT CODE MULTIVALORADO: `apply-managed.sh` sai 2 (legado ausente), 64 (uso invalido),
+  # 77 (exige root) e 78 (fonte privilegiada nao confiavel) - todos RECUSA DE VERIFICAR, nao
+  # divergencia medida. Coagir tudo que nao e 0 para `drift` publicava um alerta que AFIRMA
+  # divergencia exibindo um resumo verde e zero evidencia. Lacuna e NOT_VERIFIED (CLAUDE.md).
+  case "$MRC" in
+    0) MSTATE="conformant" ;;
+    1) MSTATE="drift" ;;
+    *) MSTATE="not_verified" ;;
+  esac
 fi
 
 # HEARTBEAT: silencio nao prova conformidade - prova apenas ausencia de mensagem. Este hook sai
@@ -58,13 +81,17 @@ HB="$HOME/.claude/evidence/session-integrity.jsonl"
 mkdir -p "$(dirname "$HB")" 2>/dev/null || true
 MANDIG="$(sha256sum "$REPO/install/manifest.lock" 2>/dev/null | cut -c1-16)"
 jq -cn --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" \
-       --arg r "$([ "$RC" -eq 0 ] && [ "$MRC" -eq 0 ] && echo conformant || echo drift)" \
+       --arg r "$(if [ "$RC" -eq 0 ] && [ "$MRC" -eq 0 ]; then echo conformant
+                  elif [ "$RC" -eq 0 ] && [ "$MSTATE" = not_verified ]; then echo not_verified
+                  else echo drift; fi)" \
        --arg u "$([ "$RC" -eq 0 ] && echo conformant || echo drift)" \
        --arg g "$MSTATE" \
        --arg m "${MANDIG:-unknown}" --arg s "$(printf '%s' "$OUT" | grep -E '^conformidade:' | head -1)" \
        --arg ms "$(printf '%s' "$MOUT" | grep -E '^managed:' | head -1)" \
+       --arg mp "${MPFX:-/}" --arg mrc "$MRC" \
        '{ts:$t,event:"session_integrity",result:$r,user:$u,managed:$g,
-         manifest_digest:$m,summary:$s,managed_summary:$ms,policy:"user"}' \
+         manifest_digest:$m,summary:$s,managed_summary:$ms,
+         managed_prefix:$mp,managed_rc:$mrc}' \
   >> "$HB" 2>/dev/null || true
 
 # Silencio SO quando os dois escopos conferem. Um escopo conforme nao autoriza calar sobre o
@@ -76,6 +103,16 @@ DETALHE="$(printf '%s' "$OUT" | grep -E '^  (DIVERGE|AUSENTE|ORFAO)' | head -12)
 MRESUMO="$(printf '%s' "$MOUT" | grep -E '^managed:' | head -1)"
 MDETALHE="$(printf '%s' "$MOUT" | grep -E '^  (DIVERGE|AUSENTE|ORFAO)' | head -8)"
 
+# RECUSA DE VERIFICAR CARREGA A CAUSA. Os dois `grep` acima so casam o caminho em que o
+# verificador chegou a COMPARAR. Nos codigos de recusa (2, 64, 77, 78) a explicacao existe em
+# $MOUT e era descartada: o resultado era um alerta afirmando divergencia, com resumo verde e
+# nenhuma evidencia. Um alerta sem referente e pior que silencio - ensina a ignorar o alerta.
+if [ "$MSTATE" = "not_verified" ]; then
+  MRESUMO="managed: NAO VERIFICADO - o verificador recusou verificar (exit $MRC)"
+  MDETALHE="$(printf '%s' "$MOUT" | grep -E '^(ERRO|NOT_VERIFIED|uso:)' | head -4)"
+  [ -z "$MDETALHE" ] && MDETALHE="$(printf '%s' "$MOUT" | head -3)"
+fi
+
 # O escopo managed so entra na mensagem quando ha o que dizer sobre ele. Numa maquina sem a
 # fase managed as duas linhas ficam vazias e o texto e o de antes.
 BLOCO_MANAGED=""
@@ -83,7 +120,7 @@ BLOCO_MANAGED=""
 $MRESUMO
 $MDETALHE
 Para reconciliar o escopo managed (exige root, e a arvore de origem precisa ser root:root -
-ver docs/adr/0026): sudo bash $REPO/install/apply-managed.sh"
+ver docs/adr/0026): sudo bash \"$REPO\"/install/apply-managed.sh"
 
 jq -cn --arg c "CONFORMIDADE - o que roda diverge do que o repositorio declara.
 
@@ -92,7 +129,7 @@ $DETALHE$BLOCO_MANAGED
 
 O estado instalado NAO e o estado versionado. Qualquer afirmacao sobre o comportamento do
 harness baseada no repositorio esta, neste turno, sem referente verificado.
-Para reconciliar: cd $REPO && bash install/apply.sh
-Para inspecionar: cd $REPO && bash install/verify.sh" \
+Para reconciliar: cd \"$REPO\" && bash install/apply.sh
+Para inspecionar: cd \"$REPO\" && bash install/verify.sh" \
   '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}' 2>/dev/null
 exit 0

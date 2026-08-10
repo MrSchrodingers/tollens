@@ -26,7 +26,11 @@ chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL
 echo "== AM1. todo trap que restaura o faz ANTES de remover o diretorio =="
 ruins=""
 for f in tests/mutation/*.sh; do
-  linha="$(grep -m1 "^.*trap '" "$f" 2>/dev/null)" || continue
+  # FILTRA COMENTARIO ANTES DE PROCURAR. Achado da revisao independente: `grep -m1` casava a
+  # PRIMEIRA ocorrencia do idioma no arquivo - e estes arquivos DOCUMENTAM o trap correto (e
+  # citam o errado) em prosa, logo acima do trap real. Um arquivo com comentario certo e trap
+  # destrutivo passava verde. O oraculo media a documentacao, nao o codigo.
+  linha="$(grep -v "^[[:space:]]*#" "$f" | grep -m1 "trap '" 2>/dev/null)" || continue
   # so interessa o trap que restaura um original; fronteira.sh muta COPIAS em temp e nao restaura.
   printf '%s' "$linha" | grep -q 'cp -f "\$TMP/orig' || continue
   pos_cp="$(printf '%s' "$linha" | grep -bo 'cp -f "\$TMP/orig' | head -1 | cut -d: -f1)"
@@ -41,9 +45,13 @@ echo "== AM2. o arquivo restaurado e nomeado antes de ser apagado (leitura diret
 # Checagem redundante e proposital: AM1 compara posicoes, AM2 exige o idioma correto literal.
 # Se alguem reescrever o trap de outra forma, AM1 continua valendo e AM2 avisa que mudou.
 bad=0
-for f in tests/mutation/run.sh tests/mutation/contrato.sh tests/mutation/conformidade.sh; do
-  grep -q "trap 'cp -f \"\$TMP/orig.sh\" \"\$ORIG\"" "$f" || { echo "    idioma inesperado: $f"; bad=1; }
-done
+# A LISTA E DERIVADA, NAO LITERAL. A lista fixa cobria 3 dos 4 arquivos que restauram original
+# (`install.sh` restaura DOIS e ficava de fora em silencio). Arquivo novo com trap ruim entrava
+# pela mesma porta. Agora o conjunto e descoberto e a checagem ignora comentario, como AM1.
+while IFS= read -r f; do
+  grep -v "^[[:space:]]*#" "$f" | grep -q "trap 'cp -f \"\$TMP/orig" \
+    || { echo "    idioma inesperado: $f"; bad=1; }
+done < <(grep -l 'cp -f "\$TMP/orig' tests/mutation/*.sh)
 chk "run/contrato/conformidade usam o idioma restaura-entao-remove" "$bad" 0
 
 echo "== AM3. SIGTERM no meio da mutacao NAO deixa mutante no disco =="

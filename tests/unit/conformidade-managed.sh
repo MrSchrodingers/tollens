@@ -95,11 +95,50 @@ OUT="$(roda "$R" "$H" "$PFX")"
 [ "$(jq -r '.managed' "$H/.claude/evidence/session-integrity.jsonl" | tail -1)" = "conformant" ]
 chk "  heartbeat prova que a verificacao managed RODOU (liveness)" $? 0
 
+echo "== CM7. politica VIVA com a arvore APAGADA e o pior drift, nao 'absent' =="
+# Achado critico da revisao independente. O verificador julga DUAS metades; a guarda testava
+# UMA. Estado real: SIGKILL entre os dois renames (documentado em apply-managed-legacy.sh:254),
+# ou `rm -rf /opt/evidence-gate`. Com allowManagedHooksOnly=true e o mecanismo inteiro desligado
+# apontando para caminhos inexistentes - e era reportado como conformidade silenciosa.
+R="$TMP/r6"; H="$TMP/h6"; PFX="$TMP/p6"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/etc/claude-code"
+echo '{}' > "$PFX/etc/claude-code/managed-settings.json"   # politica presente, arvore NAO
+OUT="$(roda "$R" "$H" "$PFX")"
+[ -n "$OUT" ]; chk "politica orfa (sem arvore) NAO passa por 'absent'" $? 0
+[ "$(jq -r '.managed' "$H/.claude/evidence/session-integrity.jsonl" | tail -1)" = "drift" ]
+chk "  heartbeat marca drift, nao absent" $? 0
+
+echo "== CM8. recusa de verificar e NOT_VERIFIED, nao divergencia medida =="
+# `apply-managed.sh` sai 2/64/77/78 quando RECUSA verificar. Coagir isso para `drift` produzia
+# um alerta afirmando divergencia com resumo verde e zero evidencia - alerta sem referente.
+R="$TMP/r7"; H="$TMP/h7"; PFX="$TMP/p7"; monta "$R" 0 0; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+cat > "$R/install/apply-managed.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "ERRO: fonte privilegiada nao confiavel: /home/x/evidence-gate" >&2
+exit 78
+EOF
+chmod +x "$R/install/apply-managed.sh"
+OUT="$(roda "$R" "$H" "$PFX")"
+[ "$(jq -r '.managed' "$H/.claude/evidence/session-integrity.jsonl" | tail -1)" = "not_verified" ]
+chk "estado e not_verified (nao drift)" $? 0
+[ "$(jq -r '.result' "$H/.claude/evidence/session-integrity.jsonl" | tail -1)" = "not_verified" ]
+chk "  agregado tambem e not_verified" $? 0
+printf '%s' "$OUT" | grep -q "NAO VERIFICADO"; chk "  a mensagem declara NAO VERIFICADO" $? 0
+printf '%s' "$OUT" | grep -q "fonte privilegiada nao confiavel"; chk "  a CAUSA chega ao modelo" $? 0
+
+echo "== CM9. verificador sem bit de execucao ainda e verificado (e chamado com bash) =="
+# Guarda `-x` sobre arquivo invocado com `bash` era fail-open: um cp sem -p desligava tudo.
+R="$TMP/r8"; H="$TMP/h8"; PFX="$TMP/p8"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+chmod -x "$R/install/apply-managed.sh" "$R/install/verify.sh"
+OUT="$(roda "$R" "$H" "$PFX")"
+[ -n "$OUT" ]; chk "sem bit +x, a verificacao NAO e pulada em silencio" $? 0
+[ "$(jq -r '.managed' "$H/.claude/evidence/session-integrity.jsonl" | tail -1)" = "drift" ]
+chk "  o drift real continua sendo reportado" $? 0
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
 # CONTAGEM INVARIANTE (README secao 6.2): matcher quebrado ou bloco nao executado nao pode
 # reduzir cobertura em silencio.
-EXPECTED=13
+EXPECTED=21
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

@@ -16,7 +16,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/propriedades.sh` | 22 | 0 |
 | `tests/unit/fronteira-externa.sh` | 11 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
-| `tests/unit/conformidade-managed.sh` | 13 | 0 |
+| `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
 | `tests/unit/run.sh` | 53 | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
@@ -27,9 +27,9 @@ O README referencia este arquivo em vez de duplicar numeros.
 |---|---:|---:|
 | gate | 13 | 0 |
 | contrato de subagente | 9 | 0 |
-| instalador | 5 | 0 |
+| instalador | 5 | variavel (sudo) |
 | fronteira externa | 7 | 0 |
-| conformidade de dois escopos | 3 | 0 |
+| conformidade de dois escopos | 6 | 0 |
 
 ## Componentes
 
