@@ -101,6 +101,20 @@ def tools_declarados(caminho: Path) -> frozenset[str] | None:
 
 
 def main() -> int:
+    # `--repo-only` COMPARA SO AS DUAS ARVORES INTERNAS AO REPOSITORIO.
+    #
+    # Existe para a CI. Num runner limpo `CLAUDE_HOME/agents` nao existe, e a perna instalada
+    # sai NAO_VERIFICADO (exit 2) - correto localmente, mas transformaria um passo de CI em
+    # vermelho permanente por ausencia esperada, o que ensina a ignorar o passo.
+    #
+    # O que ele NAO faz: afrouxar. A comparacao `execution/agents` x `.claude/agents` continua
+    # exit 1 em divergencia e exit 2 se qualquer das duas arvores faltar. A perna descartada e
+    # DECLARADA aqui e na saida, nao silenciada - e continua valendo na execucao local, que e
+    # onde `CLAUDE_HOME` existe.
+    #
+    # Valor colateral: `orchestration/render.py --check` so verifica que a projecao EXISTE.
+    # Esta comparacao de conteudo fecha parte dessa lacuna semantica para o campo `tools:`.
+    repo_only = "--repo-only" in sys.argv
     canon_dir = ROOT / "execution" / "agents"
     repo_proj_dir = ROOT / ".claude" / "agents"
     home_dir = CLAUDE_HOME / "agents"
@@ -124,10 +138,9 @@ def main() -> int:
                               f"- isto e defeito estrutural, nao ausencia de dado")
             continue
 
-        fontes = {
-            "projecao do repo (.claude/agents)": repo_proj_dir / f"{nome}.md",
-            "instalada (CLAUDE_HOME/agents)": home_dir / f"{nome}.md",
-        }
+        fontes = {"projecao do repo (.claude/agents)": repo_proj_dir / f"{nome}.md"}
+        if not repo_only:
+            fontes["instalada (CLAUDE_HOME/agents)"] = home_dir / f"{nome}.md"
 
         divergiu = False
         for rotulo, caminho in fontes.items():

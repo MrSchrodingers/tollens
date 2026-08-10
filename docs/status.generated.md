@@ -18,6 +18,9 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
+| `tests/unit/schedule.sh` | 15 | 0 |
+| `tests/unit/fronteira-viva.sh` | 14 | 0 |
+| `tests/unit/literatura.sh` | 27 | 0 |
 | `tests/unit/run.sh` | 53 | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -30,6 +33,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | instalador | 5 | variavel (sudo) |
 | fronteira externa | 7 | 0 |
 | conformidade de dois escopos | 7 | 0 |
+| escalonamento | 4 | 0 |
 
 ## Componentes
 

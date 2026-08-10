@@ -101,6 +101,14 @@ jobs:
         run: bash tests/unit/conformidade-managed.sh
       - name: arnes de mutacao (interrupcao nao deixa mutante no disco)
         run: bash tests/unit/arnes-de-mutacao.sh
+      - name: escalonamento de paralelismo (conjunto de escrita)
+        run: bash tests/unit/schedule.sh
+      - name: fronteira viva (Applies(P,r) medido no servidor)
+        run: bash tests/unit/fronteira-viva.sh
+      - name: camada de literatura (qualidade e aplicabilidade da evidencia)
+        run: bash tests/unit/literatura.sh
+      - name: conformidade de capability declarada (projecoes do repo)
+        run: python3 evidence/runtime-probes/declared-capabilities.py --repo-only
       - name: regressao do gate
         run: bash tests/unit/regressao-gate.sh
       - name: validacao por mutacao (gate)
@@ -113,5 +121,7 @@ jobs:
         run: bash tests/mutation/fronteira.sh
       - name: validacao por mutacao (conformidade de dois escopos)
         run: bash tests/mutation/conformidade.sh
+      - name: validacao por mutacao (escalonamento)
+        run: bash tests/mutation/schedule.sh
       - name: suite legada
         run: bash tests/unit/run.sh

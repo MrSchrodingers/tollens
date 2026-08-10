@@ -18,7 +18,7 @@ evidence:
       agent_type=refutador de ~/.claude/logs/subagent-probe.jsonl.1 (comando completo, com o
       valor de p, no corpo do arquivo referenciado, secao 3)"
     recorded: evidence/observations/2026-08-10-capacidade-declarada-vs-observada.md
-    blob_sha: 1ffe439f05b7863cfeeab770b9f3cae4543c8dca
+    blob_sha: 2a134c967e75a0648dbbe9d5b09e3cff40a414c1
     line_start: 68
     line_end: 87
 warrant: 'A metade DECLARADA da propriedade e verificada automaticamente por
