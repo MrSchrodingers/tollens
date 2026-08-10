@@ -56,7 +56,19 @@ fi
 # Nao ha deadlock aqui: `tests/lib/lock.sh` e re-entrante por variavel EXPORTADA
 # (EVIDENCE_GATE_LOCK=held), justamente porque os runners de mutacao invocam as suites de
 # regressao. O filho herda a marca e nao tenta tomar o lock de novo.
-bash tests/mutation/run.sh >/dev/null 2>&1 &
+#
+# DUAS PRECAUCOES, ambas pagas por uma CI vermelha (run 31397403110):
+#
+# `9>&-` FECHA O FD DO LOCK NO FILHO. `tests/lib/lock.sh` segura a exclusao com
+# `exec 9>arquivo; flock -n 9`. O flock vive na descricao de arquivo ABERTA, nao no processo:
+# qualquer filho que herde o fd mantem o lock vivo depois que este script sair. O filho aqui
+# nem usa o lock (herda EVIDENCE_GATE_LOCK=held e pula a secao), mas herdava o fd - e um neto
+# orfao segurava o lock para sempre. Medido: o passo seguinte da CI, `regressao do gate`,
+# abortou com exit 3 "ja ha uma suite em execucao".
+#
+# `setsid` + `kill -TERM -PGID` MATA O GRUPO. `tests/mutation/run.sh` invoca as suites de
+# regressao como filhos proprios; SIGTERM so no processo direto deixava os netos vivos.
+setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
 CHILD=$!
 MUTOU=nao
 for _ in $(seq 1 400); do   # ate ~20s
@@ -65,13 +77,13 @@ for _ in $(seq 1 400); do   # ate ~20s
   kill -0 "$CHILD" 2>/dev/null || break
 done
 if [ "$MUTOU" != "sim" ]; then
-  kill -TERM "$CHILD" 2>/dev/null; wait "$CHILD" 2>/dev/null
+  kill -TERM -"$CHILD" 2>/dev/null || kill -TERM "$CHILD" 2>/dev/null; wait "$CHILD" 2>/dev/null
   git checkout -- "$ALVO" 2>/dev/null || true
   echo "  NOT_VERIFIED: nao foi possivel observar o arquivo em estado mutado (corrida rapida"
   echo "                demais ou suite abortou cedo). O caso NAO foi realizado."
   exit 2
 fi
-kill -TERM "$CHILD" 2>/dev/null
+kill -TERM -"$CHILD" 2>/dev/null || kill -TERM "$CHILD" 2>/dev/null
 wait "$CHILD" 2>/dev/null
 DEPOIS_SHA="$(sha256sum "$ALVO" 2>/dev/null | cut -d' ' -f1)"
 [ "$DEPOIS_SHA" = "$ORIG_SHA" ]; chk "apos SIGTERM, $ALVO voltou ao conteudo original" $? 0
