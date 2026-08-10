@@ -1,0 +1,106 @@
+{
+  "classify": {
+    "actor": "orchestrator",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": [],
+    "writes": [],
+    "produces": ["risk-classification"]
+  },
+  "investigate": {
+    "actor": "investigador",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["root-cause-evidence"]
+  },
+  "map": {
+    "actor": "mapeador-dependencias",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["dependency-graph"]
+  },
+  "threat-model": {
+    "actor": "auditor-seguranca",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["threat-model"]
+  },
+  "plan": {
+    "actor": "orchestrator",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": [],
+    "writes": [],
+    "produces": ["mini-prd"]
+  },
+  "red": {
+    "actor": "tdd",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": ["**"],
+    "produces": ["failing-test"]
+  },
+  "implement": {
+    "actor": "implementador",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": ["**"],
+    "produces": ["diff"]
+  },
+  "mutation": {
+    "actor": "tdd",
+    "isolation": "shared",
+    "holds_suite_lock": true,
+    "reads": ["**"],
+    "writes": ["**"],
+    "produces": ["mutation-report"]
+  },
+  "review": {
+    "actor": "revisor-codigo",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["review-verdict"]
+  },
+  "refute": {
+    "actor": "refutador",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["refutation-verdict"]
+  },
+  "security": {
+    "actor": "auditor-seguranca",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["security-verdict"]
+  },
+  "evidence": {
+    "actor": "orchestrator",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": [],
+    "writes": [],
+    "produces": ["evidence-package"]
+  },
+  "candidate": {
+    "actor": "orchestrator",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": [],
+    "writes": [],
+    "produces": ["candidate-state"]
+  }
+}
