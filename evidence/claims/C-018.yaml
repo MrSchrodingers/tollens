@@ -1,0 +1,76 @@
+# Ledger de alegacoes - ver evidence/validate-claims.py para o contrato.
+# REFERENCIA evidencia existente; nunca a duplica.
+claim_id: C-018
+claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA contra o endpoint
+  autoritativo do GitHub (GET rules/branches/{branch} + GET rulesets/{id}), nao inferida do YAML
+  dos workflows. Antes desta correcao a formula publicada, ExternalGate(P,a) <=> RequiredCheck(P)
+  ^ not Bypass(a,P), nao tinha termo de aplicabilidade: o ruleset 20385799 podia estar
+  `enforcement: active`, `bypass_actors: []`, exigindo `verify-pr`, e ainda assim
+  `conditions.ref_name.include == []` fazia a regra se aplicar a ZERO refs sem que a formula
+  denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
+type: security-property
+scope:
+  subject_snapshot: e98629d8d69201b8e87e8e0e4a0c9052b648c5b6
+  # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
+  # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
+  platforms:
+  - local-linux
+  - github.com-hosted
+  runtime:
+    gh_cli: 2.96.0
+evidence:
+  regression: [V1, V2, V3]
+  observation:
+    command: python3 evidence/probes/github-ruleset.py
+    recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
+    blob_sha: e3a08b91e3a9b995ccc7d2e7c9344c1261cae7ae
+    line_start: 27
+    line_end: 44
+warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-externa.sh` declara
+  explicitamente nao alcancar (ver a propria suite: "NAO VERIFICA: que o GitHub nomeie o
+  check-run... isso e comportamento de plataforma"). Contra o ruleset corrigido
+  (`conditions.ref_name.include: ["~DEFAULT_BRANCH"]`), medido em `main`, o probe retorna PASS
+  citando exatamente os tres conjuntos que a formula exige: contexto `verify-pr` presente entre
+  os produzidos pelas regras `required_status_checks` aplicaveis (Applies ^ Required),
+  `strict_required_status_checks_policy=true`, `bypass_actors=[]` no ruleset de origem 20385799
+  (not Bypass). O caso V2 da suite `tests/unit/fronteira-viva.sh` reproduz, com o cliente de API
+  STUBADO (resposta vazia), a MESMA FORMA do defeito historico - e foi validado por MUTACAO
+  manual: substituir o `FAIL` do guard de resposta vazia por `PASS` no probe faz exatamente os
+  dois asserts de V2 reprovarem e a contagem invariante da suite quebrar (14 -> 12 PASS), provando
+  que o caso testa a garantia removida e nao outra coisa (CLAUDE.md 6.3, regra de metodo 2). O
+  controle empirico nao-stubado (observacao, secao 2) mede a MESMA forma - resposta vazia,
+  Applies(P,r)=False - contra uma ref real que o ruleset atual nao cobre, ja que reverter o
+  ruleset real para reproduzir o defeito historico exato estava fora do escopo autorizado desta
+  tarefa.'
+limitations:
+- 'Endereca DIRETAMENTE a limitacao que C-017 ja declarava: "A suite `tests/unit/fronteira-externa.sh`
+  e ESTATICA: le os arquivos de workflow. Ela nao observa check-runs reais - isso e o que a
+  observacao acima faz, uma vez." C-017 mediu check-runs (o CONTEUDO do que roda); esta alegacao
+  mede Applies/Required/Bypass do RULESET (a POLITICA que decide se o check-run e sequer exigido).
+  Continua nao medido aqui, e por isso o limite de C-017 permanece parcialmente aberto: qual
+  check-run o GitHub avalia se dois homonimos DIVERGIREM sobre o MESMO SHA.'
+- 'O probe e um ORACULO SOB DEMANDA, nao um gate continuo: ele mede o estado do ruleset no
+  instante em que roda. Se o ruleset for editado depois da ultima execucao (por exemplo,
+  `conditions.ref_name.include` esvaziado de novo por um administrador), nada neste repositorio
+  detecta a mudanca ate o probe rodar de novo. Isto e declarado explicitamente na recomendacao de
+  integracao: o probe exige rede e um token com `repo` no escopo, o que o torna inadequado como
+  passo OBRIGATORIO e bloqueante de CI (falha de rede vira falso vermelho do pipeline inteiro).
+  A leitura recomendada e execucao periodica agendada (ou manual, em auditoria) que registra o
+  resultado como uma nova observacao - nunca como gate de merge.'
+- 'A garantia e do GitHub, nao deste repositorio: quem tem `admin` sobre o repositorio pode
+  DESATIVAR ou REEDITAR o ruleset a qualquer momento (o mesmo limite ja declarado em
+  `evidence/observations/2026-08-04-fronteira-externa-e-contrato-no-runtime.md`). O probe mede o
+  estado configurado, nao impede que ele mude.'
+- 'O caso empirico nao-stubado do defeito (observacao, secao 2) mede a FORMA do defeito - resposta
+  vazia para uma ref fora do escopo do ruleset - e nao o defeito historico exato, que cobria TODA
+  ref, `main` inclusive. Reproduzir o caso exato exigiria reverter o ruleset real, proibido nesta
+  tarefa. A reproducao exata e determinística fica so na suite stubada (V2).'
+- 'Nao ha `evidence.ci` nesta alegacao: o snapshot citado vive numa branch de topico
+  (`wave1/n2-ruleset`) que ainda nao passou por PR nem por execucao de CI - inventar um `run_id`
+  seria fabricar evidencia. Quando esta mudanca for integrada por PR, uma alegacao subsequente
+  pode adicionar o bloco `ci` apontando para a execucao real.'
+- 'O probe resolve bypass_actors e enforcement so dos rulesets que contribuem a regra
+  `required_status_checks` aplicavel. Outras regras aplicaveis a mesma ref (`pull_request`,
+  `deletion`, `non_fast_forward`) podem vir de rulesets DIFERENTES com bypass_actors proprios;
+  o probe nao os audita, porque nao sao o que decide se o check exigido barra o merge.'
+status: supported-in-tested-domain
