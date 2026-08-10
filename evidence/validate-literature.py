@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Validador da camada de qualidade de evidencia para LITERATURA EXTERNA (evidence/literature/*.yaml).
+
+POR QUE ESTE ARQUIVO EXISTE
+----------------------------
+`evidence/claims/` (validate-claims.py) ancora uma AFIRMACAO DESTE REPOSITORIO em evidencia
+DESTE REPOSITORIO (suite, blob, execucao de CI). Isso nao cobre um tipo diferente de citacao:
+quando um documento do projeto (README, ADR, prompt de agente) invoca um PAPER EXTERNO para
+justificar uma decisao. Para esse caso a pergunta nao e "essa evidencia existe" - ela existe,
+o paper foi publicado - e sim "essa evidencia SE APLICA a este harness, e com que forca".
+
+O defeito que motivou este arquivo: a secao 6.1 do README citava SWE-Skills-Bench como "39 de
+49 skills sem melhoria de pass rate, ganho medio de +1,2 ponto percentual" sem o baseline
+(89,8% sem skill), sem o teto de melhoria que esse baseline implica (no maximo +10,2pp), sem
+declarar que o experimento usa um UNICO modelo e UNICO scaffold (o proprio artigo declara "does
+not evaluate alternative agent frameworks") e sem o status de pre-print com resultados
+preliminares. Cada numero isolado era verdadeiro; a citacao, no conjunto, selecionava o dado
+mais favoravel ao argumento e descartava o contexto que o qualifica - recall bias, nao
+fabricacao, e por isso resiste a checagem numero-a-numero.
+
+Precedente proprio, ja registrado neste repositorio antes deste arquivo existir: `docs/adr/0011`
+audita a mesma classe de defeito contra `arXiv:2606.09863` - a config citava "false success
+45-89%" quando o paper reporta 45-48% / 3% / 75.8% em tres condicoes distintas. Nao existe a
+faixa 45-89%. Quatro de cinco citacoes auditadas naquele ADR falharam sob a mesma regra que as
+proibia. Este validador nao substitui a leitura humana da fonte primaria - nenhum programa faz
+isso sem acesso ao PDF - mas impede que um numero fique na prosa argumentativa sem o contexto
+que o qualifica, que foi o mecanismo concreto dos dois defeitos acima.
+
+TRES DIMENSOES, SEPARADAS DE PROPOSITO
+---------------------------------------
+  provenance     : ONDE o resultado foi publicado (peer_reviewed, preprint, vendor_primary,
+                   local_experiment). Nao diz nada sobre desenho metodologico.
+  study_quality  : COMO o estudo foi desenhado (benchmark, n, modelos, scaffold, oraculo,
+                   baseline, trials repetidos, incerteza reportada, disponibilidade de
+                   codigo/dados, replicacao).
+  applicability  : O QUANTO o dominio, o scaffold e o oraculo do estudo se parecem com os
+                   deste repositorio.
+
+Um estudo pode ser peer-reviewed, ter n grande e ainda ser apenas EXTRAPOLATED para este
+repositorio, se foi medido num scaffold e dominio diferentes - caso de SWE-Skills-Bench
+(Claude Code + Claude Haiku 4.5 unicos) contra um harness que roda Claude Code E Codex. E o
+inverso tambem vale: um pre-print pode ter applicability alta quando mede exatamente a classe
+de artefato que uma politica deste repositorio trata - caso dos dois estudos de seguranca de
+marketplace de skill (`arxiv-2601.10338`, `arxiv-2602.06547`): nao avaliam `evidence-gate`, mas
+medem risco na MESMA classe de artefato (skills) que a politica de quarentena deste
+repositorio governa.
+
+`inference_strength` - A ESCALA FECHADA, E POR QUE ELA E O CAMPO MAIS IMPORTANTE
+-----------------------------------------------------------------------------------
+  DIRECT       : mede o proprio artefato/mecanismo deste repositorio.
+  SUPPORTED    : mede o mesmo fenomeno, em populacao/dominio proximo, com metodologia solida.
+  SUGGESTIVE   : aponta na mesma direcao, mas com heterogeneidade ou lacuna metodologica
+                 relevante o bastante para pesar na leitura.
+  EXTRAPOLATED : modelo/scaffold/dominio unicos e distintos deste repositorio; aplicar aqui
+                 exige assumir uma generalizacao que o estudo, sozinho, nao demonstra.
+  SPECULATIVE  : nenhuma medicao direta; a citacao vale como plausibilidade teorica, nao como
+                 evidencia de efeito.
+
+O QUE O VALIDADOR IMPOE
+-------------------------
+  1. Campos obrigatorios presentes (raiz, `study_quality`, `applicability`, `findings[]`).
+  2. `inference_strength` e `provenance` dentro dos vocabularios fechados.
+  3. Toda afirmacao numerica tem fonte declarada, por DOIS mecanismos que se cobrem:
+     a) `findings[]` e o lugar estrutural para um numero: cada item exige `metric`, `value` E
+        `source` (nao vazios) - o campo `source` E a fonte declarada.
+     b) qualquer OUTRA string do documento (`study_quality`, `applicability`,
+        `inference_rationale`, `limitations`) que contenha um digito precisa conter, ela
+        mesma, a palavra `fonte` ou `verificad` (cobre verificado/nao verificado/verificacao).
+        Sem isso um numero poderia entrar pela prosa argumentativa - `inference_rationale` ou
+        `applicability` - sem nunca passar pelo mecanismo de sourcing, que foi exatamente a
+        rota do defeito de 6.1: um numero solto dentro de um paragrafo de argumento, sem o
+        contexto que o qualifica.
+     Campos bibliograficos (`literature_id`, `identifier`, `url`, `citation`, `cited_in`) ficam
+     de fora da varredura (b): sao METADADOS de endereco (onde o paper esta, onde ele e citado
+     no repositorio), nao afirmacoes empiricas sobre o que o paper mediu.
+  4. Nome do arquivo == `literature_id` + `.yaml`, mesma disciplina de `evidence/claims`.
+
+O QUE ESTE VALIDADOR NAO FAZ - limites declarados
+---------------------------------------------------
+  - Nao contata a rede, nao baixa o PDF, nao confere se o numero citado bate com o artigo. Essa
+    conferencia e humana - foi feita na investigacao que produziu estes arquivos - e nenhum
+    programa deste repositorio pode reproduzi-la sem acesso a fonte primaria.
+  - Nao decide SE a forca de inferencia declarada esta CORRETA - confere so que o valor esta no
+    vocabulario fechado. A calibracao entre o estudo e a forca de inferencia e argumento
+    humano, exatamente como a ligacao entre evidencia e tese em `evidence/claims`
+    (validate-claims.py, mesma limitacao declarada la).
+  - Nao impede que o mesmo numero apareca com valores diferentes em dois arquivos distintos.
+  - A varredura de "numero sem marcador de fonte" e um heuristico textual (regex), nao um
+    parser semantico: uma string que contenha um digito por acidente (ex.: um identificador
+    interno) e tratada como afirmacao numerica do mesmo jeito. O custo dessa simplicidade e
+    falso positivo ocasional, corrigivel adicionando o marcador; a alternativa - permitir
+    numeros soltos por padrao - e o defeito que este arquivo existe para fechar.
+"""
+import os
+import re
+import sys
+
+EXIT_OK, EXIT_VIOLACAO, EXIT_NAO_VERIFICADO = 0, 1, 2
+
+try:
+    import yaml
+except ImportError:
+    # DEPENDENCIA DE ORACULO ausente, nao variacao de ambiente: sem parser nao ha como decidir
+    # se a camada de literatura e valida, e "nao reprovou" seria indistinguivel de "nao foi
+    # verificado" (mesma razao documentada em validate-claims.py).
+    sys.stderr.write(
+        "NAO VERIFICADO: pyyaml ausente. A camada de literatura nao pode ser validada neste "
+        "ambiente. Instale a versao pinada (ver .github/workflows/verify-pr.yml).\n")
+    sys.exit(EXIT_NAO_VERIFICADO)
+
+PROVENIENCIA = {"peer_reviewed", "preprint", "vendor_primary", "local_experiment"}
+FORCA_INFERENCIA = {"DIRECT", "SUPPORTED", "SUGGESTIVE", "EXTRAPOLATED", "SPECULATIVE"}
+
+OBRIGATORIOS = ("literature_id", "citation", "identifier", "url", "provenance",
+                "study_quality", "applicability", "inference_strength",
+                "inference_rationale", "findings", "limitations")
+
+# Os DEZ subcampos de study_quality pedidos pela delegacao, verbatim: "benchmark, n, modelos,
+# scaffold, oraculo, baseline, trials repetidos, incerteza reportada, codigo/dados
+# disponiveis, replicado".
+CAMPOS_STUDY_QUALITY = ("benchmark", "n", "models", "scaffold", "oracle", "baseline",
+                        "trials_repeated", "uncertainty_reported", "code_data_available",
+                        "replicated")
+# Os TRES subcampos de applicability: "domain_similarity, scaffold_similarity, oracle_similarity".
+CAMPOS_APPLICABILITY = ("domain_similarity", "scaffold_similarity", "oracle_similarity")
+
+# Campos de ENDERECO (onde o paper esta, onde ele e citado) - nao sao afirmacoes empiricas e
+# por isso ficam fora da varredura de "numero precisa de marcador de fonte".
+CAMPOS_BIBLIOGRAFICOS = {"literature_id", "identifier", "url", "citation", "cited_in"}
+
+RE_LITERATURE_ID = re.compile(r"^[a-z][a-z0-9]*(?:[.\-][a-z0-9]+)*$")
+RE_METRIC = re.compile(r"^[a-z][a-z0-9_]*$")
+RE_DIGIT = re.compile(r"\d")
+# "fonte" ou "verificad" (verificado / nao verificado / verificacao) - o marcador minimo que
+# obriga quem escreve a declarar, no proprio texto, de onde o numero vem ou que ele nao foi
+# conferido. Case-insensitive: nao ha ganho em discriminar maiusculas aqui.
+RE_MARCADOR_FONTE = re.compile(r"fonte|verificad", re.IGNORECASE)
+
+
+def _varre_fonte(valor, caminho, violacoes):
+    """Percorre recursivamente o documento (exceto o que o chamador ja excluiu) e reprova toda
+    STRING que contem digito sem conter, ela mesma, um marcador de fonte declarada."""
+    if isinstance(valor, dict):
+        for k, v in valor.items():
+            _varre_fonte(v, f"{caminho}.{k}" if caminho else str(k), violacoes)
+    elif isinstance(valor, list):
+        for i, v in enumerate(valor):
+            _varre_fonte(v, f"{caminho}[{i}]", violacoes)
+    elif isinstance(valor, str):
+        if RE_DIGIT.search(valor) and not RE_MARCADOR_FONTE.search(valor):
+            violacoes.append(
+                f"{caminho}: contem numero sem marcador de fonte declarada "
+                f"('fonte'/'verificad' ausente do proprio texto): {valor!r}")
+
+
+def _valida_findings(findings, arquivo):
+    e = []
+    def erro(msg):
+        e.append(f"{os.path.basename(arquivo)}: {msg}")
+
+    if not isinstance(findings, list) or not findings:
+        erro("findings deve ser uma lista nao vazia - toda citacao numerica fica ancorada aqui")
+        return e
+    for i, f in enumerate(findings):
+        if not isinstance(f, dict):
+            erro(f"findings[{i}] deve ser um mapeamento com 'metric', 'value' e 'source'")
+            continue
+        for campo in ("metric", "value", "source"):
+            if f.get(campo) in (None, ""):
+                erro(f"findings[{i}].{campo} ausente ou vazio - sem 'source' o numero nao tem "
+                     f"fonte declarada")
+        metrica = f.get("metric")
+        if isinstance(metrica, str) and metrica and not RE_METRIC.match(metrica):
+            erro(f"findings[{i}].metric '{metrica}' fora do formato snake_case")
+    return e
+
+
+def valida(doc, arquivo, vistos):
+    e = []
+    def erro(msg):
+        e.append(f"{os.path.basename(arquivo)}: {msg}")
+
+    if not isinstance(doc, dict):
+        erro("o arquivo nao contem um mapeamento YAML no topo")
+        return e
+
+    for campo in OBRIGATORIOS:
+        if campo not in doc or doc[campo] in (None, "", [], {}):
+            erro(f"campo obrigatorio ausente ou vazio: '{campo}'")
+    if e:
+        return e
+
+    lid = str(doc["literature_id"])
+    if not RE_LITERATURE_ID.match(lid):
+        erro(f"literature_id '{lid}' fora do formato (letras/digitos minusculos, "
+             f"separadores '-' ou '.')")
+    if lid in vistos:
+        erro(f"literature_id '{lid}' duplicado (ja usado em {vistos[lid]})")
+    else:
+        vistos[lid] = os.path.basename(arquivo)
+    esperado = f"{lid}.yaml"
+    if os.path.basename(arquivo) != esperado:
+        erro(f"nome do arquivo deveria ser '{esperado}' para casar com literature_id")
+
+    if doc["provenance"] not in PROVENIENCIA:
+        erro(f"provenance '{doc['provenance']}' fora do vocabulario {sorted(PROVENIENCIA)}")
+
+    if doc["inference_strength"] not in FORCA_INFERENCIA:
+        erro(f"inference_strength '{doc['inference_strength']}' fora do vocabulario fechado "
+             f"{sorted(FORCA_INFERENCIA)}")
+
+    sq = doc.get("study_quality")
+    if not isinstance(sq, dict):
+        erro("study_quality deve ser um mapeamento")
+    else:
+        for campo in CAMPOS_STUDY_QUALITY:
+            if campo not in sq or sq[campo] in (None, ""):
+                erro(f"study_quality.{campo} ausente ou vazio")
+
+    ap = doc.get("applicability")
+    if not isinstance(ap, dict):
+        erro("applicability deve ser um mapeamento")
+    else:
+        for campo in CAMPOS_APPLICABILITY:
+            if campo not in ap or ap[campo] in (None, ""):
+                erro(f"applicability.{campo} ausente ou vazio")
+
+    if not isinstance(doc.get("inference_rationale"), str) or not doc["inference_rationale"].strip():
+        erro("inference_rationale deve ser texto nao vazio explicando a forca declarada")
+
+    e.extend(_valida_findings(doc.get("findings"), arquivo))
+
+    if not isinstance(doc.get("limitations"), list) or not doc["limitations"]:
+        erro("limitations deve ser uma lista nao vazia - todo estudo tem alcance finito")
+    elif any(not isinstance(x, str) or not x.strip() for x in doc["limitations"]):
+        erro("limitations nao pode conter item vazio")
+
+    # REGRA 3(b): tudo o que NAO e campo bibliografico e NAO e a subarvore de findings (ja
+    # coberta pela regra 3(a), acima) e varrido por numero sem marcador de fonte.
+    resto = {k: v for k, v in doc.items() if k not in CAMPOS_BIBLIOGRAFICOS and k != "findings"}
+    violacoes_fonte = []
+    _varre_fonte(resto, "", violacoes_fonte)
+    for v in violacoes_fonte:
+        erro(v)
+
+    return e
+
+
+def main(argv):
+    raiz = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.abspath(
+        os.path.join(os.path.dirname(__file__), ".."))
+    ldir = argv[2] if len(argv) > 2 else os.path.join(raiz, "evidence", "literature")
+
+    if not os.path.isdir(ldir):
+        sys.stderr.write(f"NAO VERIFICADO: diretorio de literatura inexistente: {ldir}\n")
+        return EXIT_NAO_VERIFICADO
+
+    arquivos = sorted(f for f in os.listdir(ldir) if f.endswith((".yaml", ".yml")))
+    if not arquivos:
+        sys.stderr.write(f"NAO VERIFICADO: nenhuma entrada de literatura em {ldir}\n")
+        return EXIT_NAO_VERIFICADO
+
+    erros, vistos = [], {}
+    for nome in arquivos:
+        caminho = os.path.join(ldir, nome)
+        try:
+            with open(caminho, encoding="utf-8") as fh:
+                doc = yaml.safe_load(fh)
+        except yaml.YAMLError as exc:
+            erros.append(f"{nome}: YAML invalido: {exc}")
+            continue
+        erros.extend(valida(doc, caminho, vistos))
+
+    print(f"entradas de literatura lidas: {len(arquivos)}")
+    if erros:
+        print(f"\nVIOLACOES ({len(erros)}):")
+        for x in erros:
+            print(f"  - {x}")
+        return EXIT_VIOLACAO
+    print("camada de literatura valida: campos obrigatorios presentes; inference_strength e "
+          "provenance no vocabulario fechado; toda afirmacao numerica com fonte declarada "
+          "(findings[].source estrutural, ou marcador 'fonte'/'verificad' inline no restante "
+          "do documento).")
+    print("NAO verificado aqui: se o numero citado bate com o conteudo real do artigo "
+          "(exigiria acesso a fonte primaria) - ver limitacoes no docstring deste arquivo.")
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

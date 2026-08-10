@@ -1,0 +1,93 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength.
+literature_id: arxiv-2601.10338
+citation: >-
+  Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.
+  arXiv:2601.10338, pre-print de 2026.
+identifier: arXiv:2601.10338
+url: https://arxiv.org/abs/2601.10338
+cited_in:
+- README.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.pt-BR.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.md#16 (referencia [17], nova)
+- README.pt-BR.md#16 (referencia [17], nova)
+provenance: preprint
+study_quality:
+  benchmark: "SkillScan (fonte: texto completo - detector proprio do estudo)."
+  n: "31132 skills coletadas de duas marketplaces (fonte: texto completo)."
+  models: >-
+    [nao verificado] - SkillScan e um detector estatico/comportamental, nao um LLM avaliado
+    como sujeito do estudo; a arquitetura interna do detector nao foi reconferida.
+  scaffold: nao aplicavel - o objeto medido e a skill em si, nao um agente executando-a em um scaffold.
+  oracle: "deteccao automatica via SkillScan, com precisao e recall reportados (ver findings)."
+  baseline: >-
+    26.1% das skills coletadas com pelo menos uma vulnerabilidade (fonte: texto completo); essa
+    proporcao depende da populacao coletada e da precisao/recall do detector (ver findings e
+    limitations) e NAO e prevalencia do universo geral de skills.
+  trials_repeated: nao aplicavel - estudo de levantamento em corpus fixo, nao trials repetidos.
+  uncertainty_reported: >-
+    [nao verificado] - intervalo de confianca sobre a taxa de 26.1% nao confirmado na leitura.
+  code_data_available: "[nao verificado] - nao confirmado na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - o objeto medido (agent skills coletadas de marketplaces publicas) e a MESMA classe
+    de artefato que a politica de lifecycle de skill deste repositorio trata
+    (orchestration/skill-policy.json, estados quarantine/candidate/promoted/deprecated/rejected).
+  scaffold_similarity: >-
+    Nao aplicavel - o estudo nao avalia um agente executando as skills em um scaffold
+    especifico; mede a skill como artefato estatico/comportamental.
+  oracle_similarity: >-
+    Baixa - o oraculo do estudo (deteccao de padrao de vulnerabilidade) nao e verificacao
+    executavel de requisito, que e o oraculo que este repositorio usa para eficacia de skill.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  O estudo mede diretamente a mesma classe de artefato (agent skills publicadas) que a politica
+  de quarentena e promocao deste repositorio governa, em escala grande o bastante para ser mais
+  que um caso isolado (fonte: findings.skills_collected). A proporcao agregada de skills com
+  vulnerabilidade (fonte: findings.skills_with_vulnerability_pct) tem uma ressalva
+  metodologica explicita - depende da populacao coletada e da precisao/recall do detector,
+  ambos reportados e portanto auditaveis - o que impede DIRECT (nao mede skills deste
+  repositorio), mas a proximidade do objeto medido e a escala do levantamento sustentam
+  SUPPORTED, um nivel acima de SUGGESTIVE. Este e, junto com arxiv-2602.06547, o warrant mais
+  direto para quarentena e least-privilege de skill neste repositorio - mais direto que os
+  estudos de eficacia (arxiv-2603.15401, arxiv-2602.12670), porque a justificativa de seguranca
+  nao depende de a skill melhorar pass rate.
+findings:
+- metric: skills_collected
+  value: "31132"
+  source: fulltext
+- metric: skills_with_vulnerability_pct
+  value: "26.1%"
+  source: fulltext
+  note: depende da populacao coletada e do detector - nao e prevalencia do universo de skills.
+- metric: vulnerability_pattern_count
+  value: "14 padroes em 4 categorias"
+  source: fulltext
+- metric: exfiltration_rate_pct
+  value: "13.3%"
+  source: fulltext
+- metric: privilege_escalation_rate_pct
+  value: "11.8%"
+  source: fulltext
+- metric: high_severity_rate_pct
+  value: "5.2%"
+  source: fulltext
+- metric: script_bearing_skill_risk_multiplier
+  value: "2.12x mais propensas que instruction-only"
+  source: fulltext
+- metric: detector_precision_pct
+  value: "86.7%"
+  source: fulltext
+- metric: detector_recall_pct
+  value: "82.5%"
+  source: fulltext
+limitations:
+- A taxa de skills com vulnerabilidade depende da populacao coletada (duas marketplaces
+  especificas) e da precisao/recall do detector (fonte - findings acima); nao e uma estimativa
+  de prevalencia do universo geral de agent skills - ressalva que o proprio estudo declara e
+  que esta camada preserva.
+- Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
+  quarentena/promocao aqui adotado; mede a classe geral de artefato.
+- Detector estatico/comportamental pode nao capturar vulnerabilidade que depende de contexto de
+  execucao nao reproduzido pelo SkillScan.

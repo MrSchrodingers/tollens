@@ -1,0 +1,79 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength.
+literature_id: arxiv-2310.01798
+citation: >-
+  Huang, J. et al. Large Language Models Cannot Self-Correct Reasoning Yet. ICLR 2024.
+  arXiv:2310.01798.
+identifier: arXiv:2310.01798
+url: https://arxiv.org/abs/2310.01798
+cited_in:
+- execution/agents/refutador.md
+- docs/adr/0010-gate-de-conclusao-ancorado-em-execucao.md
+- docs/adr/0011-de-encenacao-a-mecanismo.md
+- docs/method/CONHECIMENTO.md#2
+provenance: peer_reviewed
+study_quality:
+  benchmark: >-
+    [nao verificado nesta camada] - tarefas de raciocinio padrao da literatura de
+    self-correction; o benchmark especifico nao foi reconferido pela investigacao que produziu
+    este arquivo (ver limitations). A citacao verbatim abaixo, ja presente em
+    docs/method/CONHECIMENTO.md, foi conferida na fonte primaria naquele documento.
+  n: "[nao verificado nesta camada] - contagem de tarefas/trials nao reconferida."
+  models: "[nao verificado nesta camada] - modelos especificos nao reconferidos."
+  scaffold: prompting de auto-correcao intrinseca (sem ferramenta externa, sem sinal de execucao).
+  oracle: comparacao de acuracia antes/depois da rodada de auto-correcao.
+  baseline: >-
+    [nao verificado nesta camada] - numeros de acuracia especificos nao reconferidos; a
+    afirmacao qualitativa central (degradacao possivel sem sinal externo) foi confirmada por
+    citacao verbatim, ver findings.
+  trials_repeated: "[nao verificado nesta camada]."
+  uncertainty_reported: "[nao verificado nesta camada]."
+  code_data_available: "[nao verificado nesta camada]."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - o mecanismo estudado (um modelo revisa a propria saida sem sinal externo) e
+    exatamente o que a regra "auto-correcao sem sinal externo nao melhora e as vezes piora"
+    deste repositorio evita ao delegar revisao a um agente com contexto separado ou a execucao
+    real, em vez de a uma segunda passada do mesmo modelo sobre o mesmo contexto.
+  scaffold_similarity: >-
+    Nao verificado - o artigo mede modelos de linguagem em tarefas de raciocinio isoladas, nao
+    um harness de engenharia de software com ferramentas; a proximidade de scaffold nao foi
+    conferida nesta camada.
+  oracle_similarity: >-
+    Baixa - o oraculo do artigo e acuracia de resposta em tarefa de raciocinio, nao verificacao
+    executavel de codigo.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  Peer-reviewed (fonte - identifier/citation acima) e a definicao central - auto-correcao
+  intrinseca como tentativa de correcao baseada apenas na propria capacidade, sem o apoio de
+  sinal externo - e diretamente
+  aplicavel ao design de agente-revisor deste repositorio: um revisor que le a mesma resposta
+  no mesmo contexto do autor compartilha pesos, contexto e amostragem, e portanto reproduz a
+  condicao de auto-correcao intrinseca que o artigo mede como nao confiavel. A aplicabilidade
+  do MECANISMO e alta; a aplicabilidade dos NUMEROS especificos de acuracia do artigo e mais
+  fraca (dominio de raciocinio, nao SWE) e por isso nao foi reconferida aqui - o que sustenta
+  SUPPORTED (mecanismo bem estabelecido, proximo) e nao DIRECT (nao mede este repositorio) nem
+  EXTRAPOLATED (o mecanismo, ao contrario dos numeros, nao exige generalizacao alem do que foi
+  demonstrado).
+findings:
+- metric: intrinsic_self_correction_definition
+  value: >-
+    "an LLM attempts to correct its initial responses based solely on its inherent
+    capabilities, without the crutch of external feedback"
+  source: "docs/method/CONHECIMENTO.md#2 (conferido na fonte primaria naquele documento)"
+- metric: intrinsic_self_correction_result
+  value: >-
+    "LLMs struggle to self-correct their responses without external feedback, and at times,
+    their performance even degrades after self-correction"
+  source: "docs/method/CONHECIMENTO.md#2 (conferido na fonte primaria naquele documento)"
+limitations:
+- Dominio medido e raciocinio (tarefas tipo QA/matematica), nao engenharia de software; os
+  numeros de acuracia especificos do artigo nao foram reconferidos por esta investigacao e nao
+  estao listados em findings por essa razao.
+- A citacao verbatim usada aqui foi conferida na fonte primaria em uma sessao anterior
+  (registrada em docs/method/CONHECIMENTO.md), nao re-verificada nesta tarefa - reaproveitar
+  uma citacao ja conferida no repositorio nao e o mesmo que conferi-la de novo, e essa
+  distincao fica registrada aqui.
+- Auto-correcao sem sinal externo e um mecanismo geral; nao mede especificamente revisao de
+  codigo por agente com ferramentas, que e o caso de uso deste repositorio.

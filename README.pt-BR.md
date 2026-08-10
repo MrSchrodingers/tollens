@@ -390,9 +390,11 @@ As definições legíveis por máquina vivem em `orchestration/workflows/`.
 
 A evidência empírica recente não sustenta a premissa de que adicionar documentos procedurais melhora universalmente um agente.
 
-SWE-Skills-Bench avalia aproximadamente 565 instâncias de tarefas SWE orientadas por requisitos, usando verificação determinística baseada em execução. Nos resultados reportados, 39 de 49 skills não produziram melhoria em pass rate, o ganho médio foi de apenas +1,2 ponto percentual e três skills reduziram desempenho porque orientações conflitavam com o contexto do projeto-alvo [14].
+SWE-Skills-Bench avalia aproximadamente 565 instâncias de tarefas SWE orientadas por requisitos sobre 49 skills, usando verificação determinística baseada em execução, com um único modelo e um único scaffold (Claude Code rodando Claude Haiku 4.5); o artigo declara que não avalia outros frameworks de agente. Contra uma taxa de acerto agregada de 89,8% sem skill — um teto de no máximo +10,2 pontos percentuais para o ganho médio chegar a 100% —, o ganho médio reportado com skill é de +1,2 ponto percentual, para 91,0%. 39 de 49 skills não mudam o pass rate, três reduzem desempenho, e 24 de 49 já marcam 100% nos dois braços, sem espaço no desenho do experimento para mostrar melhora nessas skills. O artigo é um pre-print, e o próprio rodapé descreve os resultados como preliminares [14].
 
 SkillsBench relata ganhos médios maiores para skills curadas em um benchmark multi-domínio mais amplo, mas também encontra grande heterogeneidade, deltas negativos em determinadas tarefas e ausência de ganho médio para skills auto-geradas [15].
+
+Independente da eficácia de skill, estudos de segurança em larga escala sobre marketplaces de agent skills relatam taxas relevantes de skills vulneráveis e maliciosas em circulação [17, 18]. Essa superfície de risco não depende de a skill melhorar o pass rate, e por si só já motiva os portões de quarentena e compatibilidade abaixo; a incerteza de eficácia é a justificativa mais fraca das duas para a política a seguir.
 
 A consequência de política é deliberadamente conservadora:
 
@@ -971,6 +973,12 @@ Mutation testing fornece um método disciplinado para avaliar se uma suíte dist
 
 16. Jia, Y.; Harman, M. **An Analysis and Survey of the Development of Mutation Testing.** IEEE Transactions on Software Engineering 37(5), 2011.  
     https://doi.org/10.1109/TSE.2010.62
+
+17. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338, preprint de 2026.  
+    https://arxiv.org/abs/2601.10338
+
+18. **Malicious Agent Skills in the Wild: A Large-Scale Security Empirical Study.** arXiv:2602.06547, preprint de 2026.  
+    https://arxiv.org/abs/2602.06547
 
 ---
 

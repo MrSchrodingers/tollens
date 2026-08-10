@@ -390,9 +390,11 @@ Machine-readable workflow definitions live in `orchestration/workflows/`.
 
 Recent empirical work does not support the assumption that adding procedural skill documents is universally beneficial.
 
-SWE-Skills-Bench evaluates roughly 565 requirement-driven SWE task instances using deterministic execution-based verification. In its reported results, 39 of 49 skills produced no pass-rate improvement, the mean gain was only +1.2 percentage points, and three skills degraded performance because guidance conflicted with the target project context [14].
+SWE-Skills-Bench evaluates roughly 565 requirement-driven SWE task instances across 49 skills using deterministic execution-based verification, with a single model and scaffold (Claude Code running Claude Haiku 4.5); the paper states it does not evaluate alternative agent frameworks. Against an aggregate baseline pass rate of 89.8% without any skill — a ceiling of at most +10.2 percentage points for the mean gain to reach 100% — the reported mean gain with skill is +1.2 percentage points, to 91.0%. 39 of 49 skills show no pass-rate change, three degrade performance, and 24 of 49 already score 100% in both arms, leaving no room in the experiment design to show improvement for those skills. The paper is a pre-print, and its own footer describes the results as preliminary [14].
 
 SkillsBench reports stronger average gains for curated skills across a broader multi-domain benchmark, but also reports substantial heterogeneity, negative deltas on some tasks, and no average benefit from self-generated skills [15].
+
+Independently of skill efficacy, large-scale security studies of agent-skill marketplaces report meaningful rates of vulnerable and malicious skills in circulation [17, 18]. That risk surface does not depend on whether a skill improves pass rate, and on its own it motivates the quarantine and compatibility gates below; efficacy uncertainty is the weaker of the two justifications for the policy that follows.
 
 The policy consequence is intentionally conservative:
 
@@ -971,6 +973,12 @@ Mutation testing provides a disciplined way to test whether a suite distinguishe
 
 16. Jia, Y.; Harman, M. **An Analysis and Survey of the Development of Mutation Testing.** IEEE Transactions on Software Engineering 37(5), 2011.  
     https://doi.org/10.1109/TSE.2010.62
+
+17. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338, 2026 preprint.  
+    https://arxiv.org/abs/2601.10338
+
+18. **Malicious Agent Skills in the Wild: A Large-Scale Security Empirical Study.** arXiv:2602.06547, 2026 preprint.  
+    https://arxiv.org/abs/2602.06547
 
 ---
 
