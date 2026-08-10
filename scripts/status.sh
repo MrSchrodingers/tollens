@@ -22,6 +22,7 @@ trap 'rm -f "$TMP"' EXIT
   for t in tests/unit/regressao-gate.sh tests/unit/document-tools.sh tests/unit/supply-chain.sh \
            tests/unit/reprodutibilidade.sh tests/unit/concorrencia.sh tests/unit/claims.sh \
            tests/unit/propriedades.sh tests/unit/fronteira-externa.sh tests/unit/managed.sh \
+           tests/unit/conformidade-managed.sh tests/unit/arnes-de-mutacao.sh \
            tests/unit/run.sh; do
     bash "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
@@ -35,11 +36,22 @@ trap 'rm -f "$TMP"' EXIT
   printf '| gate | %s | %s |\n' "$mg" "$?"
   mc="$(grep -c '^mutante M' tests/mutation/contrato.sh)"; bash tests/mutation/contrato.sh >/dev/null 2>&1
   printf '| contrato de subagente | %s | %s |\n' "$mc" "$?"
+  # EXIT AMBIENTE-DEPENDENTE NAO ENTRA COMO NUMERO FIXO. MI4/MI5 exigem oraculo root; sem sudo
+  # sem senha a suite sai 1, com sudo sai 0. Como este arquivo e commitado e conferido por
+  # `--check` na CI, um numero aqui so podia ser verde no ambiente que o gerou - e obrigava quem
+  # regenerasse localmente a escrever um valor que NAO observou. Rotulo constante e honesto e a
+  # unica forma de o artefato ser reproduzivel nos dois ambientes. Mesmo tratamento ja dado a
+  # `managed-root-trust.sh`, e a `reprodutibilidade.sh` na coluna de assercoes.
+  # NAO executamos aqui: com o Exit virando rotulo constante, rodar a suite (~40 s) e descartar
+  # o `$?` e execucao que nao produz sinal algum. A cobertura nao se perde - os dois workflows
+  # tem passo dedicado `validacao por mutacao (instalador)`, que e onde o oraculo root existe.
   mi="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/install.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/install.sh >/dev/null 2>&1
-  printf '| instalador | %s | %s |\n' "${mi:-?}" "$?"
+  printf '| instalador | %s | variavel (sudo) |\n' "${mi:-?}"
   mf="$(grep -c '^mutante MF' tests/mutation/fronteira.sh)"; bash tests/mutation/fronteira.sh >/dev/null 2>&1
   printf '| fronteira externa | %s | %s |\n' "$mf" "$?"
+  mcm="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/conformidade.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/conformidade.sh >/dev/null 2>&1
+  printf '| conformidade de dois escopos | %s | %s |\n' "${mcm:-?}" "$?"
 
   printf '\n## Componentes\n\n| Tipo | Qtd |\n|---|---:|\n'
   awk -F'\t' '!/^#/{c[$1]++} END{for(t in c) printf "| %s | %s |\n", t, c[t]}' install/manifest.lock | sort

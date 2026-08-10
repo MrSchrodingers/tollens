@@ -14,7 +14,19 @@ cd "$(dirname "$0")/../.." || exit 1
 . "$(dirname "$0")/../lib/lock.sh"
 ORIG="evidence/hooks/verify-gate.sh"
 REG="tests/unit/regressao-gate.sh"
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"; cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true' EXIT
+# ORDEM DO TRAP: RESTAURAR ANTES DE REMOVER.
+#
+# Ate 2026-08-10 este trap era `rm -rf "$TMP"; cp -f "$TMP/orig.sh" "$ORIG"` - apagava o diretorio
+# e so entao tentava copiar de dentro dele. A copia nunca podia funcionar, e o `2>/dev/null || true`
+# engolia o erro. Em saida normal nada aparecia, porque o corpo do script restaura explicitamente
+# antes do sumario; mas qualquer interrupcao (SIGTERM, timeout, Ctrl-C) deixava o MUTANTE instalado
+# no disco, em silencio.
+#
+# Medido: um `timeout` matou esta suite e `evidence/hooks/verify-gate.sh` ficou com o mutante do
+# digest truncado em 16 hex - isto e, a arvore de trabalho ficou com a EXATA fraqueza de seguranca
+# que este arquivo existe para detectar, pronta para ser commitada. Um arnes de mutacao que falha
+# aberto e pior que nenhum: ele produz a vulnerabilidade que alega medir.
+TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.sh"
 P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=13
 
