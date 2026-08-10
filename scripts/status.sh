@@ -42,8 +42,10 @@ trap 'rm -f "$TMP"' EXIT
   # regenerasse localmente a escrever um valor que NAO observou. Rotulo constante e honesto e a
   # unica forma de o artefato ser reproduzivel nos dois ambientes. Mesmo tratamento ja dado a
   # `managed-root-trust.sh`, e a `reprodutibilidade.sh` na coluna de assercoes.
+  # NAO executamos aqui: com o Exit virando rotulo constante, rodar a suite (~40 s) e descartar
+  # o `$?` e execucao que nao produz sinal algum. A cobertura nao se perde - os dois workflows
+  # tem passo dedicado `validacao por mutacao (instalador)`, que e onde o oraculo root existe.
   mi="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/install.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/install.sh >/dev/null 2>&1
   printf '| instalador | %s | variavel (sudo) |\n' "${mi:-?}"
   mf="$(grep -c '^mutante MF' tests/mutation/fronteira.sh)"; bash tests/mutation/fronteira.sh >/dev/null 2>&1
   printf '| fronteira externa | %s | %s |\n' "$mf" "$?"

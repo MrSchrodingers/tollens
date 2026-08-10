@@ -17,7 +17,7 @@ ORIG="control/hooks/session-integrity.sh"
 REG="tests/unit/conformidade-managed.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.sh"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=6
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=7
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -107,6 +107,19 @@ mutante MC6 "guarda usa -f, coerente com a chamada por bash" \
   "sem bit +x, a verificacao NAO e pulada em silencio" \
   troca '[ -f "$REPO/install/apply-managed.sh" ]; then' \
         '[ -x "$REPO/install/apply-managed.sh" ]; then'
+
+# MC7 - o hook perde o argumento `--verify`. NAO e cosmetico: `apply-managed.sh` so desvia para
+# o caminho read-only em `--verify|--revert` (apply-managed.sh:40-44); sem o argumento cai no
+# DEPLOY REAL. O comparador viraria reconciliador - reescreveria a politica a cada SessionStart,
+# sairia 0, e reportaria conformidade. Ate 2026-08-10 este mutante SOBREVIVIA: 21/21 e 6/6
+# verdes, porque o stub ignorava $@. Achado do portao final.
+# Alvo escolhido por ATRIBUICAO FORTE: CM6 sobrevive ao MC1, entao a morte aqui nao esta contida
+# no raio de outro mutante. Semanticamente e o sintoma proprio: com a chamada errada, uma maquina
+# 100% conforme passa a gritar (e, pior, teve a politica reescrita para chegar ate esse estado).
+mutante MC7 "o hook chama o verificador, nao o instalador" \
+  "nenhum ruido quando os dois escopos conferem" \
+  troca 'bash install/apply-managed.sh --verify 2>&1' \
+        'bash install/apply-managed.sh 2>&1'
 
 cp -f "$TMP/orig.sh" "$ORIG"
 echo

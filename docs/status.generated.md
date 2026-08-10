@@ -29,7 +29,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | contrato de subagente | 9 | 0 |
 | instalador | 5 | variavel (sudo) |
 | fronteira externa | 7 | 0 |
-| conformidade de dois escopos | 6 | 0 |
+| conformidade de dois escopos | 7 | 0 |
 
 ## Componentes
 

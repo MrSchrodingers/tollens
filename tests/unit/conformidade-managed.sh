@@ -34,8 +34,16 @@ echo "conformidade: 49/49 ok | $([ "$2" -eq 0 ] && echo 0 || echo 1) divergentes
 [ "$2" -ne 0 ] && echo "  DIVERGE   hooks/exemplo.sh                           (instalado != manifesto)"
 exit $2
 EOF
+  # O STUB ASSERTA O ARGUMENTO. Sem isto ele ignorava `$@` e as assercoes provavam apenas que o
+  # hook invoca ALGO naquele caminho - nao que invoca o VERIFICADOR. A distancia entre verificar
+  # e reimplantar e a string `--verify`: `apply-managed.sh` sem ela cai no deploy real
+  # (apply-managed.sh:40-44 so desvia para o caminho read-only em --verify|--revert). Um hook que
+  # perdesse o argumento reescreveria a politica a cada SessionStart, sairia 0, e reportaria
+  # conformidade - o comparador virando reconciliador, com a suite inteira verde. Medido pelo
+  # portao final: 21/21 e 6/6 sobreviviam ao mutante. exit 9 e distinto de 0/1 de proposito.
   cat > "$d/install/apply-managed.sh" <<EOF
 #!/usr/bin/env bash
+[ "\$1" = "--verify" ] || { echo "STUB: invocado SEM --verify (args: \$*)"; exit 9; }
 echo "managed: 30 componentes | $([ "$3" -eq 0 ] && echo 0 || echo 2) divergentes | 0 com dono errado | 0 gravaveis pelo ator"
 [ "$3" -ne 0 ] && echo "  DIVERGE  /opt/evidence-gate/hooks/verify-gate.sh"
 exit $3

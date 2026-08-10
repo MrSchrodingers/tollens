@@ -47,6 +47,12 @@ OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 # `-f` e nao `-x`: a chamada abaixo e `bash install/apply-managed.sh`, que nao precisa do bit de
 # execucao. Exigir `-x` na guarda e depois nao precisar dele na chamada e fail-open silencioso -
 # um `cp` sem `-p`, um tarball ou um FS sem modo POSIX desligava a verificacao inteira sem sinal.
+# `MANAGED_PREFIX` e SEAM DE TESTE, nao configuracao. Ele desloca qual arvore e auditada, entao
+# um valor errado (ou um `export` esquecido apos rodar tests/unit/managed.sh) faz o hook auditar
+# uma arvore falsa e reportar conformidade sobre ela. Nao ha guarda possivel aqui - o hook vive
+# no espaco do ator, que ja pode edita-lo - mas a fraude fica AUDITAVEL: o prefixo efetivo vai
+# para o heartbeat em `managed_prefix`, abaixo. Silencio sobre qual arvore foi olhada seria o
+# mesmo defeito que este arquivo corrige, um nivel acima.
 MPFX="${MANAGED_PREFIX:-}"
 MTREE="$MPFX/opt/evidence-gate"
 MSET="$MPFX/etc/claude-code/managed-settings.json"

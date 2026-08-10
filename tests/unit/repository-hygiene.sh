@@ -31,7 +31,20 @@ allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|\.git|\.github|\.gitig
 # `solto.py`, `servico.js`, gatilhos de transporte) NAO estao no `.gitignore` e continuam
 # reprovando. O que passa a ser tolerado e exclusivamente o que o repositorio ja declarou
 # como residuo de ferramenta.
-ignorado(){ git check-ignore -q -- "$1" 2>/dev/null; }
+# A TOLERANCIA VALE SO PARA O `.gitignore` VERSIONADO.
+#
+# `git check-ignore` honra tres fontes: `.gitignore` (versionado), `.git/info/exclude` e
+# `core.excludesFile` global. As duas ultimas NAO sao versionadas e nao aparecem em diff nenhum -
+# entao a versao anterior desta funcao podia ser neutralizada por um canal que nenhum revisor ve.
+# Medido: `echo "payload/" >> .git/info/exclude` fazia o teste inteiro passar (exit 0) com um
+# diretorio nao declarado na raiz. Achado do portao final.
+#
+# `-v` reporta a FONTE da regra que casou; exigir que seja `.gitignore` fecha os outros dois
+# canais sem perder a correcao do falso positivo, porque o que se quer tolerar - residuo de
+# ferramenta - esta declarado no arquivo versionado, onde a decisao e revisavel.
+ignorado(){
+  [ "$(git check-ignore -v -- "$1" 2>/dev/null | cut -d: -f1)" = ".gitignore" ]
+}
 while IFS= read -r entry; do
   if ! [[ "$entry" =~ $allowed_root ]]; then
     if ignorado "$entry"; then continue; fi
