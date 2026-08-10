@@ -1,0 +1,70 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength.
+literature_id: arxiv-2602.06547
+citation: >-
+  Malicious Agent Skills in the Wild: A Large-Scale Security Empirical Study.
+  arXiv:2602.06547, pre-print de 2026.
+identifier: arXiv:2602.06547
+url: https://arxiv.org/abs/2602.06547
+cited_in:
+- README.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.pt-BR.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.md#16 (referencia [18], nova)
+- README.pt-BR.md#16 (referencia [18], nova)
+provenance: preprint
+study_quality:
+  benchmark: "levantamento proprio com validacao comportamental (fonte: texto completo)."
+  n: "98380 skills examinadas, com validacao comportamental (fonte: texto completo)."
+  models: >-
+    [nao verificado] - detalhes do agente/ambiente usado para a validacao comportamental nao
+    reconferidos nesta leitura.
+  scaffold: >-
+    nao aplicavel no mesmo sentido de um harness de codigo - o objeto e a skill; a validacao e
+    comportamental (execucao observada), nao apenas analise estatica de texto.
+  oracle: "validacao comportamental (execucao observada da skill), reportando confirmacao positiva."
+  baseline: nao aplicavel - estudo de levantamento em corpus fixo, sem condicao de comparacao pareada.
+  trials_repeated: nao aplicavel - levantamento em corpus fixo, nao trials repetidos.
+  uncertainty_reported: "[nao verificado] - nao confirmado na leitura."
+  code_data_available: "[nao verificado] - nao confirmado na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - mesma classe de artefato (agent skills publicadas) que a politica de lifecycle de
+    skill deste repositorio trata; a validacao COMPORTAMENTAL (execucao observada), em vez de
+    so deteccao estatica de padrao, reduz o risco de falso positivo em relacao ao estudo irmao
+    de seguranca desta mesma camada de literatura ("Agent Skills in the Wild").
+  scaffold_similarity: >-
+    Nao aplicavel - a validacao comportamental confirma comportamento malicioso observado, mas
+    nao mede desempenho de tarefa em Claude Code/Codex.
+  oracle_similarity: >-
+    Baixa - o oraculo (confirmacao comportamental de malicia) nao e verificacao executavel de
+    requisito, que e o oraculo deste repositorio para eficacia de skill.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  Mesma logica de applicability de arxiv-2601.10338 (mesma classe de artefato, escala de
+  levantamento grande - fonte: findings.skills_examined), com uma diferenca metodologica
+  relevante: a validacao e COMPORTAMENTAL (execucao observada), nao apenas deteccao estatica de
+  padrao textual, o que reduz - sem eliminar - a dependencia de precisao/recall de um detector
+  automatico que limita o estudo irmao. Isso sustenta SUPPORTED com a mesma ressalva: nao mede
+  este repositorio diretamente, mas mede a mesma classe de risco em populacao grande com
+  metodologia mais direta (confirmacao comportamental em vez de assinatura de padrao). Junto
+  com arxiv-2601.10338, e o warrant mais forte para quarentena e least-privilege de skill neste
+  repositorio - independente de qualquer resultado de eficacia.
+findings:
+- metric: skills_examined
+  value: "98380"
+  source: fulltext
+- metric: malicious_skills_confirmed
+  value: "157"
+  source: fulltext
+  note: confirmadas por validacao comportamental, nao apenas assinatura estatica.
+- metric: vulnerabilities_found
+  value: "632"
+  source: fulltext
+limitations:
+- Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
+  quarentena/promocao aqui adotado; mede a classe geral de artefato.
+- A proporcao de skills maliciosas sobre o total examinado nao foi calculada aqui; o achado
+  bruto (contagem confirmada) esta em findings, sem reducao a percentual nesta camada.
+- Validacao comportamental depende do ambiente de execucao usado no estudo, que nao foi
+  reconferido nesta leitura (ver study_quality.models).

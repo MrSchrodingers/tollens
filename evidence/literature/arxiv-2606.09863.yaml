@@ -1,0 +1,105 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength.
+literature_id: arxiv-2606.09863
+citation: >-
+  Advani, L. From Confident Closing to Silent Failure: Characterizing False Success in LLM
+  Agents. arXiv:2606.09863, pre-print de 2026.
+identifier: arXiv:2606.09863
+url: https://arxiv.org/abs/2606.09863
+cited_in:
+- execution/agents/refutador.md
+- docs/adr/0010-gate-de-conclusao-ancorado-em-execucao.md (citacao ANTERIOR, corrigida por 0011)
+- docs/adr/0011-de-encenacao-a-mecanismo.md (correcao da citacao de 0010)
+provenance: preprint
+study_quality:
+  benchmark: "tau2-bench e AppWorld (fonte: texto completo)."
+  n: >-
+    tau2-bench: 5 juizes LLM combinados com 5 estrategias de deteccao (fonte: texto completo).
+    AppWorld avaliado separadamente, contagem de instancias nao verificada nesta camada.
+  models: >-
+    [nao verificado] - identidade especifica dos 5 juizes LLM nao confirmada nesta leitura.
+  scaffold: >-
+    Os dois benchmarks (fonte - study_quality.benchmark acima) sao de agente
+    conversacional/single-dual-control e de execucao de tarefas em app; nenhum dos dois e
+    Claude Code nem Codex.
+  oracle: >-
+    AUROC de juizes LLM na deteccao de falso sucesso, comparado contra detectores leves
+    (fonte: texto completo).
+  baseline: >-
+    AUROC dos juizes LLM: no maximo 0.65 em tau2-bench, 0.54 em AppWorld (fonte: texto
+    completo). Detectores leves atingem 0.83 (tau2-bench) e 0.95 (AppWorld), acima dos juizes
+    LLM e mais rapidos - achado NAO usado hoje por este repositorio (ver limitations).
+  trials_repeated: "[nao verificado] - nao confirmado na leitura."
+  uncertainty_reported: "[nao verificado] - nao confirmado na leitura."
+  code_data_available: "[nao verificado] - nao confirmado na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - o fenomeno medido (agente declara sucesso quando o resultado real falha) e
+    exatamente o que motiva o gate de conclusao ancorado em execucao (fonte - ver cited_in
+    acima) e a regra "pronto nasce de execucao, nunca de auto-avaliacao" deste repositorio.
+  scaffold_similarity: >-
+    Baixa - os dois benchmarks do estudo (fonte - study_quality.benchmark acima) sao de
+    agente conversacional/tool-use, nao Claude Code nem Codex; o mecanismo generaliza melhor
+    que o numero especifico.
+  oracle_similarity: >-
+    Media - o estudo usa AUROC de deteccao de falso sucesso como oraculo, nao verificacao
+    executavel direta do artefato; este repositorio usa exit code de comando como oraculo, um
+    principio relacionado mas nao identico.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  O estudo mede diretamente o fenomeno que motiva a regra dura deste repositorio (nao declarar
+  "pronto" sem execucao) em populacao de agente LLM real, com desenho de multiplos juizes e
+  multiplas estrategias (fonte - study_quality.n acima). A discrepancia de scaffold (nenhum
+  dos benchmarks do estudo e Claude Code/Codex) impede DIRECT, mas a proximidade de mecanismo -
+  autoavaliacao de sucesso por um agente LLM sem sinal externo - e alta o bastante para
+  SUPPORTED: o estudo sustenta a decisao de desenho (usar exit code como sinal externo em vez
+  de a propria narrativa do agente), mesmo sem ser uma avaliacao deste harness especificamente.
+  O achado de detectores leves com AUROC mais alto que os juizes LLM (fonte -
+  findings.lightweight_detector_auroc_tau2bench e findings.lightweight_detector_auroc_appworld
+  acima) e uma oportunidade nao explorada, nao usada por nenhum mecanismo deste repositorio
+  hoje - ver limitations.
+findings:
+- metric: llm_judge_auroc_tau2bench_max
+  value: "<=0.65"
+  source: fulltext
+  note: 5 juizes x 5 estrategias em tau2-bench.
+- metric: llm_judge_auroc_appworld
+  value: "0.54"
+  source: fulltext
+- metric: lightweight_detector_auroc_tau2bench
+  value: "0.83"
+  source: fulltext
+  note: nao usado hoje por este repositorio.
+- metric: lightweight_detector_auroc_appworld
+  value: "0.95"
+  source: fulltext
+  note: nao usado hoje por este repositorio.
+- metric: false_success_rate_tau2_single_control
+  value: "45-48%"
+  source: fulltext
+- metric: false_success_rate_tau2_dual_control_telecom
+  value: "3%"
+  source: fulltext
+- metric: false_success_rate_appworld
+  value: "75.8%"
+  source: fulltext
+- metric: historical_miscitation_corrected
+  value: "45-89% (faixa que NAO existe no artigo)"
+  source: "docs/adr/0011-de-encenacao-a-mecanismo.md"
+  note: >-
+    a config global deste operador citou anteriormente "false success 45-89%" para este
+    identificador; docs/adr/0011 auditou contra a fonte primaria e corrigiu para as tres
+    condicoes acima (45-48% / 3% / 75.8%) - a faixa unica 45-89% nao existe no paper.
+limitations:
+- Scaffold do estudo (fonte - study_quality.benchmark acima) difere do scaffold deste
+  repositorio (Claude Code, Codex); a magnitude dos numeros de AUROC/falso-sucesso pode nao se
+  transportar diretamente.
+- Identidade dos 5 juizes LLM e das 5 estrategias de deteccao nao verificada nesta camada.
+- Taxa de falso sucesso varia por condicao experimental de forma ampla (3% a 75.8%, fonte -
+  findings acima); citar um unico numero fora do contexto da condicao repete o defeito que
+  docs/adr/0011 corrigiu.
+- O achado de detectores leves superando juizes LLM em AUROC nao esta implementado por nenhum
+  mecanismo deste repositorio hoje; citar esse achado como justificativa para uma capacidade
+  ainda inexistente seria SPECULATIVE, nao SUPPORTED - por isso ele fica registrado como
+  finding, e nao como parte do inference_rationale.
