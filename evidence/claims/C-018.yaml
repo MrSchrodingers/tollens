@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: 734283eb28af73f346589cc7a152bf88af9d8447
+  subject_snapshot: 8b569bbd44838fcaa297bb6bcf80f60b23042dc0
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -21,9 +21,9 @@ scope:
 evidence:
   regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15,
                V16, V17, V18, V19, V20, V21, V22, V23, V24, V25, V26, V27, V28,
-               V29, V30, V31]
+               V29, V30, V31, V32, V33, V34, V35, V36, V37, V38, V39]
   mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7, MV8, MV9, MV10, MV11, MV12, MV13,
-            MV14, MV15, MV16]
+            MV14, MV15, MV16, MV17, MV18, MV19, MV20]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
@@ -328,5 +328,35 @@ limitations:
   `deletion`/`non_fast_forward` - ja apontado como fora de escopo na limitacao acima) NAO herda
   automaticamente a mesma protecao: exigiria uma chamada a `valida_campo` propria, no ponto onde
   o campo passasse a ser lido. O mecanismo fechou a CLASSE de formas invalidas de um campo ja
-  declarado; nao fecha a classe de "campos que este probe ainda nao le".'
+  declarado; nao fecha a classe de "campos que este probe ainda nao le".
+
+
+  ADENDO DE 2026-08-11 - as duas metades da INVERSAO DE SEVERIDADE. A onda anterior tratou a
+  precedencia num sentido so, e a revisao de codigo independente achou a metade espelhada. As
+  duas estao agora medidas, e o par importa mais que cada uma:
+
+  (i) V32-V34 / MV17-MV19 - uma violacao JA MEDIDA (strict_required_status_checks_policy=false)
+  era descartada por saida precoce quando ruleset_id faltava, virando NOT_VERIFIED. O probe
+  dizia "nao consegui saber" tendo provado que estava errado.
+
+  (ii) V35-V39 / MV20 - o inverso: o container parameters.required_status_checks ausente, nulo
+  ou de tipo errado era coagido em "esta regra nao exige contexto", produzindo FAIL que AFIRMA
+  Required(P) = False sobre um campo que nunca foi lido. Nao e falso-verde (bloqueia), mas e
+  afirmacao positiva sem medicao, e manda o operador corrigir um ruleset que pode estar correto.
+
+  Medido no snapshot deste escopo, com stub, seis cenarios: lista bem-formada com o contexto
+  pedido -> PASS exit 0; container string/ausente/nulo -> NOT_VERIFIED exit 2; lista LEGIVEL sem
+  o contexto pedido -> FAIL exit 1 (a correcao NAO sobre-corrigiu o negativo genuino); strict
+  desligado -> FAIL exit 1.
+
+  LIMITE DESTE ADENDO, declarado. Tres dos achados menores atendidos (a preservacao de
+  nao_medidos no FAIL de ruleset_ids, a preservacao de problemas no FAIL de Required(P), e a
+  rejeicao de bool como ruleset_id) tem regressao red/green mas NAO tem mutante dedicado: so o
+  defeito principal de cada metade tem. Um refactor que os reverta em silencio nao seria pego
+  pela suite de mutacao atual. Isso e divida nomeada, nao garantia.
+
+  E o predicado `not all(strict_medidos)`, que trata strict=false em QUALQUER regra aplicavel
+  como violacao, permanece [nao verificado]: se o GitHub compoe rulesets aplicaveis pela regra
+  MAIS RESTRITIVA, o predicado correto seria `not any(...)` e este seria falso positivo. Nao
+  confirmado em fonte primaria; o predicado NAO foi alterado por intuicao.'
 status: supported-in-tested-domain
