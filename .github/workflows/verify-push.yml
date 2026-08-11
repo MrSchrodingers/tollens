@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
-          python3 -m pip install --quiet 'ruff==0.15.5' 'pandas==2.2.3' 'openpyxl==3.1.5' 'pymupdf==1.27.1' 'packaging==25.0' 'pyyaml==6.0.2'
+          python3 -m pip install --quiet 'ruff==0.15.5' 'pandas==2.2.3' 'openpyxl==3.1.5' 'pymupdf==1.27.1' 'packaging==25.0' 'pyyaml==6.0.2' 'coverage==7.13.4'
           # EXCECAO DECLARADA - apt NAO pinado: `ubuntu-24.04` fixa a familia da imagem, nao
           # o snapshot do repositorio apt. Fixar versoes apt contra um runner hospedado quebraria
           # quando a imagem girasse. Isto compra auditabilidade, NAO hermeticidade; as versoes
@@ -119,5 +119,11 @@ jobs:
         run: bash tests/mutation/claims.sh
       - name: validacao por mutacao (capability declarada)
         run: bash tests/mutation/capabilities.sh
+      - name: cobertura de decisao (mecanismo, evidence/cobertura.sh)
+        run: bash tests/unit/cobertura.sh
+      - name: validacao por mutacao (cobertura de decisao)
+        run: bash tests/mutation/cobertura.sh
+      - name: cobertura de decisao (piso por arquivo, evidence/probes|validate-*|schedule.py)
+        run: bash evidence/cobertura.sh --check
       - name: suite legada
         run: bash tests/unit/run.sh
