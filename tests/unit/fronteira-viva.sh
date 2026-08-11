@@ -107,6 +107,35 @@
 #        violacao medida) - achado durante esta mesma sessao ao validar por mutacao: um mutante
 #        que forca esse bloco a retornar FAIL incondicionalmente sobrevivia aos 127 casos V1-V33.
 #
+# V35-V37 fecham um achado de uma revisao independente SEGUINTE (2026-08-11, wave6b): a metade
+# ESPELHADA de D5. D5 (V26) fechou o CAMPO 'context' de cada ITEM de 'required_status_checks';
+# o proprio CONTAINER - a lista 'required_status_checks' inteira, dentro de 'parameters' - nunca
+# tinha guard. `valida_campo(params, "required_status_checks", list, tipo_item=dict)` distinguia
+# os quatro estados (conforme o docstring da funcao), mas o chamador so ramificava em
+# ITEM_INVALIDO: FALTANTE, NULO e TIPO_INVALIDO do CONTAINER caiam no comentario "apenas significa
+# que esta regra nao contribui contexto algum - a mesma consequencia de uma lista vazia" - falso
+# para os tres: uma lista vazia E medicao (a regra foi lida por completo e nao exige nada); um
+# container ausente/nulo/de outro tipo NAO mede coisa alguma. Reproduzido: com um unico ruleset
+# aplicavel e 'required_status_checks' substituido por uma string, o probe saia `estado: FAIL
+# exit=1` com a afirmacao "Required(P) = False: o contexto exigido... NAO esta entre os
+# produzidos" sobre uma regra cujo container nunca foi lido.
+#   V35 - 'required_status_checks' AUSENTE de 'parameters' -> NOT_VERIFIED, exit 2.
+#   V36 - 'required_status_checks' presente e NULL -> NOT_VERIFIED, exit 2.
+#   V37 - 'required_status_checks' de tipo errado (string) -> NOT_VERIFIED, exit 2.
+#
+# V38 fecha A4 (mesma revisao, wave6b): o `return` de 'Required(P) = False' (o caso "limpo", sem
+# regra ilegivel nenhuma) descartava `problemas` em silencio - uma violacao de
+# `strict_required_status_checks_policy` ja medida no laco sobre `rsc` sumia do relatorio
+# precisamente no caso mais simples, o que menos evidencia deveria perder.
+#   V38 - strict=false JA MEDIDO + contexto genuinamente FORA do conjunto produzido -> FAIL, e o
+#        motivo cita AMBOS (Required(P) = False E o strict ja violado).
+#
+# V39 fecha S2 (mesma revisao, wave6b): `isinstance(True, int)` e `True` em Python (bool e
+# subclasse de int) - `valida_campo(r, "ruleset_id", int)` aceitava um `ruleset_id` booleano como
+# inteiro valido, a assimetria exata que o campo tipado `bool` (strict) ja rejeitava na direcao
+# oposta (`isinstance(1, bool)` e `False`).
+#   V39 - 'ruleset_id' e o booleano `true` -> tratado como tipo invalido, NOT_VERIFIED, exit 2.
+#
 # NAO VERIFICA o servidor real do GitHub a cada execucao (isso e o proprio probe, exercitado
 # manualmente contra o repositorio e registrado na evidencia da claim). Esta suite mede o
 # COMPORTAMENTO DE DECISAO do probe diante de cada forma de resposta - nao a configuracao atual
@@ -427,6 +456,70 @@ JSON
 [
   {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
   {"type":"non_fast_forward","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999}
+]
+JSON
+        ;;
+      rsc-container-ausente)
+        # (D6, achado da revisao independente, wave6b) 'required_status_checks' AUSENTE de
+        # 'parameters' - a metade ESPELHADA de D5 (que fechou o CAMPO 'context' de cada ITEM):
+        # aqui o proprio CONTAINER, a lista inteira, nunca teve guard. Antes da correcao, isto
+        # caia no mesmo ramo de "lista vazia" - Required(P) = False FABRICADO (FAIL, exit 1) sobre
+        # uma regra que nunca foi lida por completo.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false}}
+]
+JSON
+        ;;
+      rsc-container-nulo)
+        # (D6) 'required_status_checks' presente e NULL - nao e a mesma coisa que a chave
+        # ausente, mesma doutrina de campo ausente.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,"required_status_checks":null}}
+]
+JSON
+        ;;
+      rsc-container-tipo-errado)
+        # (D6) 'required_status_checks' de tipo errado: uma STRING no lugar de uma lista de
+        # objetos - um oraculo ilegivel, nao uma lista vazia.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,"required_status_checks":"verify-pr"}}
+]
+JSON
+        ;;
+      strict-false-context-genuino-fora)
+        # (A4, wave6b) caso LIMPO: strict=false JA MEDIDO (entra em `problemas`) e o contexto
+        # exigido genuinamente NAO e produzido por regra alguma - `nao_medidos` fica VAZIO
+        # (nenhuma regra aplicavel e ilegivel). O `return` de 'Required(P) = False' descartava
+        # `problemas` em silencio precisamente neste caso, o mais simples de todos.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"outro-check","integration_id":15368}]}}
+]
+JSON
+        ;;
+      ruleset-id-booleano)
+        # (S2, wave6b) 'ruleset_id' e o booleano `true`, nao um inteiro. `isinstance(True, int)`
+        # e `True` em Python (bool e subclasse de int) - o campo tipado `int` aceitava
+        # silenciosamente um valor booleano, a mesma classe de assimetria que o campo tipado
+        # `bool` (strict) ja rejeitava corretamente na direcao oposta.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":true,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
 ]
 JSON
         ;;
@@ -960,11 +1053,80 @@ chk "  NAO relata estado FAIL (sem violacao medida, nao pode fabricar FAIL)" \
 chk "  motivo cita 'ruleset_id' valido ausente" \
     "$(grep -q "'ruleset_id' valido" "$T/out" && echo sim || echo nao)" "sim"
 
+echo "== V35. (D6, wave6b) 'required_status_checks' AUSENTE do CONTAINER (metade espelhada de D5) -> NOT_VERIFIED =="
+# Antes da correcao: caia no mesmo ramo de lista vazia - Required(P) = False FABRICADO (FAIL,
+# exit 1) sobre uma regra que nunca foi lida por completo.
+MRK="$T/chamou-ruleset-v35"; rm -f "$MRK"
+RC="$(rodar rsc-container-ausente "$MRK")"
+chk "exit code 2 (nao 1 - FAIL fabricado sobre container ilegivel)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'required_status_checks' ausente de 'parameters'" \
+    "$(grep -qF "'required_status_checks' ausente de 'parameters'" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL por container ilegivel)" \
+    "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V36. (D6) 'required_status_checks' e NULL (nao a chave ausente) -> NOT_VERIFIED =="
+MRK="$T/chamou-ruleset-v36"; rm -f "$MRK"
+RC="$(rodar rsc-container-nulo "$MRK")"
+chk "exit code 2" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'required_status_checks' e null em 'parameters'" \
+    "$(grep -qF "'required_status_checks' e null em 'parameters'" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'Required(P) = False'" \
+    "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+chk "  NAO chama o endpoint de ruleset" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V37. (D6) 'required_status_checks' de tipo errado (string) -> NOT_VERIFIED, nunca FAIL fabricado =="
+MRK="$T/chamou-ruleset-v37"; rm -f "$MRK"
+RC="$(rodar rsc-container-tipo-errado "$MRK")"
+chk "exit code 2" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'required_status_checks' tipo inesperado" \
+    "$(grep -qF "'required_status_checks' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'Required(P) = False'" \
+    "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+chk "  NAO chama o endpoint de ruleset" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V1 (controle positivo, reafirmado) e V8 (controle negativo, reafirmado) continuam validos =="
+# A correcao acima NAO pode transformar 'Required(P) = False' genuino (contexto realmente ausente
+# de uma lista LEGIVEL, V8) em NOT_VERIFIED, nem regredir o caminho PASS de uma lista bem-formada
+# (V1). Sem chk() novo aqui - V1/V8 ja cobrem isso; esta secao existe so para o rotulo no log.
+
+echo "== V38. (A4, wave6b) strict=false JA MEDIDO + contexto genuinamente FORA (caso limpo) -> FAIL cita AMBOS =="
+# Antes da correcao, o return de 'Required(P) = False' descartava `problemas` em silencio - a
+# violacao de strict ja medida sumia do relatorio no caso MAIS simples (nenhuma regra ilegivel).
+MRK="$T/chamou-ruleset-v38"; rm -f "$MRK"
+RC="$(rodar strict-false-context-genuino-fora "$MRK")"
+chk "exit code 1" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo e Required(P) = False (medido)" "$(grep -qF 'Required(P) = False' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo TAMBEM cita strict_required_status_checks_policy ja medido (A4)" \
+    "$(grep -qF 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO chama o endpoint de ruleset (contexto ja reprova Required(P))" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V39. (S2, wave6b) 'ruleset_id' booleano (true) -> tratado como tipo invalido, nunca aceito como int =="
+# isinstance(True, int) e True em Python: sem o guard extra, um 'ruleset_id: true' passava o
+# schema como inteiro valido e o probe seguia adiante - o campo tipado bool (strict) ja rejeitava
+# a mesma assimetria na direcao oposta.
+MRK="$T/chamou-ruleset-v39"; rm -f "$MRK"
+RC="$(rodar ruleset-id-booleano "$MRK")"
+chk "exit code 2 (nao 0 - bool nao e int valido)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'ruleset_id' tipo inesperado" \
+    "$(grep -qF "'ruleset_id' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO chama o endpoint de ruleset (ruleset_id nunca foi resolvido)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V34 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=131
+# V10-V39 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=155
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

@@ -59,6 +59,14 @@
 # nenhum deles alcanca este bloco com `ruleset_ids` vazio E `problemas` genuinamente vazio (sem
 # violacao medida). V34 fecha essa lacuna; kill designado aqui.
 #
+# MV20 fecha D6 (achado de uma revisao independente SEGUINTE, 2026-08-11, wave6b): a metade
+# ESPELHADA de D5 (MV15). D5/MV15 fecharam o CAMPO 'context' de cada ITEM de
+# 'required_status_checks'; o proprio CONTAINER - a lista inteira dentro de 'parameters' - nunca
+# tinha guard. `valida_campo` ja distinguia os quatro estados do container, mas o chamador so
+# ramificava em ITEM_INVALIDO: FALTANTE/NULO/TIPO_INVALIDO caiam num comentario que tratava a
+# forma ilegivel como equivalente a uma lista vazia - falso para os tres, verdadeiro so para a
+# lista vazia genuina. MV20 reverte para esse comentario original. Kill em V35.
+#
 # TROCA POR ARQUIVO, NAO POR ARGUMENTO DE SHELL. Os trechos mutados tem aspas simples e duplas
 # aninhadas (`f"ruleset {rid}: '{cucb}'"`); escrever isso como argumento de shell (single ou
 # double-quoted) obrigaria a escapar aspas dentro de aspas - fragil e ilegivel, e exatamente a
@@ -75,7 +83,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=19
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=20
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -669,16 +677,25 @@ cat > "$TMP/mv17-de.txt" <<'EOF'
         if problemas:
             # Mesma precedencia: nenhuma regra aplicavel declarou 'ruleset_id' valido, logo
             # bypass_actors/enforcement nunca poderiam ser resolvidos - mas isso e irrelevante
-            # quando `problemas` ja provou not Bypass(a,P) por outro caminho (aqui, strict). O
-            # DEFEITO desta rodada era exatamente este `return NOT_VERIFIED` rodando ANTES da
-            # agregacao de `strict_medidos` (ver comentario acima); com a agregacao movida para
-            # antes deste ponto, o `if problemas` decide primeiro, como em qualquer outro lugar
-            # deste arquivo em que FAIL vence NOT_VERIFIED.
+            # quando `problemas` ja prova uma violacao por outro caminho. Neste ponto do laco,
+            # SO `strict_required_status_checks_policy` pode estar em `problemas`: not Bypass(a,P)
+            # (bypass_actors, current_user_can_bypass) e enforcement dependem do laco de rulesets
+            # logo abaixo, que ainda nao rodou - nomear "Bypass(a,P)" aqui seria afirmar uma
+            # medicao que nao aconteceu. `strict` e uma condicao de FAIL DISTINTA de not Bypass(a,P)
+            # (ver docstring), mas ja basta para Gate(P,a,r) = False. O DEFEITO desta rodada era
+            # exatamente este `return NOT_VERIFIED` rodando ANTES da agregacao de `strict_medidos`
+            # (ver comentario acima); com a agregacao movida para antes deste ponto, o `if
+            # problemas` decide primeiro, como em qualquer outro lugar deste arquivo em que FAIL
+            # vence NOT_VERIFIED. (A3) Este `return` tambem preserva `nao_medidos` na mensagem -
+            # antes, so `problemas` era relatado, e a razao pela qual `ruleset_ids` ficou vazio
+            # (a propria entrada de 'ruleset_id' ausente/nulo/invalido) desaparecia do relatorio.
             return Resultado(
                 FAIL,
-                "Applies(P,r) e Required(P) valem, e uma violacao ja medida decide Bypass(a,P) ou "
-                "a politica de atualizacao, independente de nenhuma regra aplicavel ter declarado "
-                "'ruleset_id' valido para resolver bypass_actors/enforcement: " + "; ".join(problemas),
+                "Applies(P,r) e Required(P) valem, e a politica de atualizacao "
+                "(strict_required_status_checks_policy) ja medida decide Gate(P,a,r) = False, "
+                "independente de nenhuma regra aplicavel ter declarado 'ruleset_id' valido para "
+                "resolver bypass_actors/enforcement: " + "; ".join(problemas)
+                + ("; " + "; ".join(nao_medidos) if nao_medidos else ""),
                 {"rules": rules},
             )
         return Resultado(
@@ -701,18 +718,21 @@ cat > "$TMP/mv18-de.txt" <<'EOF'
         if nao_medidos:
             if problemas:
                 # Mesma precedencia do portao final (`if problemas` mais abaixo, apos o laco de
-                # rulesets): uma violacao ja PROVADA (aqui, so `strict_required_status_checks_policy`
-                # pode ter sido medida antes deste ponto - bypass/enforcement dependem do laco de
-                # rulesets, que ainda nao rodou) decide Gate(P,a,r) = False sem depender de
-                # Required(P) ficar determinado. As duas hipoteses para a regra ilegivel levam ao
-                # mesmo resultado: se ela NAO exigia `context`, Required(P) = False ja decide FAIL
-                # sozinho; se ela EXIGIA `context`, Required(P) = True e o strict ja violado decide
-                # not Bypass(a,P) = False, FAIL de novo. NOT_VERIFIED aqui descreveria uma incerteza
-                # que nao existe.
+                # rulesets): uma violacao ja PROVADA decide Gate(P,a,r) = False sem depender de
+                # Required(P) ficar determinado. Neste ponto do laco, SO
+                # `strict_required_status_checks_policy` pode estar em `problemas` - bypass_actors/
+                # enforcement/current_user_can_bypass dependem do laco de rulesets, que ainda nao
+                # rodou; nomear "Bypass(a,P)" aqui afirmaria uma medicao que nao aconteceu. As duas
+                # hipoteses para a regra ilegivel levam ao mesmo resultado: se ela NAO exigia
+                # `context`, Required(P) = False ja decide FAIL sozinho; se ela EXIGIA `context`,
+                # Required(P) = True e o strict ja violado decide Gate(P,a,r) = False por si so
+                # (uma condicao de FAIL DISTINTA de not Bypass(a,P), ver docstring), FAIL de novo.
+                # NOT_VERIFIED aqui descreveria uma incerteza que nao existe.
                 return Resultado(
                     FAIL,
-                    f"Applies(P,r) vale e uma violacao ja medida decide Bypass(a,P) ou a politica "
-                    f"de atualizacao, independente de Required(P) para '{context}' ficar "
+                    f"Applies(P,r) vale e a politica de atualizacao "
+                    f"(strict_required_status_checks_policy) ja medida decide Gate(P,a,r) = False, "
+                    f"independente de Required(P) para '{context}' ficar "
                     f"indeterminado (regra required_status_checks aplicavel ilegivel: "
                     + "; ".join(nao_medidos) + "): " + "; ".join(problemas),
                     {"rules": rules},
@@ -743,6 +763,62 @@ EOF
 mutante MV19 "'ruleset_id' irresolvivel vira FAIL fabricado mesmo SEM violacao medida" \
   "  NAO relata estado FAIL (sem violacao medida, nao pode fabricar FAIL)" \
   "$TMP/mv19-de.txt" "$TMP/mv19-para.txt"
+
+echo "== mutacao: D6 (wave6b) - a metade ESPELHADA de D5 removida do container 'required_status_checks' =="
+
+# MV20 - reverte os ramos FALTANTE/NULO/TIPO_INVALIDO do CONTAINER 'required_status_checks' (a
+# lista inteira dentro de 'parameters', nao o elemento) para o comentario original: "apenas
+# significa que esta regra nao contribui contexto algum - a mesma consequencia de uma lista
+# vazia". Container ausente/nulo/tipo errado volta a cair em silencio, sem entrar em
+# `nao_medidos` - o mesmo `Required(P) = False` FABRICADO que D6 fecha. Kill em V35.
+cat > "$TMP/mv20-de.txt" <<'EOF'
+        elif checks_status == ITEM_INVALIDO:
+            idx, item = checks
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks[{idx}]' tem tipo inesperado "
+                f"({type(item).__name__}, esperava objeto) - o contexto desta regra NAO pode "
+                f"ser lido por completo.")
+        elif checks_status == FALTANTE:
+            # (D6, achado C1 da revisao independente, wave6b) a metade ESPELHADA de D5: D5 fechou
+            # o CAMPO 'context' de cada ITEM da lista; o proprio CONTAINER 'required_status_checks'
+            # (a lista em si) nunca tinha guard - ausente/nulo/tipo errado eram tratados como "esta
+            # regra nao contribui contexto algum", a MESMA consequencia de uma lista vazia. Uma
+            # lista vazia E medicao (a regra foi lida por completo e nao exige nada); um container
+            # ausente/nulo/de outro tipo NAO mede nada - a regra PODERIA ter exigido o contexto e
+            # nao foi possivel confirmar nem descartar isso.
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks' ausente de 'parameters' - esta regra NAO "
+                f"pode ser confirmada nem descartada como fonte do contexto exigido.")
+        elif checks_status == NULO:
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks' e null em 'parameters' - mesma doutrina de "
+                f"campo ausente.")
+        elif checks_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks' tem tipo inesperado "
+                f"({type(checks).__name__}, esperava lista) - esta regra NAO pode ser confirmada "
+                f"nem descartada como fonte do contexto exigido.")
+        # Uma LISTA VAZIA (checks_status is None, checks == []) e a UNICA forma que ainda significa
+        # "esta regra nao contribui contexto algum": o `for` acima simplesmente nao itera, e isso E
+        # medicao - a lista existe, e do tipo certo, e nao tem elemento nenhum. O CAMPO 'context' de
+        # cada item da lista passa pela mesma validacao de schema que qualquer outro campo decisivo
+        # (ver acima).
+EOF
+cat > "$TMP/mv20-para.txt" <<'EOF'
+        elif checks_status == ITEM_INVALIDO:
+            idx, item = checks
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks[{idx}]' tem tipo inesperado "
+                f"({type(item).__name__}, esperava objeto) - o contexto desta regra NAO pode "
+                f"ser lido por completo.")
+        # FALTANTE/NULO/TIPO_INVALIDO de 'required_status_checks' (a LISTA em si) apenas significa
+        # que esta regra nao contribui contexto algum - a mesma consequencia de uma lista vazia,
+        # que ja nao era um defeito antes desta correcao. O CAMPO 'context' de cada item da lista
+        # passa pela mesma validacao de schema que qualquer outro campo decisivo (ver acima).
+EOF
+mutante MV20 "container 'required_status_checks' ilegivel volta a cair em silencio - FAIL fabricado" \
+  "  motivo cita 'required_status_checks' ausente de 'parameters'" \
+  "$TMP/mv20-de.txt" "$TMP/mv20-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo
