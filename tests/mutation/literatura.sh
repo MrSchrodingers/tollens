@@ -25,7 +25,7 @@ ORIG="evidence/validate-literature.py"
 REG="tests/unit/literatura.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=10
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=12
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -166,6 +166,31 @@ mutante ML10 "citacao retratada nao pode reaparecer verbatim sem marca (contradi
         erro(v)' \
         'for v in []:
         erro(v)'
+
+# ML11 - a JANELA_RETRATACAO deixa de limitar a proximidade e volta a valer para o CAMPO
+# INTEIRO (o falso positivo medido pela revisao independente antes desta correcao: em
+# arxiv-2602.06547.yaml o titulo CORRETO, citado legitimamente longe do marcador de retratacao
+# no mesmo campo `citation`, virava "retratado" so por estar no mesmo campo que a citacao
+# fabricada perto do marcador). L23 e o caso construido para essa forma exata: titulo correto
+# reusado em `limitations` tem de PASSAR; com a janela efetivamente infinita, ele reprova.
+mutante ML11 "JANELA_RETRATACAO limita 'por perto' a uma vizinhanca real, nao ao campo inteiro" \
+  "L23 titulo CORRETO reusado em limitations -> passa (fix do falso positivo)" \
+  troca 'JANELA_RETRATACAO = 100' \
+        'JANELA_RETRATACAO = 10**9'
+
+# ML12 - RE_RETRATACAO volta a ser substring desancorada (\binvent\w*) em vez de formas de
+# palavra especificas - o falso negativo medido pela revisao independente: uma palavra
+# irrelevante que comeca por "invent-" (ex.: "inventario") casava o marcador por acidente e
+# isentava um campo que na verdade reafirma a citacao fabricada como fato. L25 e o caso
+# construido para essa forma exata.
+mutante ML12 "RE_RETRATACAO ancorado a formas de palavra especificas, nao substring solta" \
+  "L25 'inventario' (raiz invent- irrelevante) nao desliga mais a deteccao -> reprova" \
+  troca 'RE_RETRATACAO = re.compile(
+    r"nao existe (no|na)\b|\binvent(ada|ado|adas|ados|ou|aram)\b|\bfabricad(a|o|as|os)\b",
+    re.IGNORECASE)' \
+        'RE_RETRATACAO = re.compile(
+    r"nao existe (no|na)|\binvent\w*|\bfabricad\w*",
+    re.IGNORECASE)'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

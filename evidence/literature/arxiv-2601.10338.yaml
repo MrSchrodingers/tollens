@@ -22,20 +22,31 @@ study_quality:
   benchmark: "SkillScan (fonte: texto completo - detector proprio do estudo)."
   n: >-
     42447 skills coletadas de duas marketplaces (skills.rest, skillsmp.com); apos filtragem e
-    deduplicacao, 31132 skills unicas foram analisadas com SkillScan (fonte: texto completo -
-    abstract e secao 3, "First large-scale study"). O denominador da versao anterior desta
-    entrada ("31132 skills coletadas") trocava coleta por analise - sao duas contagens distintas
-    do proprio artigo.
+    deduplicacao, 31132 skills unicas foram analisadas com SkillScan (fonte: texto completo,
+    https://arxiv.org/html/2601.10338v1, conferido nesta sessao - abstract e secao 1
+    "Introduction", paragrafo de "Contributions", "First large-scale study"; a versao anterior
+    desta entrada localizava a mesma citacao na secao 3 "Methodology" - a string existe verbatim
+    no artigo, mas a secao estava errada: e o primeiro item da lista de contribuicoes na
+    Introducao, nao a Metodologia). O denominador da versao anterior desta entrada ("31132
+    skills coletadas") trocava coleta por analise - sao duas contagens distintas do proprio
+    artigo.
   models: >-
     SkillScan e "a multi-stage detection framework integrating static analysis with
     LLM-based semantic classification" (citacao verbatim, fonte: abstract,
-    https://arxiv.org/abs/2601.10338, conferido nesta sessao) - analise estatica combinada
-    com classificacao semantica via LLM, NAO verificacao comportamental dinamica. A
-    verificacao comportamental (execucao em sandbox) pertence ao estudo irmao desta camada,
-    arxiv-2602.06547, cujo abstract descreve "a combination of static pattern matching and
-    dynamic behavioral verification" (fonte: abstract de 2602.06547) - os dois estudos usam
-    metodos distintos e nao devem ser descritos com o mesmo vocabulario. Identidade do LLM
-    usado na classificacao semantica: [nao verificado] nesta camada.
+    https://arxiv.org/abs/2601.10338, conferido nesta sessao) - o METODO PRINCIPAL, aplicado as
+    31132 skills analisadas, e analise estatica combinada com classificacao semantica via LLM,
+    sem verificacao comportamental dinamica nessa escala. Ressalva que a versao anterior desta
+    entrada nao carregava: o artigo TAMBEM reporta um piloto de validacao dinamica em escala
+    pequena e fora do metodo principal (Apendice E, fonte - findings.dynamic_validation_pilot_confirmed_pct
+    acima - 25 skills de alta confianca executadas em sandbox, 0.3% do total sinalizado); isso
+    NAO contradiz a afirmacao sobre o metodo principal, mas "SkillScan nao faz verificacao
+    comportamental dinamica" vale para as 31132 skills do levantamento, nao para o artigo
+    inteiro. A verificacao comportamental EM ESCALA (sobre todos os candidatos sinalizados, nao
+    so um piloto de 25) pertence ao estudo irmao desta camada, arxiv-2602.06547, cujo abstract
+    descreve "a combination of static pattern matching and dynamic behavioral verification"
+    (fonte: abstract de 2602.06547) - os dois estudos usam metodos distintos e nao devem ser
+    descritos com o mesmo vocabulario. Identidade do LLM usado na classificacao semantica: [nao
+    verificado] nesta camada.
   scaffold: nao aplicavel - o objeto medido e a skill em si, nao um agente executando-a em um scaffold.
   oracle: "deteccao automatica via SkillScan, com precisao e recall reportados (ver findings)."
   baseline: >-
@@ -54,9 +65,13 @@ applicability:
     de artefato que a politica de lifecycle de skill deste repositorio trata
     (orchestration/skill-policy.json, estados quarantine/candidate/promoted/deprecated/rejected).
   scaffold_similarity: >-
-    Nao aplicavel - o estudo nao avalia um agente executando as skills em um scaffold
-    especifico; mede a skill como artefato estatico, com classificacao semantica via LLM
-    (fonte - study_quality.models acima), nao verificacao comportamental.
+    Nao aplicavel - no metodo PRINCIPAL (31132 skills), o estudo nao avalia um agente executando
+    as skills em um scaffold especifico; mede a skill como artefato estatico, com classificacao
+    semantica via LLM (fonte - study_quality.models acima). O piloto de validacao dinamica do
+    Apendice E (fonte - findings.dynamic_validation_pilot_confirmed_pct acima) executa 25 skills
+    em sandbox, mas nao e um scaffold de agente (nao ha modelo decidindo/agindo sobre a skill) -
+    e monitoramento de rede/filesystem sobre a execucao da skill isolada, escala pequena demais
+    (0.3% do sinalizado) para mudar esta avaliacao de "nao aplicavel".
   oracle_similarity: >-
     Baixa - o oraculo do estudo (deteccao de padrao de vulnerabilidade) nao e verificacao
     executavel de requisito, que e o oraculo que este repositorio usa para eficacia de skill.
@@ -109,6 +124,18 @@ findings:
 - metric: detector_recall_pct
   value: "82.5%"
   source: fulltext
+- metric: dynamic_validation_pilot_confirmed_pct
+  value: "72% (18/25)"
+  source: fulltext
+  note: >-
+    Apendice E ("Pilot Dynamic Validation"), https://arxiv.org/html/2601.10338v1, conferido
+    nesta sessao: 25 skills de ALTA confianca (classificacao severa + confianca do hibrido
+    >=0.85 + padrao claro de exfiltracao/credencial) executadas em Docker isolado com
+    tcpdump/auditd; 18/25 (72%) confirmadas com comportamento malicioso batendo a predicao
+    estatica, 4/25 (16%) inconclusivas, 3/25 (12%) falso-positivo. O proprio artigo declara essa
+    validacao como cobrindo so 0.3% das skills sinalizadas e limitada aos casos de alta
+    confianca - nao e validacao dinamica em escala, e um piloto sobre um subconjunto pequeno e
+    ja favoravel a confirmacao.
 limitations:
 - A taxa de skills com vulnerabilidade depende da populacao ANALISADA apos filtragem/deduplicacao
   (31132 de 42447 coletadas, ambas de duas marketplaces especificas - fonte - findings acima) e
@@ -117,6 +144,17 @@ limitations:
 - Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
   quarentena/promocao aqui adotado; mede a classe geral de artefato.
 - SkillScan combina analise estatica com classificacao semantica via LLM (fonte -
-  study_quality.models acima), sem verificacao comportamental dinamica; pode nao capturar
-  vulnerabilidade que so se manifesta em tempo de execucao - o estudo irmao arxiv-2602.06547
-  cobre esse tipo de deteccao para o subconjunto de candidatos que sinaliza.
+  study_quality.models acima); no metodo PRINCIPAL, sobre as 31132 skills analisadas, isso e
+  sem verificacao comportamental dinamica e pode nao capturar vulnerabilidade que so se
+  manifesta em tempo de execucao. Ressalva (Apendice E, fonte -
+  findings.dynamic_validation_pilot_confirmed_pct acima) - o artigo reporta um piloto de
+  validacao dinamica sobre 25 skills de alta confianca (0.3% do total sinalizado, fora do
+  metodo principal), com 72% (18/25) confirmadas - amostra pequena demais para estender a
+  qualquer afirmacao sobre a populacao inteira, mas o piloto EXISTE e nao pode ficar de fora
+  quando este campo afirma ausencia de verificacao dinamica, sob pena da mesma assimetria que
+  este documento ja teve de corrigir noutro ponto (ver localizacao de "First large-scale study"
+  em study_quality.n acima - string real, contexto errado; aqui o risco era omitir uma secao
+  real do artigo, nao localizar mal uma citacao). O estudo irmao arxiv-2602.06547 cobre
+  verificacao comportamental EM ESCALA
+  (sobre todos os candidatos sinalizados, nao so um piloto de 25) para o subconjunto de
+  candidatos que sinaliza.

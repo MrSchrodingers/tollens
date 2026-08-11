@@ -389,9 +389,91 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "  retratacao isolada, sem reaparicao verbatim, passa (controle de L21)" "$(val "$D")" 0
 
+echo "== L23-L26. REGRESSAO: FP e FN medidos por revisao independente em REGRA 5 =="
+# Par controlado, formato exigido pela delegacao: reproduz a FORMA REAL do campo `citation` de
+# arxiv-2602.06547.yaml (titulo CORRETO citado numa frase, titulo INCORRETO retratado na frase
+# seguinte, marcador "nao existe na" colado no titulo incorreto) e prova as duas pontas:
+#   L23 - o titulo CORRETO, reusado alhures como fato legitimo, PASSA (era o falso positivo:
+#         antes da janela de proximidade, QUALQUER aspa do campo `citation` virava "retratada").
+#   L24 - controle: o titulo FABRICADO (o que de fato esta retratado), reusado alhures como
+#         fato, continua REPROVANDO - prova que a correcao nao apagou a deteccao real.
+#   L25 - o mesmo reuso do titulo fabricado, mas dentro de uma frase que contem a palavra
+#         "inventario" (raiz "invent-", sem relacao com fabricacao) REPROVA - era o falso
+#         negativo: o marcador antigo (`\binvent\w*`, sem fronteira de palavra) casava
+#         "inventario" e o campo inteiro virava isento, calando a reafirmacao.
+#   L26 - controle par de L25: a MESMA frase com "resumo" no lugar de "inventario" - mesmo
+#         veredito (reprova). O par L25/L26 prova que uma palavra IRRELEVANTE nao muda mais o
+#         resultado (antes: INVENTARIO->passa/calava, RESUMO->reprova/pegava - a mesma
+#         fabricacao, dois vereditos, so pela presenca acidental de uma raiz de palavra).
+D="$T/l23base"; mkdir -p "$D"
+cat > "$T/l23_citation.py" <<'PY'
+CITATION = (
+    'Fixture, F. "Correct Fixture Title About Testing Methodology" : A Study. '
+    'arXiv:0000.00000, 2026 preprint. Titulo conferido nesta sessao contra a fonte primaria, '
+    'texto completo lido do zero - o titulo usado antes desta correcao '
+    '("Fabricated Fixture Title Nobody Wrote") nao existe na fonte.'
+)
+CORRETO = "Correct Fixture Title About Testing Methodology"
+FABRICADO = "Fabricated Fixture Title Nobody Wrote"
+PY
+
+D="$T/l23"; mkdir -p "$D"
+python3 - "$D/arxiv-0000.00000.yaml" <<PY
+import sys, yaml
+sys.path.insert(0, "$T")
+from base import doc
+from l23_citation import CITATION, CORRETO
+d = doc()
+d["citation"] = CITATION
+d["limitations"] = [f'O titulo real do estudo, "{CORRETO}", descreve o achado central.']
+yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
+PY
+chk "L23 titulo CORRETO reusado em limitations -> passa (fix do falso positivo)" "$(val "$D")" 0
+
+D="$T/l24"; mkdir -p "$D"
+python3 - "$D/arxiv-0000.00000.yaml" <<PY
+import sys, yaml
+sys.path.insert(0, "$T")
+from base import doc
+from l23_citation import CITATION, FABRICADO
+d = doc()
+d["citation"] = CITATION
+d["limitations"] = [
+    f'O estudo descreve seu achado central como "{FABRICADO}", conforme o resumo original.'
+]
+yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
+PY
+chk "  L24 controle: titulo FABRICADO reusado como fato -> reprova (deteccao real preservada)" "$(val "$D")" 1
+
+D="$T/l25"; mkdir -p "$D"
+python3 - "$D/arxiv-0000.00000.yaml" <<PY
+import sys, yaml
+sys.path.insert(0, "$T")
+from base import doc
+from l23_citation import CITATION, FABRICADO
+d = doc()
+d["citation"] = CITATION
+d["limitations"] = [f'Ver o inventario deste estudo, "{FABRICADO}", para a metodologia completa.']
+yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
+PY
+chk "L25 'inventario' (raiz invent- irrelevante) nao desliga mais a deteccao -> reprova" "$(val "$D")" 1
+
+D="$T/l26"; mkdir -p "$D"
+python3 - "$D/arxiv-0000.00000.yaml" <<PY
+import sys, yaml
+sys.path.insert(0, "$T")
+from base import doc
+from l23_citation import CITATION, FABRICADO
+d = doc()
+d["citation"] = CITATION
+d["limitations"] = [f'Ver o resumo deste estudo, "{FABRICADO}", para a metodologia completa.']
+yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
+PY
+chk "  L26 par de L25 ('resumo' no lugar de 'inventario') -> mesmo veredito (reprova)" "$(val "$D")" 1
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=31
+EXPECTED=35
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

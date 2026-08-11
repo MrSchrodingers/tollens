@@ -75,12 +75,18 @@ O QUE O VALIDADOR IMPOE
      de fora da varredura (b): sao METADADOS de endereco (onde o paper esta, onde ele e citado
      no repositorio), nao afirmacoes empiricas sobre o que o paper mediu.
   4. Nome do arquivo == `literature_id` + `.yaml`, mesma disciplina de `evidence/claims`.
-  5. Contradicao interna ESTRITA: se uma string do documento contem um marcador de retratacao
-     (`nao existe no`/`nao existe na`, `citacao ... inventada`, `invent*`, `fabricad*`) junto de
-     um trecho entre aspas retas (`"..."`, 8+ caracteres), esse MESMO trecho, palavra por
-     palavra, nao pode reaparecer em NENHUM outro campo do documento sem o mesmo tipo de
-     marcador por perto. Ver a secao de LIMITES abaixo: isto so cobre reaparicao VERBATIM, nao
-     paráfrase - a distincao importa e esta documentada, nao e um detalhe de implementacao.
+  5. Contradicao interna ESTRITA: se um trecho entre aspas retas (`"..."`, 8+ caracteres) esta a
+     ATE `JANELA_RETRATACAO` (100) caracteres de um marcador de retratacao ANCORADO (formas de
+     palavra especificas - `inventada/inventado/inventadas/inventados/inventou/inventaram`,
+     `fabricada/fabricado/fabricadas/fabricados`, `nao existe no`/`nao existe na` com fronteira
+     de palavra), esse MESMO trecho, palavra por palavra, nao pode reaparecer em NENHUM outro
+     campo do documento sem o mesmo tipo de marcador por perto NESSE outro campo. "Por perto" e
+     literal: uma janela de caracteres ao redor do marcador, nao o campo inteiro - um campo pode
+     legitimamente conter, na mesma citacao bibliografica, o titulo CORRETO (longe do marcador,
+     citado por si) e o titulo INCORRETO retratado (perto do marcador, "... nao existe na
+     fonte"), e so o segundo conta como retratado. Ver a secao de LIMITES abaixo: isto so cobre
+     reaparicao VERBATIM, nao paráfrase, e a janela e um heuristico de caractere, nao de
+     sentenca - a distincao importa e esta documentada, nao e um detalhe de implementacao.
 
 O QUE ESTE VALIDADOR NAO FAZ - limites declarados
 ---------------------------------------------------
@@ -102,6 +108,38 @@ O QUE ESTE VALIDADOR NAO FAZ - limites declarados
     geral. Regra 5 fica, deliberadamente, restrita ao subconjunto que PODE ser verificado sem
     ambiguidade: string identica reaparecendo sem a marca de retratacao. A defesa real contra o
     caso de parafrase continua sendo leitura humana da fonte primaria, nao este validador.
+  - REGRA 5 teve, ela mesma, um falso positivo e um falso negativo medidos por revisao
+    independente antes desta correcao - registrados aqui porque uma garantia que falha sob o
+    proprio criterio que impoe merece o mesmo tratamento que exige dos outros:
+    FALSO POSITIVO: a varredura de "reaparicao verbatim" comparava o CAMPO INTEIRO (nao uma
+    janela ao redor do marcador). Em arxiv-2602.06547.yaml o campo `citation` contem, na MESMA
+    frase, o marcador de retratacao ("... nao existe na fonte") e, numa frase ANTERIOR do mesmo
+    campo, o titulo CORRETO entre aspas ("Do Not Mention This to the User") - citado
+    legitimamente, nao retratado. Ao comparar o campo inteiro, QUALQUER aspa do campo virava
+    "retratada", inclusive o titulo correto; reusar esse titulo em `limitations` (uso legitimo)
+    disparava "contradicao interna" sobre uma retratacao que o documento nunca fez. Corrigido
+    com `JANELA_RETRATACAO`: so a aspa PROXIMA do marcador (100 caracteres) conta como retratada
+    (medido: a citacao fabricada real fica a 2 caracteres do marcador; o titulo correto, a ~306).
+    FALSO NEGATIVO: o marcador de retratacao anterior (substring desancorada, sem fronteira de
+    palavra no fim) casava qualquer palavra comecando por "invent-", inclusive "inventario" (sem
+    relacao com fabricacao). Um campo que reafirma uma citacao fabricada como fato, mas que por
+    acaso contem a palavra "inventario" (ex.: "Ver o inventario deste estudo, '<titulo
+    fabricado>', para a metodologia"), casava RE_RETRATACAO por acidente e o codigo tratava esse
+    campo como se TAMBEM estivesse retratando - a reafirmacao passava sem violacao (par
+    controlado: a mesma frase com "resumo" no lugar de "inventario" era corretamente pega).
+    Corrigido ancorando RE_RETRATACAO a formas de palavra especificas (inventada/inventado/
+    .../fabricada/fabricado/...), que nao casam "inventario".
+    Ambos os casos tem teste de regressao dedicado em `tests/unit/literatura.sh` (par controlado
+    idioma-honesto-passa / fabricacao-real-e-pega).
+  - A JANELA_RETRATACAO (100 caracteres) e um heuristico de CARACTERE, nao de SENTENCA: nao ha
+    parser de fronteira de frase (citacoes academicas tem pontos apos iniciais de autor - "Zhang,
+    L. Y." - que quebrariam uma divisao ingenua por ".") . Residual conhecido: se o titulo
+    INCORRETO e o titulo CORRETO aparecerem os DOIS dentro de 100 caracteres do MESMO marcador
+    (frase muito curta, ex.: "'Y' substitui 'X', que nao existe na fonte."), o titulo correto
+    tambem seria classificado como retratado por estar perto - o mesmo residual que motivou esta
+    correcao, so que numa janela bem mais estreita que "o campo inteiro". Nao ha caso assim no
+    corpus atual (conferido nesta sessao); se aparecer, a citacao correta ficaria impedida de
+    reaparecer alhures ate o texto ser reescrito com mais distancia do marcador.
   - Nao contata a rede, nao baixa o PDF, nao confere se o numero, o titulo, os autores ou uma
     citacao verbatim batem com o artigo. VERDE AQUI E CONFORMIDADE DE FORMA (campos presentes,
     vocabulario fechado, todo numero com um marcador de fonte declarado), NUNCA FIDELIDADE DE
@@ -181,12 +219,32 @@ RE_MARCADOR_FONTE = re.compile(r"fonte|verificad", re.IGNORECASE)
 # REGRA 5 (contradicao interna, verbatim apenas - ver docstring, secao de LIMITES, para o que
 # isto NAO cobre). RE_RETRATACAO reconhece o vocabulario ja usado neste repositorio para marcar
 # uma afirmacao retratada (ver arxiv-2602.06547.yaml e arxiv-2603.15401.yaml apos a correcao
-# desta onda). RE_ASPAS extrai trechos entre aspas retas de 8+ caracteres - abaixo disso o risco
-# de casar um fragmento generico (nome de metrica, sigla) sobe sem ganho de deteccao real.
+# desta onda). ANCORADO em formas de palavra especificas do vocabulario de retratacao, nao em
+# substring solta: a versao anterior usava `\binvent\w*`, que casa "inventario" (inventory, sem
+# relacao com fabricacao) e qualquer outra palavra que comece por "invent-"; a forma atual so
+# casa as conjugacoes que este repositorio de fato usa para marcar retratacao (inventada/
+# inventado/inventadas/inventados/inventou/inventaram). Mesma logica para "nao existe (no|na)":
+# o `\b` ao final impede que a substring case dentro de uma palavra maior nao relacionada (ex.:
+# "nao existe nada de errado" tem "nao existe na" como substring, mas "na" ali nao termina em
+# fronteira de palavra - "nada" continua). RE_ASPAS extrai trechos entre aspas retas de 8+
+# caracteres - abaixo disso o risco de casar um fragmento generico (nome de metrica, sigla) sobe
+# sem ganho de deteccao real.
 RE_RETRATACAO = re.compile(
-    r"nao existe (no|na)|citac(a|ã)o.{0,40}inventada|era citac(a|ã)o inventada|"
-    r"\binvent\w*|\bfabricad\w*", re.IGNORECASE)
+    r"nao existe (no|na)\b|\binvent(ada|ado|adas|ados|ou|aram)\b|\bfabricad(a|o|as|os)\b",
+    re.IGNORECASE)
 RE_ASPAS = re.compile(r'"([^"]{8,300})"')
+
+# JANELA_RETRATACAO: quantos caracteres, para cada lado de um marcador de retratacao, contam
+# como "por perto" (a mensagem de violacao sempre disse "por perto" - antes desta correcao o
+# codigo comparava o CAMPO INTEIRO, entao a mensagem prometia proximidade que a implementacao
+# nao entregava). Medido no proprio corpus desta camada: em arxiv-2602.06547.yaml a citacao
+# FABRICADA fica a 2 caracteres do marcador de retratacao ("... nao existe na fonte."), enquanto
+# o TITULO CORRETO do mesmo campo (citado legitimamente no inicio da mesma frase de citacao) fica
+# a ~306 caracteres do marcador. 100 caracteres fica confortavelmente entre os dois casos reais:
+# cobre a citacao retratada de verdade, exclui o titulo correto reaproveitado alhures. E um
+# heuristico de caractere, nao de sentenca - ver LIMITES na docstring do modulo para o residual
+# que isso deixa em aberto.
+JANELA_RETRATACAO = 100
 
 
 def _varre_fonte(valor, caminho, violacoes):
@@ -220,29 +278,49 @@ def _coleta_folhas(valor, caminho, folhas):
         folhas.append((caminho, valor))
 
 
+def _citacoes_retratadas(texto):
+    """Retorna {citacao_normalizada: texto_original} para toda citacao entre aspas que aparece
+    a ATE JANELA_RETRATACAO caracteres de um marcador de retratacao NESTE MESMO texto - nao
+    qualquer aspa do campo inteiro. Isto e o mecanismo que torna 'por perto' (a mensagem de
+    violacao abaixo) literalmente verdadeiro: um campo pode legitimamente conter, na MESMA
+    frase, o marcador de retratacao junto do titulo INCORRETO (perto - fica retratado) e, numa
+    frase diferente do MESMO campo, o titulo CORRETO sendo citado de forma legitima (longe - nao
+    fica retratado, e por isso pode reaparecer alhures como fato sem acusar contradicao)."""
+    achadas = {}
+    for marcador in RE_RETRATACAO.finditer(texto):
+        ini = max(0, marcador.start() - JANELA_RETRATACAO)
+        fim = min(len(texto), marcador.end() + JANELA_RETRATACAO)
+        for m in RE_ASPAS.finditer(texto, ini, fim):
+            bruto = m.group(1).strip()
+            norm = re.sub(r"\s+", " ", bruto).lower()
+            if len(norm) >= 8:
+                achadas.setdefault(norm, bruto)
+    return achadas
+
+
 def _varre_contradicao(doc):
-    """REGRA 5: uma citacao entre aspas marcada como RETRATADA (fonte - RE_RETRATACAO) nao pode
-    reaparecer, palavra por palavra, em outro campo do documento sem a mesma marca por perto.
-    Escopo estrito e documentado: cobre so reaparicao VERBATIM, nao parafrase - ver docstring do
-    modulo, secao 'O QUE ESTE VALIDADOR NAO FAZ', para o porque um comparador de parafrase nao
-    seria honesto aqui."""
+    """REGRA 5: uma citacao entre aspas marcada como RETRATADA (fonte - RE_RETRATACAO, PROXIMA -
+    JANELA_RETRATACAO) nao pode reaparecer, palavra por palavra, em outro campo do documento sem
+    a mesma marca por perto NESSE outro campo. Escopo estrito e documentado: cobre so reaparicao
+    VERBATIM, nao parafrase - ver docstring do modulo, secao 'O QUE ESTE VALIDADOR NAO FAZ', para
+    o porque um comparador de parafrase nao seria honesto aqui."""
     violacoes = []
     folhas = []
     _coleta_folhas(doc, "", folhas)
-    for caminho, texto in folhas:
-        if not RE_RETRATACAO.search(texto):
+    retratadas_por_campo = {caminho: _citacoes_retratadas(texto) for caminho, texto in folhas}
+
+    for caminho, citacoes in retratadas_por_campo.items():
+        if not citacoes:
             continue
-        for m in RE_ASPAS.finditer(texto):
-            citacao = re.sub(r"\s+", " ", m.group(1).strip()).lower()
-            if len(citacao) < 8:
+        for outro_caminho, outro_texto in folhas:
+            if outro_caminho == caminho:
                 continue
-            for outro_caminho, outro_texto in folhas:
-                if outro_caminho == caminho:
-                    continue
-                outro_norm = re.sub(r"\s+", " ", outro_texto).lower()
-                if citacao in outro_norm and not RE_RETRATACAO.search(outro_texto):
+            outro_norm = re.sub(r"\s+", " ", outro_texto).lower()
+            outro_retratadas = retratadas_por_campo[outro_caminho]
+            for norm, bruto in citacoes.items():
+                if norm in outro_norm and norm not in outro_retratadas:
                     violacoes.append(
-                        f"{caminho} retrata a citacao {m.group(1).strip()!r}, mas ela reaparece "
+                        f"{caminho} retrata a citacao {bruto!r}, mas ela reaparece "
                         f"verbatim em {outro_caminho} sem marca de retratacao por perto - "
                         f"contradicao interna: afirmacao retratada numa secao, repetida como "
                         f"fato noutra")
