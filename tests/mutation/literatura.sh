@@ -25,7 +25,7 @@ ORIG="evidence/validate-literature.py"
 REG="tests/unit/literatura.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=12
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=13
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -93,9 +93,9 @@ mutante ML3 "nome do arquivo casa com literature_id" \
         'if False and os.path.basename(arquivo) != esperado:'
 
 # ML4 - guarda de literature_id duplicado sai. Esta e a garantia que motivou a correcao do caso
-# L6 desta mesma onda: sem checagem de MENSAGEM, um caso que so afira exit code sobreviveria a
+# LT6 desta mesma onda: sem checagem de MENSAGEM, um caso que so afira exit code sobreviveria a
 # este mutante (a violacao de nome de arquivo, estruturalmente inseparavel da duplicidade nesta
-# fixture, ainda produz exit 1) - ver comentario de L6 em tests/unit/literatura.sh.
+# fixture, ainda produz exit 1) - ver comentario de LT6 em tests/unit/literatura.sh.
 mutante ML4 "literature_id duplicado e NOMEADO na mensagem" \
   "  a violacao de duplicidade e NOMEADA na mensagem (nao so o mismatch de nome de arquivo)" \
   troca 'if lid in vistos:
@@ -107,7 +107,7 @@ mutante ML4 "literature_id duplicado e NOMEADO na mensagem" \
 # SEM MUTANTE PARA A CHECAGEM DE VAZIO/TIPO DE `_valida_findings` (a condicao
 # `not isinstance(findings, list) or not findings` no topo daquela funcao). Medido ao tentar: um
 # mutante que remova so a metade "or not findings" SOBREVIVE ao caso "findings=[] -> reprova" de
-# tests/unit/literatura.sh (L7a) - mesma classe de sobredeterminacao do L6 corrigido nesta onda,
+# tests/unit/literatura.sh (LT7a) - mesma classe de sobredeterminacao do LT6 corrigido nesta onda,
 # so que aqui a garantia redundante e OUTRA checagem DESTE MESMO programa, nao uma coincidencia
 # de fixture: o loop `for campo in OBRIGATORIOS` (que inclui "findings") ja reprova QUALQUER
 # `findings: []` antes de `_valida_findings` ser chamada, porque `[] in (None, "", [], {})` e
@@ -171,26 +171,55 @@ mutante ML10 "citacao retratada nao pode reaparecer verbatim sem marca (contradi
 # INTEIRO (o falso positivo medido pela revisao independente antes desta correcao: em
 # arxiv-2602.06547.yaml o titulo CORRETO, citado legitimamente longe do marcador de retratacao
 # no mesmo campo `citation`, virava "retratado" so por estar no mesmo campo que a citacao
-# fabricada perto do marcador). L23 e o caso construido para essa forma exata: titulo correto
+# fabricada perto do marcador). LT23 e o caso construido para essa forma exata: titulo correto
 # reusado em `limitations` tem de PASSAR; com a janela efetivamente infinita, ele reprova.
 mutante ML11 "JANELA_RETRATACAO limita 'por perto' a uma vizinhanca real, nao ao campo inteiro" \
-  "L23 titulo CORRETO reusado em limitations -> passa (fix do falso positivo)" \
+  "LT23 titulo CORRETO reusado em limitations -> passa (fix do falso positivo)" \
   troca 'JANELA_RETRATACAO = 100' \
         'JANELA_RETRATACAO = 10**9'
 
 # ML12 - RE_RETRATACAO volta a ser substring desancorada (\binvent\w*) em vez de formas de
 # palavra especificas - o falso negativo medido pela revisao independente: uma palavra
 # irrelevante que comeca por "invent-" (ex.: "inventario") casava o marcador por acidente e
-# isentava um campo que na verdade reafirma a citacao fabricada como fato. L25 e o caso
+# isentava um campo que na verdade reafirma a citacao fabricada como fato. LT25 e o caso
 # construido para essa forma exata.
 mutante ML12 "RE_RETRATACAO ancorado a formas de palavra especificas, nao substring solta" \
-  "L25 'inventario' (raiz invent- irrelevante) nao desliga mais a deteccao -> reprova" \
+  "LT25 'inventario' (raiz invent- irrelevante) nao desliga mais a deteccao -> reprova" \
   troca 'RE_RETRATACAO = re.compile(
     r"nao existe (no|na)\b|\binvent(ada|ado|adas|ados|ou|aram)\b|\bfabricad(a|o|as|os)\b",
     re.IGNORECASE)' \
         'RE_RETRATACAO = re.compile(
     r"nao existe (no|na)|\binvent\w*|\bfabricad\w*",
     re.IGNORECASE)'
+
+# ML13 - a proximidade volta a exigir que o SPAN INTEIRO da aspa caiba numa janela fixa ao redor
+# do marcador (`RE_ASPAS.finditer(texto, ini, fim)`), em vez de medir a distancia ate a BORDA
+# mais proxima (`_distancia_span`) - o falso negativo ESTRUTURAL da onda 5 (D8): RE_ASPAS aceita
+# ate 300 caracteres, e uma aspa longa colada ao marcador escapava so por nao COUBER na janela,
+# nunca por estar longe. LT28 e o caso construido para essa forma exata (par de LT27, mesmo gap
+# ate o marcador, so o comprimento muda).
+mutante ML13 "proximidade por DISTANCIA DE BORDA (D8), nao span inteiro numa janela fixa" \
+  "  LT28 par: aspa LONGA (150 chars, MESMO gap do marcador) tambem reprova (fix do falso negativo)" \
+  troca '    achadas = {}
+    marcadores = [m.span() for m in RE_RETRATACAO.finditer(texto)]
+    if not marcadores:
+        return achadas
+    for m in RE_ASPAS.finditer(texto):
+        aspa = m.span()
+        if any(_distancia_span(marcador, aspa) <= JANELA_RETRATACAO for marcador in marcadores):
+            bruto = m.group(1).strip()
+            norm = re.sub(r"\s+", " ", bruto).lower()
+            if len(norm) >= 8:
+                achadas.setdefault(norm, bruto)' \
+        '    achadas = {}
+    for marcador in RE_RETRATACAO.finditer(texto):
+        ini = max(0, marcador.start() - JANELA_RETRATACAO)
+        fim = min(len(texto), marcador.end() + JANELA_RETRATACAO)
+        for m in RE_ASPAS.finditer(texto, ini, fim):
+            bruto = m.group(1).strip()
+            norm = re.sub(r"\s+", " ", bruto).lower()
+            if len(norm) >= 8:
+                achadas.setdefault(norm, bruto)'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

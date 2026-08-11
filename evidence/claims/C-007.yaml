@@ -4,7 +4,16 @@ claim_id: C-007
 claim: O modo --dry-run do instalador nao altera estado algum, byte a byte.
 type: security-property
 scope:
-  subject_snapshot: c3ffe5202bc87e59a61d1a2bcac0f4c8b65953af
+  # REANCORADO na onda 5 (D6: fecha a classe de mutante fantasma em evidence/validate-claims.py).
+  # Em c3ffe52 (ancora anterior) tests/mutation/install.sh identificava MI1 so por um COMENTARIO
+  # (`# MI1: o portao do dry-run vira filtro...`) antes do codigo de mutacao, sem nenhuma forma
+  # de INVOCACAO ancoravel - a mesma classe de defeito que produzia os fantasmas K10/L6 (o
+  # mutante ate rodava de verdade, mas o ID nao era extraivel por um contrato honesto, so por
+  # coincidencia de o comentario aparecer perto do codigo certo). Instalador ja reescrito (desde
+  # 038bc89) para `echo "== MI1. ..."` - a MESMA convencao de cabecalho de tests/unit/, uma
+  # invocacao ancoravel de verdade. subject_snapshot movido para o commit onde essa forma ja
+  # existe; G10 e MI1 seguem resolvendo la (conferido via inventario_no_commit).
+  subject_snapshot: 9156bee24894b1fb2224dada69e724cb4666003a
   platforms:
   - local-linux
   - github-ubuntu-24.04
@@ -14,9 +23,9 @@ evidence:
   mutants:
   - MI1
   ci:
-    run_id: 30924006484
-    head_sha: c3ffe5202bc87e59a61d1a2bcac0f4c8b65953af
-    workflow: verify
+    run_id: 31509164156
+    head_sha: 9156bee24894b1fb2224dada69e724cb4666003a
+    workflow: verify-pr
 warrant: G10 compara o digest do diretorio inteiro antes e depois, exige que o orfao continue no disco,
   que o plano ANUNCIE a remocao, que nenhum backup seja criado, e - decisivo - que o dry-run tenha de
   fato executado (exit 0). Sem essa ultima assercao um cd falho tornava 'estado identico' trivialmente

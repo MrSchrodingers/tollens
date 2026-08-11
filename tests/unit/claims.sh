@@ -37,7 +37,13 @@ if ! python3 -c "import yaml" >/dev/null 2>&1; then
   exit 2
 fi
 
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+# FIXTURES TEMPORARIAS injetadas NO REPOSITORIO REAL (nao em $T) pelos casos D6 abaixo - mesma
+# tecnica de tests/mutation/*.sh (edita/injeta no lugar, protegido pelo lock desta suite,
+# restaurado por trap). Precisam viver dentro de tests/unit/ e tests/mutation/ porque
+# `inventario()` so varre esses dois diretorios.
+D6_FIX_MUT="$REPO/tests/mutation/_fixture_d6_tmp.sh"
+D6_FIX_UNIT="$REPO/tests/unit/_fixture_d6_tmp.sh"
+T="$(mktemp -d)"; trap 'rm -rf "$T"; rm -f "$D6_FIX_MUT" "$D6_FIX_UNIT"' EXIT
 # SHA COMPLETO: o schema v2 recusa prefixo. `rev-parse HEAD` ja devolve 40 hex; o fallback
 # tambem tem de ter 40, senao o fixture reprovaria por FORMA e os casos mediriam outra coisa.
 SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo 0000000000000000000000000000000000000000)"
@@ -381,9 +387,79 @@ chk "  ancora obsoleta em 'not-verified' TAMBEM reprova (alegacao aberta)" "$(fr
 chk "  'refuted' segue isenta (registro historico terminal)" "$(frescor refuted)" 0
 chk "  'superseded' segue isenta (registro historico terminal)" "$(frescor superseded)" 0
 
+# ESCREVE UMA FIXTURE TEMPORARIA a partir de um conteudo com `\n` ESCAPADO (duas letras, nao
+# quebra de linha real), NUNCA como heredoc ou string multi-linha: qualquer forma que reproduza
+# o conteudo com quebras de linha REAIS apareceria, ela mesma, como linhas literais dentro DESTE
+# arquivo (tests/unit/claims.sh) - e `inventario()` varre o TEXTO BRUTO de todo *.sh sob tests/.
+# Medido ao tentar (onda 5): a primeira versao deste caso usava heredoc, e a linha
+# `echo "== G1. ..."` do CONTEUDO da fixture virou, ela mesma, uma linha real de
+# tests/unit/claims.sh - RE_CASO casou AQUI, duplicando G1 contra tests/unit/regressao-gate.sh, e
+# todo caso POSTERIOR do arquivo saiu NAO VERIFICADO por um motivo que nao tinha nada a ver com
+# o que o caso queria provar. Mantendo o conteudo inteiro numa SO linha fisica do arquivo-fonte
+# (`\n` como texto, nunca como byte de quebra), nenhuma linha DESTE arquivo comeca por
+# `echo "=="`/`mutante`; `printf '%b'` so interpreta o escape ao ESCREVER o arquivo de saida.
+escreve_fixture(){ printf '%b' "$1" > "$2"; }
+
+echo "== L-D6-FANTASMA: mencao em COMENTARIO nao conta mais como mutante invocado =="
+# ONDA 5, D6 (CRITICO). Ate esta correcao, `RE_MUT` aceitava QUALQUER linha de comentario
+# `# <ID>[-: ]` em tests/mutation/*.sh como se fosse invocacao - K10 e L6 (IDs de REGRESSAO
+# reais) eram inventariados como "mutante" so por aparecerem perto do inicio de um comentario.
+# Este e o caso discriminante exigido pela delegacao. TESTA `inventario()` DIRETAMENTE (nao via
+# claim/CLI): uma claim com `scope.subject_snapshot` valido SEMPRE resolve contra o SNAPSHOT
+# (`inventario_no_commit`, git tree de um commit JA existente), nunca contra arquivo solto no
+# worktree - por desenho (ver docstring de `inventario_no_commit`). Um fixture NAO commitado
+# seria invisivel por esse caminho, e o caso mediria "commit nao encontrado", nao a extracao.
+# `inventario()` em si nao usa git - le arquivos soltos - entao uma raiz FAKE e suficiente e nao
+# toca o repositorio real.
+D="$T/l_d6_fantasma"; mkdir -p "$D/tests/unit" "$D/tests/mutation"
+escreve_fixture '#!/usr/bin/env bash\necho "== Z1. regressao minima, so para a autochecagem nao ficar vazia =="\n' \
+  "$D/tests/unit/regressao.sh"
+escreve_fixture '#!/usr/bin/env bash\nmutante ZZ1 "mutante de verdade, invocado" "alvo-fixture" true\n# ZZ9 fantasma: aparece SO neste comentario, nunca como mutante ZZ9 - nao pode contar.\n' \
+  "$D/tests/mutation/mutacao.sh"
+inv_tem(){ # $1=raiz  $2=ID  -> "sim"/"nao" conforme $2 esteja no set de MUTANTES extraido
+python3 - "$1" "$2" <<'PY'
+import sys
+sys.path.insert(0, "evidence")
+import importlib
+vc = importlib.import_module("validate-claims")
+_, mutantes, _ = vc.inventario(sys.argv[1])
+print("sim" if sys.argv[2] in mutantes else "nao")
+PY
+}
+chk "invocacao real ('mutante ZZ1 ...') entra no inventario de mutantes" "$(inv_tem "$D" ZZ1)" "sim"
+chk "  mencao em comentario ('# ZZ9 ...') NAO entra - fantasma fechado" "$(inv_tem "$D" ZZ9)" "nao"
+rm -f "$D6_FIX_MUT"
+
+echo "== L-D6-COLISAO: ID de mutante que reusa um ID de regressao ja existente vira NAO VERIFICADO =="
+# Segunda guarda pedida pela delegacao (D6): os espacos de nome regressao/mutante sao disjuntos
+# "de proposito" (comentario de RE_EVID_ID) - uma intersecao nao-vazia e resolucao ambigua, a
+# MESMA classe de defeito que os fantasmas K10/L6 produziam. G1 e um ID de regressao REAL
+# (tests/unit/regressao-gate.sh); o fixture abaixo o reusa como mutante.
+escreve_fixture '#!/usr/bin/env bash\nmutante G1 "reusa de proposito o ID de regressao G1 de tests/unit/regressao-gate.sh" "alvo-fixture" true\n' \
+  "$D6_FIX_MUT"
+rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
+chk "mutante que colide com um ID de regressao ja existente -> NAO VERIFICADO (exit 2)" "$rc" 2
+rm -f "$D6_FIX_MUT"
+rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
+chk "  controle: sem a colisao, o ledger REAL volta a validar" "$rc" 0
+
+echo "== L-D6-DUPLICADO: o mesmo ID de regressao em DOIS arquivos de tests/unit/ vira NAO VERIFICADO =="
+# Terceira guarda pedida pela delegacao (D6/D7): um ID de regressao duplicado entre arquivos
+# resolveria em silencio (o inventario funde tudo num set plano) - a mesma ambiguidade que
+# tests/unit/claims.sh e tests/unit/literatura.sh tinham de fato ate a onda 5 renomear o
+# prefixo de literatura.sh para 'LT' (D7). G1 e reusado de novo aqui, desta vez no espaco de
+# REGRESSAO.
+escreve_fixture '#!/usr/bin/env bash\necho "== G1. reusa de proposito o ID de regressao G1 de tests/unit/regressao-gate.sh =="\n' \
+  "$D6_FIX_UNIT"
+rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
+chk "regressao G1 declarada em DOIS arquivos -> NAO VERIFICADO (exit 2)" "$rc" 2
+rm -f "$D6_FIX_UNIT"
+rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
+chk "  controle: sem a duplicidade, o ledger REAL volta a validar" "$rc" 0
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=41
+EXPECTED=47
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
