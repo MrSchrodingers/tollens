@@ -28,6 +28,12 @@
 #      o operador desligar o gate - e gate desligado protege zero.
 #  G7. Tabela ausente e FAIL-CLOSED com aviso. Inercia silenciosa e o modo de falha que este
 #      projeto inteiro combate.
+#  G16. Zero unidades examinadas NAO e aprovacao. Um adaptador considerado APLICAVEL que examina
+#      NADA (arquivo apagado, renomeado com conteudo divergente, symlink quebrado, ou ecossistema
+#      inteiro ausente de uma arvore que uma ferramenta nao-per_file escaneia) caia no ramo de
+#      APROVADO - RC nunca saia do valor de inicializacao, ou a ferramenta (ex.: ruff numa arvore
+#      sem .py) saia 0 por conta propria sem examinar nada. Vira LACUNA, nunca FALHA nem PASS:
+#      "nao verifiquei isto" e verdade, "reprovou" mentiria, "passou" seria o verde vazio.
 set -uo pipefail
 
 INPUT="$(</dev/stdin)"   # builtin: `cat` seria mais uma dependencia externa no caminho critico
@@ -280,16 +286,57 @@ for a in "${APLICAVEIS[@]}"; do
   fi
   mapfile -t ARGS < <(jq -r '.exec.args[]? // empty' "$a" 2>/dev/null)
   if [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
-    RC=0; OUT=""
+    # G_VAZIO (per_file): um adaptador per_file so examina os arquivos de CHANGED que ainda
+    # existem no disco (`[ -f "$ROOT/$f" ] || continue`). Se apagar, renomear-com-conteudo-
+    # divergente ou deixar um symlink quebrado faz TODOS os arquivos casados desaparecerem, o
+    # laco nunca roda, RC fica no valor inicial 0, e o adaptador caia no ramo de APROVADO sem
+    # examinar nada. Um laco que nao roda nao e observacao de sucesso - e ausencia de
+    # observacao. EXAMINADOS conta unidades REALMENTE processadas; zero decide o veredito,
+    # nao o RC (que nunca saiu do valor de inicializacao).
+    RC=0; OUT=""; EXAMINADOS=0
     while IFS= read -r ext; do
       [ -z "$ext" ] && continue
       while IFS= read -r f; do
         [ -f "$ROOT/$f" ] || continue
+        EXAMINADOS=$((EXAMINADOS + 1))
         O="$(cd "$ROOT" && timeout "$TMO" "$CMD" "${ARGS[@]}" "$f" 2>&1)" || { RC=1; OUT="$OUT
 $O"; }
       done < <(printf '%s\n' "$CHANGED" | grep -- "${ext}\$" || true)
     done < <(jq -r '.extensions[]? // empty' "$a")
+    if [ "$EXAMINADOS" -eq 0 ]; then
+      # NAO e FALHA: um commit que so apaga arquivo e legitimo, e "reprovado" mentiria sobre a
+      # causa. E LACUNA: o estado correto e "nao verifiquei isto", nomeando a razao.
+      LACUNAS="$LACUNAS
+  - $ID: nenhum arquivo casado com as extensoes de $ECO segue presente no disco (apagado, renomeado ou symlink quebrado) - zero unidades examinadas"
+      continue
+    fi
   else
+    # G_VAZIO (repositorio inteiro): o mesmo defeito tem uma segunda forma. Um adaptador NAO
+    # per_file roda sobre a ARVORE (o `.` de `exec.args`), nao sobre CHANGED - por isso apagar
+    # UM arquivo normalmente nao esvazia o ecossistema inteiro. Mas quando o arquivo apagado
+    # era o ULTIMO do ecossistema, a ferramenta roda sobre uma arvore vazia daquela linguagem.
+    # Medido: `ruff check .` numa arvore sem nenhum `.py` imprime "No Python files found" e
+    # sai 0 - aprovacao sobre nada. A deteccao NAO depende do texto de cada ferramenta (por
+    # ferramenta seria fragil: `go vet`/`cargo fmt` erram com RC!=0 no mesmo cenario, ruff nao) -
+    # conta arquivos do ecossistema presentes na ARVORE ATUAL (rastreados + untracked nao
+    # ignorados), a mesma fonte que decide o que este gate considera "existir". So se aplica a
+    # adaptador que DECLARA extensoes: o comando aprovado de `.claude/verify.json` (G8/G13-G15)
+    # nao declara `extensions` - e um comando de repositorio inteiro sem escopo por tipo de
+    # arquivo, e tratar "sem extensoes declaradas" como "zero unidades" o desligaria sempre.
+    NEXT="$(jq -r '.extensions // [] | length' "$a" 2>/dev/null || echo 0)"
+    if [ "${NEXT:-0}" -gt 0 ]; then
+      PRESENTES=0
+      while IFS= read -r ext; do
+        [ -z "$ext" ] && continue
+        n="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- "*${ext}" 2>/dev/null | wc -l)"
+        PRESENTES=$((PRESENTES + n))
+      done < <(jq -r '.extensions[]? // empty' "$a")
+      if [ "$PRESENTES" -eq 0 ]; then
+        LACUNAS="$LACUNAS
+  - $ID: nenhum arquivo do ecossistema $ECO existe mais na arvore - nada para '$CMD' examinar"
+        continue
+      fi
+    fi
     OUT="$(cd "$ROOT" && timeout "$TMO" "$CMD" "${ARGS[@]}" 2>&1)"; RC=$?
   fi
   if [ "$RC" -eq 127 ]; then

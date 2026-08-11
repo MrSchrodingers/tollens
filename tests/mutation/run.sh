@@ -28,7 +28,7 @@ REG="tests/unit/regressao-gate.sh"
 # aberto e pior que nenhum: ele produz a vulnerabilidade que alega medir.
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.sh"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=13
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=15
 
 # BASELINE: sem isto, uma regressao quebrada por ambiente faria TODOS os mutantes parecerem
 # mortos - o runner reportaria verde justamente quando nao esta testando nada.
@@ -143,6 +143,20 @@ mutante M12 "contrato de substituicao e EXIGIDO" "o comando NAO executa" \
 mutante M13 "substituicao escopada ao que o projeto reivindica" "cobertura nao reivindicada permanece" \
   troca 'APLICAVEIS=("$REPO_VERIFY" ${MANTIDOS[@]+"${MANTIDOS[@]}"})' \
         'APLICAVEIS=("$REPO_VERIFY")'
+
+# M14 - adaptador per_file com ZERO arquivos casados presentes (apagado, renomeado com conteudo
+# divergente, symlink quebrado) volta a cair no ramo de APROVADO em vez de LACUNA. RC nunca sai
+# do valor de inicializacao quando o laco interno nunca roda - "if false" desativa a unica
+# checagem que distingue "nada foi examinado" de "examinou e passou".
+mutante M14 "per_file fail-closed quando zero unidades sao examinadas" "apagar o UNICO .sh casado" \
+  sed -i 's|^    if \[ "\$EXAMINADOS" -eq 0 \]; then$|    if false; then|' "$ORIG"
+
+# M15 - adaptador de arvore inteira (nao per_file) com o ecossistema inteiro ausente da arvore
+# (ex.: `ruff check .` sem nenhum .py) volta a aprovar sobre uma arvore vazia daquele
+# ecossistema, porque a ferramenta pode sair 0 mesmo sem examinar nada (medido: "No Python
+# files found", RC=0).
+mutante M15 "arvore inteira fail-closed quando o ecossistema esta ausente" "apagar o UNICO .py do repo" \
+  sed -i 's|^      if \[ "\$PRESENTES" -eq 0 \]; then$|      if false; then|' "$ORIG"
 
 cp -f "$TMP/orig.sh" "$ORIG"
 echo
