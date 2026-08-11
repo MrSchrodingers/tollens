@@ -65,8 +65,8 @@ texto completo, arXiv:2603.15401v1): o baseline agregado e **89,8%**, subindo pa
 aritmetico de melhoria e portanto **+10,2pp**, e +1,2pp e ~12% do alcancavel - nao "quase nada".
 E **24 das 49 skills marcam 100% NOS DOIS BRACOS**: sao tarefas incapazes de revelar ganho, entao
 "39 de 49 sem ganho" soma skill inutil com tarefa saturada, e o denominador honesto e no maximo
-25. Ha um unico modelo e scaffold (Claude Code + Haiku 4.5; o artigo declara nao avaliar outros
-frameworks) e o rodape diz "Pre-print with preliminary results, work in progress".
+25. Ha um unico modelo e scaffold (Claude Code + Haiku 4.5; avaliar outros frameworks
+consta como trabalho FUTURO declarado pelos autores, nao como algo que o artigo realiza) e o rodape diz "Pre-print with preliminary results, work in progress".
 Classe de sustentacao correta: **SUGGESTIVE**, nao DIRECT.
 
 **A justificativa FORTE da politica conservadora nao e eficacia, e seguranca** - e independe do
