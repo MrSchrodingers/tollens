@@ -23,6 +23,8 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/reprodutibilidade.sh tests/unit/concorrencia.sh tests/unit/claims.sh \
            tests/unit/propriedades.sh tests/unit/fronteira-externa.sh tests/unit/managed.sh \
            tests/unit/conformidade-managed.sh tests/unit/arnes-de-mutacao.sh \
+           tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
+           tests/unit/capabilities.sh \
            tests/unit/run.sh; do
     bash "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
@@ -52,6 +54,21 @@ trap 'rm -f "$TMP"' EXIT
   mcm="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/conformidade.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/conformidade.sh >/dev/null 2>&1
   printf '| conformidade de dois escopos | %s | %s |\n' "${mcm:-?}" "$?"
+  msc="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/schedule.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/schedule.sh >/dev/null 2>&1
+  printf '| escalonamento | %s | %s |\n' "${msc:-?}" "$?"
+  m_fronteira_viva="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/fronteira-viva.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/fronteira-viva.sh >/dev/null 2>&1
+  printf '| fronteira viva | %s | %s |\n' "${m_fronteira_viva:-?}" "$?"
+  m_literatura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/literatura.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/literatura.sh >/dev/null 2>&1
+  printf '| camada de literatura | %s | %s |\n' "${m_literatura:-?}" "$?"
+  m_claims="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/claims.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/claims.sh >/dev/null 2>&1
+  printf '| claim ledger | %s | %s |\n' "${m_claims:-?}" "$?"
+  m_cap="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/capabilities.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/capabilities.sh >/dev/null 2>&1
+  printf '| capability declarada | %s | %s |\n' "${m_cap:-?}" "$?"
 
   printf '\n## Componentes\n\n| Tipo | Qtd |\n|---|---:|\n'
   awk -F'\t' '!/^#/{c[$1]++} END{for(t in c) printf "| %s | %s |\n", t, c[t]}' install/manifest.lock | sort

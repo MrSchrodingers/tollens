@@ -1,0 +1,122 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+literature_id: arxiv-2602.06547
+citation: >-
+  Liu, Y.; Chen, Z.; Zhang, Y.; Deng, G.; Li, Y.; Ning, J.; Zhang, L. Y. "Do Not Mention This to
+  the User": Detecting and Understanding Malicious Agent Skills in the Wild. arXiv:2602.06547,
+  pre-print de 2026. Titulo e lista de autores conferidos em https://arxiv.org/abs/2602.06547
+  nesta sessao - o titulo usado antes desta correcao ("Malicious Agent Skills in the Wild: A
+  Large-Scale Security Empirical Study") nao existe na fonte.
+identifier: arXiv:2602.06547
+url: https://arxiv.org/abs/2602.06547
+cited_in:
+- README.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.pt-BR.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.md#16 (referencia [18], nova)
+- README.pt-BR.md#16 (referencia [18], nova)
+provenance: preprint
+study_quality:
+  benchmark: >-
+    levantamento proprio em duas etapas - identificacao de candidatos por deteccao estatica de
+    padrao seguida de verificacao comportamental em sandbox sobre os candidatos sinalizados
+    (fonte: texto completo, secao 3, "Methodology").
+  n: >-
+    98380 skills coletadas; a deteccao estatica de padrao sinalizou 4287 candidatos (4.4%), dos
+    quais 762 dispararam ao menos um indicador em tempo de execucao na verificacao comportamental
+    e 157 foram confirmados maliciosos apos revisao manual por dois autores (fonte: texto
+    completo, secao 3.3-3.4).
+  models: >-
+    GPT-5.2 foi usado para gerar entradas sinteticas de invocacao das skills candidatas (fonte:
+    texto completo); nao e um agente cuja eficacia esteja sob avaliacao neste estudo - e
+    ferramenta de geracao de estimulo para a verificacao comportamental.
+  scaffold: >-
+    nao aplicavel no mesmo sentido de um harness de codigo - o objeto e a skill. O metodo COMBINA
+    deteccao estatica de padrao (geracao de candidatos) com verificacao comportamental em sandbox
+    (confirmacao); o proprio resumo do artigo descreve isto como "a combination of static pattern
+    matching and dynamic behavioral verification" (fonte: abstract), nao como validacao
+    exclusivamente comportamental.
+  oracle: >-
+    dois estagios - deteccao estatica de padrao para gerar candidatos, seguida de verificacao
+    comportamental em sandbox (rede/syscalls/filesystem/credenciais-isca) e revisao manual com
+    classificacao binaria por dois avaliadores independentes (fonte: texto completo).
+  baseline: nao aplicavel - estudo de levantamento em corpus fixo, sem condicao de comparacao pareada.
+  trials_repeated: nao aplicavel - levantamento em corpus fixo, nao trials repetidos.
+  uncertainty_reported: "[nao verificado] - nao confirmado na leitura."
+  code_data_available: "[nao verificado] - nao confirmado na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - mesma classe de artefato (agent skills publicadas) que a politica de lifecycle de
+    skill deste repositorio trata. O metodo combina deteccao estatica de padrao com verificacao
+    comportamental (fonte: abstract - "a combination of static pattern matching and dynamic
+    behavioral verification"), nao e exclusivamente comportamental; a etapa estatica gera os
+    candidatos que a etapa comportamental pode confirmar, o que sujeita o achado ao mesmo tipo
+    de dependencia de precisao/recall de detector automatico que qualifica o estudo irmao desta
+    mesma camada de literatura ("Agent Skills in the Wild") - ver limitations.
+  scaffold_similarity: >-
+    Nao aplicavel - a verificacao comportamental confirma comportamento malicioso observado, mas
+    nao mede desempenho de tarefa em Claude Code/Codex.
+  oracle_similarity: >-
+    Baixa - o oraculo (deteccao estatica de candidatos seguida de confirmacao comportamental de
+    malicia) nao e verificacao executavel de requisito, que e o oraculo deste repositorio para
+    eficacia de skill.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  Mesma logica de applicability de arxiv-2601.10338 (mesma classe de artefato, escala de
+  levantamento grande - fonte: findings.skills_examined). O metodo NAO e puramente comportamental
+  - combina deteccao estatica de padrao (candidatos) com verificacao comportamental em sandbox
+  (confirmacao), fonte: abstract. Isso da maior confianca aos 157 casos CONFIRMADOS (poucos
+  falsos positivos esperados entre os confirmados, dado o duplo requisito de indicador em tempo
+  de execucao MAIS revisao manual concordante), mas nao remove a dependencia de precisao/recall
+  de um detector automatico na etapa de geracao de candidatos: das 98380 skills examinadas, so as
+  4287 sinalizadas pela deteccao estatica (fonte: findings.static_candidates_flagged) passam por
+  verificacao comportamental; as demais sao classificadas como provavelmente benignas sem essa
+  verificacao, e o proprio artigo declara discutir essa limitacao de falso-negativo (fonte: texto
+  completo, secao 5.4, que tambem descreve os 157 confirmados como limite inferior - "157
+  confirmed skills is a lower bound"). Isso sustenta SUPPORTED pela MESMA razao que
+  arxiv-2601.10338 (escala grande, mesma classe de artefato) - nao por uma vantagem metodologica
+  de "comportamental em vez de estatico" que a versao anterior desta entrada alegava e que o
+  abstract do artigo nao sustenta (o metodo e uma COMBINACAO dos dois). Junto com arxiv-2601.10338,
+  e o warrant mais forte para quarentena e least-privilege de skill neste repositorio -
+  independente de qualquer resultado de eficacia.
+findings:
+- metric: skills_examined
+  value: "98380"
+  source: fulltext
+- metric: static_candidates_flagged
+  value: "4287"
+  source: fulltext
+  note: 4.4% de 98380; deteccao estatica de padrao, etapa que precede a verificacao comportamental.
+- metric: skills_without_static_match
+  value: "94093"
+  source: fulltext
+  note: >-
+    nao casaram com nenhum dos 14 padroes estaticos e foram classificadas como provavelmente
+    benignas SEM verificacao comportamental; base do limite de falso-negativo que o artigo
+    declara discutir na secao 5.4.
+- metric: malicious_skills_confirmed
+  value: "157"
+  source: fulltext
+  note: >-
+    confirmadas por verificacao comportamental sobre os 4287 candidatos sinalizados pela
+    deteccao estatica, nao sobre as 98380 skills examinadas; o proprio artigo descreve este
+    numero como limite inferior (secao 5.4, "157 confirmed skills is a lower bound").
+- metric: vulnerabilities_found
+  value: "632"
+  source: fulltext
+limitations:
+- Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
+  quarentena/promocao aqui adotado; mede a classe geral de artefato.
+- A proporcao de skills maliciosas sobre o total examinado nao foi calculada aqui; o achado
+  bruto (contagem confirmada) esta em findings, sem reducao a percentual nesta camada.
+- O metodo combina deteccao estatica de padrao (candidatos) com verificacao comportamental
+  (confirmacao), conforme o proprio abstract descreve como fonte primaria. As skills que nao
+  casaram com nenhum padrao estatico (ver findings.skills_without_static_match) nunca passam por
+  verificacao comportamental e sao classificadas como provavelmente benignas; o proprio artigo
+  declara discutir essa limitacao de falso-negativo (secao 5.4) e trata os 157 confirmados como
+  limite inferior, nao como contagem exaustiva de skills maliciosas na populacao coletada.
+- Verificacao comportamental depende do ambiente de sandbox usado no estudo (Docker, timeout de
+  60 segundos por execucao, texto completo como fonte); o proprio artigo observa que atacantes
+  sofisticados podem detectar o sandbox e suprimir o comportamento malicioso (secao 5.4).

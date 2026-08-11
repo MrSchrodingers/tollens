@@ -1,0 +1,63 @@
+# Ledger de alegacoes - ver evidence/validate-claims.py para o contrato.
+# REFERENCIA evidencia existente; nunca a duplica.
+claim_id: C-019
+claim: 'RuntimeConformant(a,r) <=> ObservedCapabilities(a,r) = DeclaredCapabilities(a,r): para
+  os agentes deste repositorio, o conjunto de ferramentas que o runtime PERMITE em execucao e
+  exatamente o conjunto listado em `tools:` no frontmatter - nem mais, nem menos.'
+type: security-property
+scope:
+  subject_snapshot: d8f20680ea82d207a2481d680529802b2348ceea
+  platforms:
+  - local-linux
+  runtime:
+    claude_code: 2.1.226
+evidence:
+  observation:
+    command: "python3 -c \"import json; recs=[json.loads(l) for l in open(p)]; ... Counter(v['name']
+      for v in tool_uses.values())\" sobre o agent_transcript_path apontado por uma entrada
+      agent_type=refutador de ~/.claude/logs/subagent-probe.jsonl.1 (comando completo, com o
+      valor de p, no corpo do arquivo referenciado, secao 3)"
+    recorded: evidence/observations/2026-08-10-capacidade-declarada-vs-observada.md
+    blob_sha: 2a134c967e75a0648dbbe9d5b09e3cff40a414c1
+    line_start: 68
+    line_end: 87
+warrant: 'A metade DECLARADA da propriedade e verificada automaticamente por
+  evidence/runtime-probes/declared-capabilities.py (as tres fontes de tools: - canonica,
+  projecao do repo, instalada - concordam hoje para os 10 agentes; rodar o script reproduz
+  isto). A metade OBSERVADA nao pode ser afirmada como valida: a observacao ancorada mostra uma
+  execucao real de `refutador` (tools: Read, Grep, Glob, Bash, sem Write/Edit) emitindo tool_use
+  Write (2x) e Edit (1x) com sucesso (is_error nulo). Isto REFUTA a leitura literal e
+  incondicional da equivalencia - ObservedCapabilities excedeu DeclaredCapabilities nesta
+  execucao. A causa provavel, ja documentada em docs/adr/0007-topologia-de-execucao-e-contrato-
+  de-delegacao.md:25-31 (auto-grant de Read/Write/Edit por `memory: user`, escopado por design a
+  ~/.claude/agent-memory/<nome>/), e CONSISTENTE com os tres alvos observados, todos dentro
+  daquele diretorio - mas a observacao tem n=1 transcrito e nao manipulou a variavel que
+  distinguiria "grant confinado ao runtime" de "grant geral, so nao exercitado fora do escopo
+  nesta amostra". Por isso o status permanece not-verified em vez de refuted-puro ou
+  supported: a forma REFINADA e relevante para seguranca da propriedade (o grant de memoria e
+  hard-scoped, ou e um Write/Edit geral disponivel para qualquer caminho) segue sem oraculo, e
+  e exatamente o que evidence/runtime-probes/capabilities.md (vetores A1/A1m) foi desenhado
+  para fechar numa sessao com poder de delegar a subagentes - poder que quem escreveu este
+  claim nao tem (subagente nao cria subagente).'
+limitations:
+- 'A metade OBSERVADA da propriedade e NOT_VERIFIED ate evidence/runtime-probes/capabilities.md
+  ser executado numa sessao real com poder de delegacao (Task). O que existe hoje e um
+  cruzamento retrospectivo de instrumentacao ja gravada (subagent-probe.sh), nao uma medicao
+  controlada.'
+- 'A observacao cobre SOMENTE refutador, numa unica execucao, sem a variavel manipulada
+  (caminho de escrita dentro vs fora de ~/.claude/agent-memory/). Nao generaliza para os outros
+  sete agentes read-only nem para um Write/Edit fora do escopo de memoria.'
+- 'Os vetores de escrita via Bash (redirecionamento, tee, sed -i, git apply, script indireto)
+  ja tem explicacao estrutural independente do subsistema de memoria - install/hooks-spec.sh:
+  39-46 mostra que PreToolUse so tem matcher para Write|Edit|MultiEdit|NotebookEdit e para
+  Agent|Task|Bash|Workflow (fable-guard.sh, escopo restrito a Fable e aos caminhos de
+  consentimento) - e permanecem NOT_VERIFIED individualmente para os agentes que nao os
+  exercitaram ainda.'
+- 'declared-capabilities.py nao cobre .codex/agents/*.toml: o runtime Codex usa `sandbox_mode`
+  (modelo de sandbox de SO), sem uma allowlist de nomes de ferramenta equivalente a `tools:` -
+  comparavel so com uma ontologia de traducao que nao existe hoje.'
+- 'O log fonte da observacao (~/.claude/logs/subagent-probe.jsonl) e mutavel, local a maquina e
+  compartilhado por qualquer sessao concorrente - rotacionou durante a propria investigacao
+  desta alegacao. O que foi ancorado por blob_sha e o ARQUIVO DE OBSERVACAO deste repositorio,
+  nao o log externo, que pode nao mais conter os mesmos dados no futuro.'
+status: not-verified

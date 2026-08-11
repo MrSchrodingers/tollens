@@ -1,0 +1,160 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+literature_id: arxiv-2601.10338
+citation: >-
+  Liu, Y.; Wang, W.; Feng, R.; Zhang, Y.; Xu, G.; Deng, G.; Li, Y.; Zhang, L. Agent Skills in
+  the Wild: An Empirical Study of Security Vulnerabilities at Scale. arXiv:2601.10338,
+  pre-print de 2026. Lista de autores conferida em https://arxiv.org/abs/2601.10338 nesta
+  sessao (8 autores, ordem real: Yi Liu, Weizhe Wang, Ruitao Feng, Yao Zhang, Guangquan Xu,
+  Gelei Deng, Yuekang Li, Leo Zhang) - a versao anterior desta entrada omitia autoria por
+  completo, assimetria com arxiv-2602.06547 nesta mesma camada.
+identifier: arXiv:2601.10338
+url: https://arxiv.org/abs/2601.10338
+cited_in:
+- README.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.pt-BR.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
+- README.md#16 (referencia [17], nova)
+- README.pt-BR.md#16 (referencia [17], nova)
+provenance: preprint
+study_quality:
+  benchmark: "SkillScan (fonte: texto completo - detector proprio do estudo)."
+  n: >-
+    42447 skills coletadas de duas marketplaces (skills.rest, skillsmp.com); apos filtragem e
+    deduplicacao, 31132 skills unicas foram analisadas com SkillScan (fonte: texto completo,
+    https://arxiv.org/html/2601.10338v1, conferido nesta sessao - abstract e secao 1
+    "Introduction", paragrafo de "Contributions", "First large-scale study"; a versao anterior
+    desta entrada localizava a mesma citacao na secao 3 "Methodology" - a string existe verbatim
+    no artigo, mas a secao estava errada: e o primeiro item da lista de contribuicoes na
+    Introducao, nao a Metodologia). O denominador da versao anterior desta entrada ("31132
+    skills coletadas") trocava coleta por analise - sao duas contagens distintas do proprio
+    artigo.
+  models: >-
+    SkillScan e "a multi-stage detection framework integrating static analysis with
+    LLM-based semantic classification" (citacao verbatim, fonte: abstract,
+    https://arxiv.org/abs/2601.10338, conferido nesta sessao) - o METODO PRINCIPAL, aplicado as
+    31132 skills analisadas, e analise estatica combinada com classificacao semantica via LLM,
+    sem verificacao comportamental dinamica nessa escala. Ressalva que a versao anterior desta
+    entrada nao carregava: o artigo TAMBEM reporta um piloto de validacao dinamica em escala
+    pequena e fora do metodo principal (Apendice E, fonte - findings.dynamic_validation_pilot_confirmed_pct
+    acima - 25 skills de alta confianca executadas em sandbox, 0.3% do total sinalizado); isso
+    NAO contradiz a afirmacao sobre o metodo principal, mas "SkillScan nao faz verificacao
+    comportamental dinamica" vale para as 31132 skills do levantamento, nao para o artigo
+    inteiro. A verificacao comportamental EM ESCALA (sobre todos os candidatos sinalizados, nao
+    so um piloto de 25) pertence ao estudo irmao desta camada, arxiv-2602.06547, cujo abstract
+    descreve "a combination of static pattern matching and dynamic behavioral verification"
+    (fonte: abstract de 2602.06547) - os dois estudos usam metodos distintos e nao devem ser
+    descritos com o mesmo vocabulario. Identidade do LLM usado na classificacao semantica: [nao
+    verificado] nesta camada.
+  scaffold: nao aplicavel - o objeto medido e a skill em si, nao um agente executando-a em um scaffold.
+  oracle: "deteccao automatica via SkillScan, com precisao e recall reportados (ver findings)."
+  baseline: >-
+    26.1% das skills ANALISADAS (31132, apos filtragem/deduplicacao das 42447 coletadas) com
+    pelo menos uma vulnerabilidade (fonte: texto completo); essa proporcao depende da populacao
+    analisada e da precisao/recall do detector (ver findings e limitations) e NAO e prevalencia
+    do universo geral de skills.
+  trials_repeated: nao aplicavel - estudo de levantamento em corpus fixo, nao trials repetidos.
+  uncertainty_reported: >-
+    [nao verificado] - intervalo de confianca sobre a taxa de 26.1% nao confirmado na leitura.
+  code_data_available: "[nao verificado] - nao confirmado na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - o objeto medido (agent skills coletadas de marketplaces publicas) e a MESMA classe
+    de artefato que a politica de lifecycle de skill deste repositorio trata
+    (orchestration/skill-policy.json, estados quarantine/candidate/promoted/deprecated/rejected).
+  scaffold_similarity: >-
+    Nao aplicavel - no metodo PRINCIPAL (31132 skills), o estudo nao avalia um agente executando
+    as skills em um scaffold especifico; mede a skill como artefato estatico, com classificacao
+    semantica via LLM (fonte - study_quality.models acima). O piloto de validacao dinamica do
+    Apendice E (fonte - findings.dynamic_validation_pilot_confirmed_pct acima) executa 25 skills
+    em sandbox, mas nao e um scaffold de agente (nao ha modelo decidindo/agindo sobre a skill) -
+    e monitoramento de rede/filesystem sobre a execucao da skill isolada, escala pequena demais
+    (0.3% do sinalizado) para mudar esta avaliacao de "nao aplicavel".
+  oracle_similarity: >-
+    Baixa - o oraculo do estudo (deteccao de padrao de vulnerabilidade) nao e verificacao
+    executavel de requisito, que e o oraculo que este repositorio usa para eficacia de skill.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  O estudo mede diretamente a mesma classe de artefato (agent skills publicadas) que a politica
+  de quarentena e promocao deste repositorio governa, em escala grande o bastante para ser mais
+  que um caso isolado (fonte: findings.skills_collected e findings.skills_analyzed). A proporcao
+  agregada de skills com vulnerabilidade (fonte: findings.skills_with_vulnerability_pct) tem uma
+  ressalva metodologica explicita - depende da populacao ANALISADA (31132, apos filtragem das
+  42447 coletadas) e da precisao/recall do detector, ambos reportados e portanto auditaveis - o
+  que impede DIRECT (nao mede skills deste repositorio), mas a proximidade do objeto medido e a
+  escala do levantamento sustentam SUPPORTED, um nivel acima de SUGGESTIVE. Este e, junto com
+  arxiv-2602.06547, o warrant mais direto para quarentena e least-privilege de skill neste
+  repositorio - mais direto que os estudos de eficacia (arxiv-2603.15401, arxiv-2602.12670),
+  porque a justificativa de seguranca nao depende de a skill melhorar pass rate.
+findings:
+- metric: skills_collected
+  value: "42447"
+  source: fulltext
+  note: total coletado das duas marketplaces (skills.rest, skillsmp.com), antes de filtragem/deduplicacao.
+- metric: skills_analyzed
+  value: "31132"
+  source: fulltext
+  note: >-
+    subconjunto unico apos filtragem e deduplicacao das 42447 coletadas; e o denominador da taxa
+    de vulnerabilidade de 26.1% abaixo, nao as 42447 coletadas.
+- metric: skills_with_vulnerability_pct
+  value: "26.1%"
+  source: fulltext
+  note: depende da populacao ANALISADA (31132) e do detector - nao e prevalencia do universo de skills.
+- metric: vulnerability_pattern_count
+  value: "14 padroes em 4 categorias"
+  source: fulltext
+- metric: exfiltration_rate_pct
+  value: "13.3%"
+  source: fulltext
+- metric: privilege_escalation_rate_pct
+  value: "11.8%"
+  source: fulltext
+- metric: high_severity_rate_pct
+  value: "5.2%"
+  source: fulltext
+- metric: script_bearing_skill_risk_multiplier
+  value: "2.12x mais propensas que instruction-only"
+  source: fulltext
+- metric: detector_precision_pct
+  value: "86.7%"
+  source: fulltext
+- metric: detector_recall_pct
+  value: "82.5%"
+  source: fulltext
+- metric: dynamic_validation_pilot_confirmed_pct
+  value: "72% (18/25)"
+  source: fulltext
+  note: >-
+    Apendice E ("Pilot Dynamic Validation"), https://arxiv.org/html/2601.10338v1, conferido
+    nesta sessao: 25 skills de ALTA confianca (classificacao severa + confianca do hibrido
+    >=0.85 + padrao claro de exfiltracao/credencial) executadas em Docker isolado com
+    tcpdump/auditd; 18/25 (72%) confirmadas com comportamento malicioso batendo a predicao
+    estatica, 4/25 (16%) inconclusivas, 3/25 (12%) falso-positivo. O proprio artigo declara essa
+    validacao como cobrindo so 0.3% das skills sinalizadas e limitada aos casos de alta
+    confianca - nao e validacao dinamica em escala, e um piloto sobre um subconjunto pequeno e
+    ja favoravel a confirmacao.
+limitations:
+- A taxa de skills com vulnerabilidade depende da populacao ANALISADA apos filtragem/deduplicacao
+  (31132 de 42447 coletadas, ambas de duas marketplaces especificas - fonte - findings acima) e
+  da precisao/recall do detector; nao e uma estimativa de prevalencia do universo geral de agent
+  skills - ressalva que o proprio estudo declara e que esta camada preserva.
+- Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
+  quarentena/promocao aqui adotado; mede a classe geral de artefato.
+- SkillScan combina analise estatica com classificacao semantica via LLM (fonte -
+  study_quality.models acima); no metodo PRINCIPAL, sobre as 31132 skills analisadas, isso e
+  sem verificacao comportamental dinamica e pode nao capturar vulnerabilidade que so se
+  manifesta em tempo de execucao. Ressalva (Apendice E, fonte -
+  findings.dynamic_validation_pilot_confirmed_pct acima) - o artigo reporta um piloto de
+  validacao dinamica sobre 25 skills de alta confianca (0.3% do total sinalizado, fora do
+  metodo principal), com 72% (18/25) confirmadas - amostra pequena demais para estender a
+  qualquer afirmacao sobre a populacao inteira, mas o piloto EXISTE e nao pode ficar de fora
+  quando este campo afirma ausencia de verificacao dinamica, sob pena da mesma assimetria que
+  este documento ja teve de corrigir noutro ponto (ver localizacao de "First large-scale study"
+  em study_quality.n acima - string real, contexto errado; aqui o risco era omitir uma secao
+  real do artigo, nao localizar mal uma citacao). O estudo irmao arxiv-2602.06547 cobre
+  verificacao comportamental EM ESCALA
+  (sobre todos os candidatos sinalizados, nao so um piloto de 25) para o subconjunto de
+  candidatos que sinaliza.

@@ -99,11 +99,21 @@ except ImportError:
 
 TIPOS = {"empirical-invariant", "security-property", "runtime-observation", "method-rule"}
 STATUS = {"supported-in-tested-domain", "refuted", "superseded", "not-verified"}
-# `supported-in-tested-domain` e o unico status ATIVO: e o que afirma algo hoje. Claim refutada,
-# superseded ou nao verificada e registro historico - o conteudo que ela citava PODE ter mudado
-# desde entao, e exigir que o blob ainda case com a arvore de trabalho tornaria impossivel
-# preservar o registro de uma alegacao derrubada. O blob continua tendo de EXISTIR nos dois casos.
+# `supported-in-tested-domain` e o unico status ATIVO: e o que afirma algo hoje.
 STATUS_ATIVO = "supported-in-tested-domain"
+# EXIGENCIA DE FRESCOR: quais status precisam que o blob ancorado ainda case com a arvore.
+#
+# `refuted` e `superseded` sao TERMINAIS - registro historico. O conteudo citado pode ter mudado
+# desde entao, e exigir que ainda case tornaria impossivel preservar o registro de uma alegacao
+# derrubada. A isencao ali e correta.
+#
+# `not-verified` NAO e registro historico: e alegacao ABERTA, que sera reavaliada quando o oraculo
+# existir. Isenta-la do frescor foi defeito medido em 2026-08-11: ao renumerar C-018->C-019 a
+# observacao foi editada, o blob_sha ficou apontando para o conteudo pre-edicao, e o validador
+# saiu 0. Uma claim aberta desancorada e pior que uma fechada: ela ainda sera lida como pendencia
+# viva, e a faixa `line_start/line_end` e validada contra o blob ANCORADO - com a ancora obsoleta,
+# a citacao de linha tambem deixa de significar qualquer coisa.
+EXIGEM_FRESCOR = frozenset({STATUS_ATIVO, "not-verified"})
 OBRIGATORIOS = ("claim_id", "claim", "type", "scope", "evidence", "warrant",
                 "limitations", "status")
 RE_CLAIM_ID = re.compile(r"^C-[0-9]{3}$")
@@ -281,12 +291,12 @@ def _valida_blob(doc, obs, rec, raiz, arquivo):
         # A CLAIM ESTA DESANCORADA. Nao e necessariamente falsa: e que o lastro citado nao e
         # mais o conteudo do arquivo, e ninguem releu se ela continua valendo. Foi exatamente
         # esta situacao que passou despercebida em C-016.
-        if str(doc.get("status")) == STATUS_ATIVO:
+        if str(doc.get("status")) in EXIGEM_FRESCOR:
             erro(f"evidence.observation.blob_sha NAO casa com o conteudo atual de '{rec}': "
                  f"declarado {bs[:12]}..., atual {atual[:12]}.... O conteudo citado mudou "
                  f"desde que a alegacao foi ancorada - releia a alegacao e reancore.")
-        # status nao-ativo (refuted/superseded/not-verified): registro historico, a divergencia
-        # e esperada e o blob ja foi provado existir acima.
+        # `refuted`/`superseded`: TERMINAIS, registro historico. A divergencia e esperada e o blob
+        # ja foi provado existir acima. `not-verified` NAO entra aqui - ver EXIGEM_FRESCOR.
 
     # LINE RANGE: opcional, mas se um extremo existe o outro tambem, e ambos precisam cair
     # dentro do conteudo ANCORADO - nao do arquivo atual. Citar linha 900 de um arquivo de 200

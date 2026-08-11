@@ -1,0 +1,34 @@
+{
+  "investigate": {
+    "actor": "investigador",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["root-cause-evidence"]
+  },
+  "map": {
+    "actor": "mapeador-dependencias",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["dependency-graph"]
+  },
+  "refute": {
+    "actor": "refutador",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": ["**"],
+    "writes": [],
+    "produces": ["refutation-verdict"]
+  },
+  "report": {
+    "actor": "orchestrator",
+    "isolation": "shared",
+    "holds_suite_lock": false,
+    "reads": [],
+    "writes": [],
+    "produces": ["investigation-report"]
+  }
+}

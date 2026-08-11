@@ -60,6 +60,22 @@ ferramenta propria. Nunca por "papel" ou personalidade.
 SWE-Skills-Bench (arXiv:2603.15401) `[VERIFICADO]`: **39 de 49 skills sem ganho algum**, media
 **+1.2%**, **3 DEGRADARAM**. Ganho relevante (ate +30%) so em skills de dominio especifico.
 
+**O QUE ESTA FRASE OMITIA ate 2026-08-11, e a omissao a tornava enganosa** (`[VERIFICADO]` no
+texto completo, arXiv:2603.15401v1): o baseline agregado e **89,8%**, subindo para 91,0%. O teto
+aritmetico de melhoria e portanto **+10,2pp**, e +1,2pp e ~12% do alcancavel - nao "quase nada".
+E **24 das 49 skills marcam 100% NOS DOIS BRACOS**: sao tarefas incapazes de revelar ganho, entao
+"39 de 49 sem ganho" soma skill inutil com tarefa saturada, e o denominador honesto e no maximo
+25. Ha um unico modelo e scaffold (Claude Code + Haiku 4.5; avaliar outros frameworks
+consta como trabalho FUTURO declarado pelos autores, nao como algo que o artigo realiza) e o rodape diz "Pre-print with preliminary results, work in progress".
+Classe de sustentacao correta: **SUGGESTIVE**, nao DIRECT.
+
+**A justificativa FORTE da politica conservadora nao e eficacia, e seguranca** - e independe do
+paper acima. arXiv:2601.10338 analisou 31.132 de 42.447 skills coletadas e sinalizou 26,1% com ao
+menos uma vulnerabilidade (detector com precisao 86,7% / recall 82,5%, logo NAO e prevalencia do
+universo); skills com script sao 2,12x mais propensas. arXiv:2602.06547 confirmou por validacao
+comportamental 157 skills maliciosas em 98.380. Skill nao e texto: e pacote de capability
+potencialmente privilegiado.
+
 **LIMITE DA EXTRAPOLACAO, aprendido por erro proprio:** esse paper mediu ~565 instancias de
 tarefas de CODIGO com criterio de aceite. Usa-lo para arquivar skills de WORKFLOW
 (PRD -> plano -> issues) foi estender a evidencia alem do objeto medido - e as skills

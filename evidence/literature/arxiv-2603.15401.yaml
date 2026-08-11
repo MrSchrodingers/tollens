@@ -1,0 +1,137 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+literature_id: arxiv-2603.15401
+citation: >-
+  Han, T.; Zhang, Y.; Song, W.; Fang, C.; Chen, Z.; Sun, Y.; Hu, L. SWE-Skills-Bench: Do Agent
+  Skills Actually Help in Real-World Software Engineering? arXiv:2603.15401, pre-print de 2026.
+  Lista de autores conferida em https://arxiv.org/abs/2603.15401 nesta sessao (ordem real: Tingxu
+  Han, Yi Zhang, Wei Song, Chunrong Fang, Zhenyu Chen, Youcheng Sun, Lijie Hu) - a versao usada
+  antes desta correcao trocava as iniciais de Song, Fang, Chen, Sun e Hu.
+identifier: arXiv:2603.15401
+url: https://arxiv.org/abs/2603.15401
+cited_in:
+- README.md#6.1
+- README.pt-BR.md#6.1
+- README.md#16 (referencia [14])
+- README.pt-BR.md#16 (referencia [14])
+- docs/method/CONHECIMENTO.md#3
+- docs/research/2026-agent-skills-evidence-review.md
+provenance: preprint
+# O rodape do artigo declara "Pre-print with preliminary results, work in progress" (fonte:
+# texto completo) - status que a citacao anterior na secao 6.1 do README nao carregava.
+study_quality:
+  benchmark: SWE-Skills-Bench
+  n: >-
+    49 skills avaliadas sobre aproximadamente 565 instancias de tarefas SWE em 6 subdominios
+    (fonte: texto completo do arxiv-2603.15401).
+  models: >-
+    Um unico modelo: Claude Haiku 4.5 (fonte: texto completo - "Claude Code with Claude Haiku
+    4.5"). Nao ha comparacao entre modelos.
+  scaffold: >-
+    Um unico scaffold: Claude Code (fonte: texto completo). A frase entre aspas usada
+    anteriormente aqui ("does not evaluate alternative agent frameworks") NAO existe no texto
+    completo (conferido em https://arxiv.org/html/2603.15401v1 nesta sessao) - era citacao
+    inventada. O que o artigo realmente diz, na secao 5 "Discussion & Future Directions",
+    subsecao "Diverse agent scaffolds": "We intend to benchmark skill utility across multiple
+    open-source and proprietary agent frameworks (e.g., SWE-agent, OpenHands, Aider) to assess
+    whether our findings generalize beyond the specific scaffold used in this study" (citacao
+    verbatim, fonte: texto completo). Ou seja: o artigo declara a INTENCAO de avaliar outros
+    frameworks como trabalho futuro - confirma, por omissao no desenho atual e nao por uma
+    declaracao direta de "nao avaliamos", que a versao publicada usa um unico scaffold.
+  oracle: verificacao executavel por instancia, com criterio de aceite deterministico.
+  baseline: >-
+    89.8% de pass rate agregado SEM skill; 91.0% COM skill (fonte: texto completo) - ou seja,
+    o ganho medio de +1.2 ponto percentual reportado ocorre contra um teto de no maximo +10.2
+    pontos percentuais (100 menos o baseline de 89.8%).
+  trials_repeated: "[nao verificado] - numero de repeticoes por instancia nao confirmado na leitura."
+  uncertainty_reported: "[nao verificado] - intervalo de confianca ou dispersao nao confirmados na leitura."
+  code_data_available: "[nao verificado] - disponibilidade de codigo/dados nao confirmada na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Media - o oraculo (verificacao executavel de tarefas de codigo com criterio de aceite) e o
+    mesmo principio que evidence-gate adota, mas o objeto medido e um conjunto de skills de
+    dominio SWE especificas do estudo (fonte - findings.skills_no_pass_rate_change acima), nao
+    as skills deste repositorio.
+  scaffold_similarity: >-
+    Baixa - o estudo mede um unico par modelo/scaffold (fonte -
+    findings.single_model_scaffold_disclosure acima) e lista a avaliacao de outros frameworks
+    como trabalho futuro, nao como algo realizado nesta versao (fonte: study_quality.scaffold
+    acima); este repositorio roda com Claude Code E Codex, sobre modelos nao fixados por este
+    estudo.
+  oracle_similarity: >-
+    Alta - verificacao executavel deterministica e o mesmo padrao de oraculo que
+    orchestration/evaluation-protocol.json exige (verifier.deterministic,
+    verifier.execution_based).
+inference_strength: EXTRAPOLATED
+inference_rationale: >-
+  O estudo e metodologicamente solido para o que mede (49 skills, verificador deterministico,
+  desenho pareado com/sem skill) mas mede um UNICO modelo e um UNICO scaffold, o que o proprio
+  artigo reconhece como limite ao nao avaliar frameworks alternativos. Generalizar "skills nao
+  ajudam em media" para qualquer outro modelo, scaffold ou classe de skill (workflow/PRD, nao
+  so codigo) excede o que foi medido. Alem disso 24 das 49 skills marcam 100% nos dois bracos
+  do experimento (efeito-teto: ver findings.ceiling_effect_skill_count) - para essas 24 o
+  desenho nao tinha como revelar ganho algum, o que reduz ainda mais o peso do "+1.2 pontos
+  percentuais" como medida de eficacia media. Por isso EXTRAPOLATED, nao SUPPORTED: a direcao
+  do resultado (skills nao sao universalmente beneficas) e util como cautela de politica, mas a
+  magnitude especifica nao se transporta para este harness sem assumir generalizacao alem do
+  que o estudo demonstra.
+findings:
+- metric: skills_no_pass_rate_change
+  value: "39/49"
+  source: fulltext
+  note: skills sem mudanca de pass rate detectada.
+- metric: skills_degraded
+  value: "3/49"
+  source: fulltext
+  note: skills que reduziram desempenho por conflito de orientacao com o contexto do projeto-alvo.
+- metric: mean_gain_percentage_points
+  value: "+1.2pp"
+  source: fulltext
+- metric: max_gain_percentage_points_domain_specific
+  value: "ate +30pp em sete skills de dominio especifico"
+  source: fulltext
+- metric: token_overhead_max_percent
+  value: "+451%"
+  source: fulltext
+  note: overhead de tokens observado, sem correlacao necessaria com ganho de pass rate.
+- metric: baseline_aggregate_pass_rate
+  value: "89.8% sem skill"
+  source: fulltext
+- metric: with_skill_aggregate_pass_rate
+  value: "91.0% com skill"
+  source: fulltext
+- metric: ceiling_effect_skill_count
+  value: "24/49"
+  source: fulltext
+  note: skills que marcaram 100% pass rate nos DOIS bracos (sem/com skill) - efeito-teto, sem espaco para revelar ganho.
+- metric: cost_effectiveness_pareto_counterexample
+  value: "CE=-0.86 (delta_P=+30.0%, rho=-34.8%) para risk-metrics-calculation"
+  source: fulltext
+  note: >-
+    resultado PARETO-DOMINANTE (mais correto E mais barato) recebe CE negativo pela metrica do
+    artigo - a metrica de custo-efetividade ordena o otimo como pior nesse quadrante, o que a
+    torna matematicamente inadequada ali. Isso limita a confianca no ranking de CE do artigo
+    como um todo, nao apenas nesse caso.
+- metric: single_model_scaffold_disclosure
+  value: "Claude Code with Claude Haiku 4.5"
+  source: fulltext
+  note: citacao verbatim da declaracao de modelo/scaffold unicos.
+- metric: preprint_status_disclosure
+  value: "Pre-print with preliminary results, work in progress"
+  source: fulltext
+  note: citacao verbatim do rodape do artigo.
+limitations:
+- Modelo e scaffold unicos (fonte - findings.single_model_scaffold_disclosure acima); o
+  proprio artigo lista a avaliacao de frameworks alternativos como trabalho futuro, nao como
+  algo realizado nesta versao (fonte - study_quality.scaffold acima).
+- Efeito-teto em quase metade das skills (fonte - findings.ceiling_effect_skill_count acima),
+  o que reduz o poder do desenho para detectar ganho nessas skills especificamente.
+- Pre-print com resultados que os proprios autores descrevem como preliminares.
+- A metrica de custo-efetividade (CE) do artigo e matematicamente inadequada no quadrante
+  Pareto-dominante (ver finding cost_effectiveness_pareto_counterexample); isso nao invalida os
+  numeros brutos de ganho e custo, mas invalida qualquer ranking derivado de CE sem reexame.
+- Dominio medido e codigo/SWE; skills de workflow (PRD, planejamento) nao fazem parte da
+  amostra e nao devem ser generalizadas a partir deste estudo.

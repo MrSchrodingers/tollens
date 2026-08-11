@@ -1,0 +1,94 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+literature_id: arxiv-2602.12670
+citation: >-
+  Li, X. et al. (78 autores, incluindo Dawn Song). SkillsBench: Benchmarking How Well Agent
+  Skills Work Across Diverse Tasks. arXiv:2602.12670, pre-print de 2026 (submetido em
+  2026-02-13; v4 em 2026-06-14). Contagem de autores conferida em
+  https://arxiv.org/abs/2602.12670 nesta sessao (lista completa, primeiro Xiangyi Li, ultimo
+  Dawn Song).
+identifier: arXiv:2602.12670
+url: https://arxiv.org/abs/2602.12670
+cited_in:
+- README.md#6.1
+- README.pt-BR.md#6.1
+- README.md#16 (referencia [15])
+- README.pt-BR.md#16 (referencia [15])
+- docs/research/2026-agent-skills-evidence-review.md
+provenance: preprint
+study_quality:
+  benchmark: SkillsBench
+  n: "87 tarefas em 8 dominios (fonte: texto completo)."
+  models: >-
+    [nao verificado] - o texto completo nao foi lido; o prompt de delegacao cita "18
+    configuracoes model-harness" mas isso NAO foi confirmado na fonte primaria.
+  scaffold: >-
+    [nao verificado] - mesma ressalva de models: configuracoes model-harness citadas na
+    delegacao, nao verificadas na fonte primaria.
+  oracle: verificadores deterministicos por tarefa, com comparacao pareada entre condicoes.
+  baseline: >-
+    33.9% sem skill para 50.5% com skill (fonte: texto completo), um ganho de +16.6 pontos
+    percentuais, com heterogeneidade forte entre tarefas e dominios.
+  trials_repeated: "[nao verificado] - nao confirmado na leitura."
+  uncertainty_reported: >-
+    [nao verificado] - o prompt de delegacao cita intervalos de confianca de Wald, mas isso NAO
+    foi verificado na fonte primaria.
+  code_data_available: "[nao verificado] - nao confirmado na leitura."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Media - oito dominios (fonte - findings.domain_count acima) e maior amplitude que o estudo
+    irmao desta camada sobre SWE-Skills-Bench, mas a composicao exata dos dominios e a
+    proximidade com as skills deste repositorio nao foi conferida (a leitura completa do texto
+    nao foi feita, ver limitations).
+  scaffold_similarity: >-
+    Nao verificado - o prompt de delegacao cita 18 configuracoes model-harness sem
+    confirmacao na fonte primaria; nao ha base para avaliar proximidade com Claude Code/Codex.
+  oracle_similarity: >-
+    Alta - verificadores deterministicos com comparacao pareada e o mesmo padrao de oraculo
+    que orchestration/evaluation-protocol.json exige.
+inference_strength: EXTRAPOLATED
+inference_rationale: >-
+  O ganho medio agregado (33.9pp para 50.5pp) e maior e na direcao oposta ao caso mais
+  cauteloso de arxiv-2603.15401, mas tres pecas metodologicas centrais para avaliar
+  applicability - a diversidade real de modelos/scaffolds (18 configuracoes citadas, nao
+  verificadas), o criterio de rejeicao de tarefas de baixo sinal e o metodo de intervalo de
+  confianca - nao foram verificadas na fonte primaria por esta investigacao. Um resultado
+  agregado favoravel, sem essas pecas confirmadas, nao sustenta mais que EXTRAPOLATED: a
+  direcao (skills curadas podem ajudar, com heterogeneidade) e util como contraponto ao caso
+  mais pessimista, mas a magnitude e a generalizacao para este harness dependem de detalhes
+  metodologicos ainda nao lidos na fonte primaria.
+findings:
+- metric: baseline_without_skill
+  value: "33.9%"
+  source: fulltext
+- metric: with_skill_pass_rate
+  value: "50.5%"
+  source: fulltext
+- metric: mean_gain_percentage_points
+  value: "+16.6pp"
+  source: fulltext
+- metric: task_count
+  value: "87 tarefas"
+  source: fulltext
+- metric: domain_count
+  value: "8 dominios"
+  source: fulltext
+- metric: model_harness_configurations_claimed
+  value: "18 configuracoes model-harness"
+  source: "[nao verificado] - citado no prompt de delegacao, nao confirmado na fonte primaria"
+- metric: submission_date
+  value: "submetido em 2026-02-13, v4 em 2026-06-14"
+  source: fulltext (metadados do arXiv)
+limitations:
+- Autoria coletiva de grande escala (78 autores); nao verificado se isso implica revisao por
+  pares ou apenas coordenacao de coleta de dados.
+- Heterogeneidade forte entre tarefas e dominios; o ganho medio agregado esconde variancia
+  relevante que nao foi decomposta aqui.
+- Sem ganho medio para skills auto-geradas (mencionado no texto completo, sem numero
+  especifico confiavel para citar).
+- Tres pecas metodologicas (configuracoes model-harness, rejeicao de tarefas de baixo sinal,
+  intervalos de confianca de Wald) permanecem [nao verificado] nesta camada de evidencia -
+  quem for citar esses detalhes precisa ler a fonte primaria antes.
