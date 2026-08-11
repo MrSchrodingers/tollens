@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# ESCALONAMENTO - orchestration/schedule.py torna o paralelismo por subagentes uma garantia
-# MECANICA: verifica (1) precedencia (ondas por nivelamento de caminho mais longo), (2)
-# escritas par-a-par disjuntas, (3) no maximo um no COMPARTILHADO tomando o lock de suite por
-# onda, e o `read_parallelism_cap` de orchestration/registry.json. Ate aqui nada impunha isso -
-# o paralelismo declarado em `orchestration/workflows/*.json` (ex.: review/refute/security sem
+# ESCALONAMENTO - orchestration/schedule.py e um VALIDADOR DE CONFIGURACAO DE ESCALONAMENTO:
+# verifica (1) precedencia (fecho transitivo do DAG, nao so pares na mesma onda de nivelamento),
+# (2) escritas par-a-par disjuntas entre nos sem relacao de precedencia, (3) no maximo um no
+# COMPARTILHADO tomando o lock de suite entre nos sem precedencia, e o `read_parallelism_cap`
+# de orchestration/registry.json (esse, sim, por onda). Ate aqui nada impunha isso - o
+# paralelismo declarado em `orchestration/workflows/*.json` (ex.: review/refute/security sem
 # aresta entre si) dependia da leitura do orquestrador, nao de um oraculo executavel.
 #
-# Os TRES workflows reais ja nascem sem conflito - review/refute[/security] nao tem aresta nem
-# escrita entre si, exatamente a disciplina que este repositorio ja prescrevia em prosa. Por
-# isso as fixtures F1-F9 constroem cenarios SINTETICOS sob EVIDENCE_GATE_ROOT (mesma convencao
-# de tests/unit/methodology.py e do `_prepara` de tests/mutation/fronteira.sh): sem elas, um
-# validador inerte (que sempre sai 0) passaria despercebido, porque os dados reais nunca
-# exercitam o caminho de rejeicao.
+# NAO e "garantia mecanica de paralelismo" sobre os workflows reais: medido, ha 9 pares de nos
+# concorrentes nos 3 workflows de producao e em ZERO deles a checagem de conflito de escrita (2)
+# chega a ser avaliada (todo no de codigo declara writes:["**"], os demais writes:[] - a
+# condicao `writes_a and writes_b` nunca fica verdadeira entre dois nos concorrentes reais). O
+# poder discriminante demonstrado abaixo vem inteiramente das fixtures SINTETICAS F1-F15,
+# construidas sob EVIDENCE_GATE_ROOT (mesma convencao de tests/unit/methodology.py e do
+# `_prepara` de tests/mutation/fronteira.sh): sem elas, um validador inerte (que sempre sai 0)
+# passaria despercebido, porque os dados reais nunca exercitam o caminho de rejeicao.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 # LOCK: suites deste repo nao sao reentrantes entre si (tests/lib/lock.sh).
@@ -23,7 +26,7 @@ chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL
 
 command -v jq >/dev/null 2>&1 || { echo "NAO VERIFICADO: jq ausente - oraculo de ondas exatas nao pode ser avaliado." >&2; exit 2; }
 
-echo "== fixtures sinteticas: F1-F9 sob EVIDENCE_GATE_ROOT proprio =="
+echo "== fixtures sinteticas: F1-F15 sob EVIDENCE_GATE_ROOT proprio =="
 python3 - "$TMP" <<'PY'
 import json, os, sys
 root = sys.argv[1]
@@ -100,6 +103,48 @@ write("f8-campo-ausente", 4, ["a", "b"], [["a", "b"]], {"a": node(), "b": m8})
 m9 = node()
 m9["isolation"] = "outro"
 write("f9-isolation-invalida", 4, ["a", "b"], [["a", "b"]], {"a": node(), "b": m9})
+
+# F10 - ilegal: mesmo arquivo com grafias diferentes ("./x" vs "x") - so detecta com
+# normalizacao de caminho em _glob_base (sem ela, falso negativo medido pela revisao
+# independente).
+write("f10-normaliza-caminho", 4,
+      ["a", "b", "c"], [["a", "b"], ["a", "c"]],
+      {"a": node(), "b": node(writes=["./src/x.py"]), "c": node(writes=["src/x.py"])})
+
+# F11 - ilegal (na VALIDACAO, nao na comparacao): expansao de chaves e fora do dialeto de
+# glob suportado - RECUSADA em vez de comparada errado (a comparacao por prefixo trataria
+# "src/{a,b}/x.py" como literal e nunca acusaria conflito com "src/a/x.py").
+write("f11-dialeto-glob-invalido", 4,
+      ["a", "b"], [["a", "b"]],
+      {"a": node(), "b": node(writes=["src/{a,b}/x.py"])})
+
+# F12 - ilegal: ciclo no grafo do workflow. Sem esta fixture, um mutante que remove o guard
+# `processados != len(nodes)` sobrevive (nenhum caso do repositorio tem ciclo).
+write("f12-ciclo", 4,
+      ["a", "b", "c"], [["a", "b"], ["b", "c"], ["c", "a"]],
+      {"a": node(), "b": node(), "c": node()})
+
+# F13 - ilegal: anticadeia SEM precedencia entre si, em NIVEIS diferentes do nivelamento por
+# caminho mais longo. nodes=[a,b,x], edges=[[a,b]]: "x" nao depende de nada (nivel 0, junto
+# com "a"), "b" fica no nivel 1 - mas "x" e "b" continuam sem relacao `<` entre si, escrevem
+# o MESMO arquivo e os dois tomam o lock de suite compartilhado. A checagem por ONDA (nivel)
+# nao pega este par; a checagem pelo fecho transitivo do DAG pega.
+write("f13-anticadeia-sem-precedencia", 4,
+      ["a", "b", "x"], [["a", "b"]],
+      {"a": node(), "b": node(writes=["src/x.py"], lock=True), "x": node(writes=["src/x.py"], lock=True)})
+
+# F14 - ilegal: aresta cujo DESTINO nao esta em "nodes". Sem validacao previa, isto
+# estourava KeyError cru (sem SCHEDULE_ERROR nenhum) dentro do nivelamento.
+write("f14-aresta-destino-fantasma", 4,
+      ["a", "b"], [["a", "b"], ["a", "fantasma"]],
+      {"a": node(), "b": node()})
+
+# F15 - ilegal: aresta cuja ORIGEM nao esta em "nodes". Sem validacao previa, isto inflava o
+# indegree de "b" sem nunca processar a origem fantasma, e o sintoma (processados != len(nodes))
+# era reportado como "ciclo detectado" - diagnostico ERRADO, nao ha ciclo aqui.
+write("f15-aresta-origem-fantasma", 4,
+      ["a", "b"], [["a", "b"], ["fantasma", "b"]],
+      {"a": node(), "b": node()})
 PY
 
 roda(){ EVIDENCE_GATE_ROOT="$TMP/$1" python3 "$SCHED" --check; }
@@ -137,6 +182,40 @@ chk "F8 metadado sem campo obrigatorio: RECUSADO" "$RC8" 1
 OUT9="$(roda f9-isolation-invalida 2>&1)"; RC9=$?
 chk "F9 isolation fora do dominio conhecido: RECUSADO" "$RC9" 1
 
+OUT10="$(roda f10-normaliza-caminho 2>&1)"; RC10=$?
+chk "F10 mesmo arquivo grafado como './x' e 'x': RECUSADO" "$RC10" 1
+printf '%s' "$OUT10" | grep -qF "conflito de escrita entre 'b' e 'c'"
+chk "  F10 normalizacao de caminho detecta o conflito" $? 0
+
+OUT11="$(roda f11-dialeto-glob-invalido 2>&1)"; RC11=$?
+chk "F11 writes com expansao de chaves: RECUSADO" "$RC11" 1
+printf '%s' "$OUT11" | grep -qF "fora do dialeto suportado"
+chk "  F11 recusa em vez de comparar errado" $? 0
+
+OUT12="$(roda f12-ciclo 2>&1)"; RC12=$?
+chk "F12 ciclo no grafo do workflow: RECUSADO" "$RC12" 1
+printf '%s' "$OUT12" | grep -qF "ciclo detectado"
+chk "  F12 diagnostica ciclo" $? 0
+
+OUT13="$(roda f13-anticadeia-sem-precedencia 2>&1)"; RC13=$?
+chk "F13 anticadeia sem precedencia em niveis diferentes: RECUSADO" "$RC13" 1
+printf '%s' "$OUT13" | grep -qF "conflito de escrita entre 'b' e 'x'"
+chk "  F13 pega conflito de escrita fora da mesma onda" $? 0
+printf '%s' "$OUT13" | grep -qF "disputa o lock de suite"
+chk "  F13 pega disputa de lock fora da mesma onda" $? 0
+
+OUT14="$(roda f14-aresta-destino-fantasma 2>&1)"; RC14=$?
+chk "F14 aresta com destino fora de 'nodes': RECUSADO" "$RC14" 1
+printf '%s' "$OUT14" | grep -qF "aresta referencia no inexistente em 'nodes': 'fantasma' (destino)"
+chk "  F14 erro estruturado, sem KeyError cru" $? 0
+
+OUT15="$(roda f15-aresta-origem-fantasma 2>&1)"; RC15=$?
+chk "F15 aresta com origem fora de 'nodes': RECUSADO" "$RC15" 1
+printf '%s' "$OUT15" | grep -qF "aresta referencia no inexistente em 'nodes': 'fantasma' (origem)"
+chk "  F15 diagnostica aresta invalida" $? 0
+! printf '%s' "$OUT15" | grep -qF "ciclo detectado"
+chk "  F15 nao rotula como ciclo (diagnostico errado)" $? 0
+
 echo
 echo "== os TRES workflows reais deste repositorio =="
 OUTP="$(python3 "$SCHED" --check 2>&1)"; RCP=$?
@@ -153,7 +232,7 @@ chk "  ondas exatas de standard-change (nivelamento de precedencia correto)" "$G
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=15
+EXPECTED=29
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
