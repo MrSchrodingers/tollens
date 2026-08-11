@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: 1b6644388396bf566c5b8553a8cca46bf7e63ac0
+  subject_snapshot: f97fc70b606f40ecd05e4879bdf2b5ac207f8b69
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -19,8 +19,9 @@ scope:
   runtime:
     gh_cli: 2.96.0
 evidence:
-  regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15]
-  mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7]
+  regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15,
+               V16, V17, V18, V19, V20]
+  mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7, MV8, MV9, MV10, MV11]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
@@ -106,7 +107,59 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   ANTES desta correcao - reproduzido com stub e confirmado. O que faltava era o mutante que
   provasse que essa saida dependia da ORDEM dos dois `if` do portao final, e nao de coincidencia:
   V15 fecha o caso e MV7 inverte a ordem (nao_medidos checado antes de problemas) - a suite fica
-  vermelha na assercao de V15 que confere a ausencia de NOT_VERIFIED.'
+  vermelha na assercao de V15 que confere a ausencia de NOT_VERIFIED.
+
+  ADENDO (commit `f97fc70b606f40ecd05e4879bdf2b5ac207f8b69`, onda 4, revisao independente de
+  2026-08-11): o paragrafo SEGUNDO ACHADO CRITICO acima afirma que a correcao
+  `1b6644388396bf566c5b8553a8cca46bf7e63ac0` fechou a CLASSE do defeito sobre `bypass_actors`
+  (chave ausente -> valor nulo -> tipo do container). Essa afirmacao era FALSA: a mesma revisao
+  encontrou, no MESMO commit `a87f8d2995650575638efe1c7f34a27064bb90b0`, quatro pontos de codigo
+  com a MESMA forma de defeito que V10-V15/MV5-MV7 nao cobriam - C1 (`ruleset_id` ausente em
+  PARTE das regras `required_status_checks` aplicaveis: a regra desaparecia do conjunto sem
+  entrar em `nao_medidos`, e o portao emitia PASS com a afirmacao universal "bypass_actors=[] em
+  todos os rulesets de origem" sem ter resolvido bypass daquela regra; reproduzido:
+  `estado: PASS  exit=0` com duas regras aplicaveis e so a primeira lida); C2 (o guard de tipo
+  cobria o CONTAINER de `bypass_actors`, nao o ELEMENTO - uma lista como `["OrganizationAdmin"]`
+  passava e `{"ruleset_id": rid, **a}` estourava `TypeError`, exit 1); A1 (`parameters` nunca
+  teve guard - uma string estourava `AttributeError` no primeiro `.get()` seguinte, exit 1); A2
+  (ausencia de `enforcement`/`strict_required_status_checks_policy` era COAGIDA em violacao
+  FABRICADA - `enforcement="None"` entrava em `problemas`, e o `return FAIL` descartava
+  `nao_medidos` sem mencionar a lacuna real de `bypass_actors`). Os quatro foram reproduzidos com
+  o binario `gh` stubado ANTES desta correcao, contra o HEAD herdado `a87f8d299...`, e as saidas
+  batem exatamente com o descrito acima.
+
+  A correcao NAO adiciona um quinto guard: introduz `valida_campo`
+  (evidence/probes/github-ruleset.py), um validador declarativo UNICO que distingue AUSENTE /
+  NULO explicito / TIPO invalido / ELEMENTO invalido para qualquer campo das duas respostas,
+  usado sistematicamente nos quatro pontos (`ruleset_id`, `parameters` e seus subcampos,
+  `enforcement`, `bypass_actors` e seu elemento) em vez de um `if/elif` manual reescrito por
+  campo a cada onda. A mesma doutrina foi estendida a `Required(P)`: uma regra
+  `required_status_checks` aplicavel que nao pode ser lida por completo (`parameters`
+  malformado, ou um item de `required_status_checks` que nao e objeto) agora produz
+  NOT_VERIFIED, nunca mais `Required(P) = False` fabricado por omissao - o mesmo raciocinio de
+  A2, aplicado a um termo que antes so tinha dois estados (medido-conforme / medido-violando) e
+  passa a ter tres.
+
+  `tests/unit/fronteira-viva.sh` ganhou V16 (C1), V17 (C2), V18 (A1), V19 (A2) e V20 - um QUINTO
+  caso, distinto dos quatro acima (item de `required_status_checks` que nao e objeto), a prova de
+  que o schema fecha uma FAMILIA e nao uma lista enumerada de campos - 78/78 verde.
+  `tests/mutation/fronteira-viva.sh` reancorou MV1 e MV3 (o corpo mudou de `if/elif` manual para
+  `valida_campo`; V9/MV3 tambem passaram a usar um ESCALAR, nao uma lista, como resposta
+  malformada de rulesets/{id} - `valida_campo` usa `nome not in objeto`, que nao estoura para
+  lista/string, so para um valor nao iteravel) e ganhou MV8-MV11, um por garantia nova - 11/11
+  mortos no caso certo. O PASS legitimo (repositorio proprio `MrSchrodingers/evidence-gate`,
+  token com `admin: true` sobre o ruleset) foi reexecutado ANTES e DEPOIS desta correcao e
+  permanece PASS/exit 0 nos dois commits - a mudanca nao regride o caminho feliz.
+
+  Esta correcao NAO reautoriza dizer "a classe esta fechada": cada onda anterior fez exatamente
+  essa afirmacao e foi refutada pela onda seguinte. O que mudou de fato e o MECANISMO - de guard
+  enumerado por campo para validacao declarativa por schema, que cobre qualquer forma invalida de
+  um campo JA LIDO pelo probe sem exigir um guard novo por campo - mas o schema so cobre os
+  campos que o codigo LE hoje. Um campo novo introduzido por uma mudanca futura no probe (por
+  exemplo, se ele passar a ler `conditions` do ruleset, ou `current_user_can_bypass` de uma regra
+  `pull_request`) exigiria uma entrada de schema propria; `valida_campo` fecha a classe de formas
+  invalidas de um campo ja declarado, nao adivinha campos que o codigo ainda nao le. Ver
+  `limitations` para o que continua fora.'
 limitations:
 - 'Endereca DIRETAMENTE a limitacao que C-017 ja declarava: "A suite `tests/unit/fronteira-externa.sh`
   e ESTATICA: le os arquivos de workflow. Ela nao observa check-runs reais - isso e o que a
@@ -167,5 +220,39 @@ limitations:
   mutante para a ORDEM do portao final foi fechada com V15 + MV7, usando exatamente o caso que
   este paragrafo ja previa (strict medido + campo nao divulgado no MESMO ruleset). Este ledger
   nao apaga o paragrafo original: ele registra, com precisao, o que ainda NAO estava coberto
-  naquele momento.'
+  naquele momento.
+
+  CORRECAO 2 (commit `f97fc70b606f40ecd05e4879bdf2b5ac207f8b69`, onda 4): a frase de abertura
+  deste paragrafo ("Os quatro mutantes... cobrem os pontos de codigo que a correcao introduziu")
+  tambem era otimista demais - "os pontos de codigo que a correcao introduziu" eram so os que a
+  correcao DAQUELA onda tocou, nao todos os pontos onde a MESMA forma de defeito podia ocorrer.
+  MV8-MV11 cobrem quatro pontos NOVOS (`ruleset_id`, elemento de `bypass_actors`, `parameters`,
+  `enforcement`) que nenhuma onda anterior enderecara. Ver o ADENDO no `warrant` acima para a
+  narrativa completa, e a limitacao nova abaixo para o que continua sem mutante dedicado.'
+- 'A2 tem DUAS metades no codigo (`strict_required_status_checks_policy` ausente, dentro do laco
+  sobre `rsc`; `enforcement` ausente, dentro do laco sobre `ruleset_ids`) - a mesma forma,
+  aplicada a dois campos de duas respostas diferentes. MV11 reproduz e mata so a metade de
+  `enforcement` (a que a delegacao desta correcao reproduziu e pediu para fechar). A metade de
+  `strict_required_status_checks_policy` usa a MESMA chamada a `valida_campo` e o MESMO padrao de
+  tres ramos (FALTANTE/NULO/TIPO_INVALIDO -> nao_medidos), mas nao tem mutante proprio: a
+  garantia depende da simetria estrutural do codigo, nao de uma prova direta por mutacao. Se as
+  duas metades divergirem no futuro (por exemplo, um refactor que atualize so uma), esta suite
+  nao detecta a divergencia na outra.'
+- 'A extensao de `Required(P)` para um terceiro estado (nao_medido, alem de medido-conforme e
+  medido-violando - ver ADENDO no `warrant`) e nova nesta correcao e testada por V18/V20
+  (parameters malformado; item de required_status_checks nao-objeto), mas nao tem mutante
+  dedicado que reverta especificamente o novo ramo `if nao_medidos: return NOT_VERIFIED` dentro
+  da checagem de contexto - MV8/MV9/MV10 provam os GUARDS que alimentam `nao_medidos` nesse
+  ponto, nao o CONSUMO dele ali. Um mutante que removesse so esse `if` (voltando ao
+  `Required(P) = False` incondicional anterior) sobreviveria a mutacao, ainda que V18/V20 o
+  peguem na suite de regressao normal.'
+- 'O schema declarado em `valida_campo` cobre exatamente os campos que `evidence/probes/
+  github-ruleset.py` LE hoje (`ruleset_id`, `parameters`, `strict_required_status_checks_policy`,
+  `required_status_checks`, `enforcement`, `bypass_actors`, `current_user_can_bypass`). Um campo
+  novo introduzido por uma mudanca FUTURA no probe (por exemplo, se ele passar a ler
+  `conditions.ref_name` do ruleset, ou auditar `bypass_actors` de regras `pull_request`/
+  `deletion`/`non_fast_forward` - ja apontado como fora de escopo na limitacao acima) NAO herda
+  automaticamente a mesma protecao: exigiria uma chamada a `valida_campo` propria, no ponto onde
+  o campo passasse a ser lido. O mecanismo fechou a CLASSE de formas invalidas de um campo ja
+  declarado; nao fecha a classe de "campos que este probe ainda nao le".'
 status: supported-in-tested-domain
