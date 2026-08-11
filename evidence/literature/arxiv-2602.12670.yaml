@@ -1,5 +1,7 @@
 # Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
-# para a definicao da escala fechada de inference_strength.
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
 literature_id: arxiv-2602.12670
 citation: >-
   Li, X. et al. (77 autores, incluindo Dawn Song). SkillsBench: Benchmarking How Well Agent

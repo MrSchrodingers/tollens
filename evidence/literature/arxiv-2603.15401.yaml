@@ -1,9 +1,14 @@
 # Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
-# para a definicao da escala fechada de inference_strength.
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
 literature_id: arxiv-2603.15401
 citation: >-
-  Han, T.; Zhang, Y.; Song, S.; Fang, Y.; Chen, Y.; Sun, L.; Hu, X. SWE-Skills-Bench: Do Agent
+  Han, T.; Zhang, Y.; Song, W.; Fang, C.; Chen, Z.; Sun, Y.; Hu, L. SWE-Skills-Bench: Do Agent
   Skills Actually Help in Real-World Software Engineering? arXiv:2603.15401, pre-print de 2026.
+  Lista de autores conferida em https://arxiv.org/abs/2603.15401 nesta sessao (ordem real: Tingxu
+  Han, Yi Zhang, Wei Song, Chunrong Fang, Zhenyu Chen, Youcheng Sun, Lijie Hu) - a versao usada
+  antes desta correcao trocava as iniciais de Song, Fang, Chen, Sun e Hu.
 identifier: arXiv:2603.15401
 url: https://arxiv.org/abs/2603.15401
 cited_in:
@@ -25,9 +30,16 @@ study_quality:
     Um unico modelo: Claude Haiku 4.5 (fonte: texto completo - "Claude Code with Claude Haiku
     4.5"). Nao ha comparacao entre modelos.
   scaffold: >-
-    Um unico scaffold: Claude Code (fonte: texto completo). O proprio artigo declara nao
-    avaliar frameworks alternativos ("does not evaluate alternative agent frameworks",
-    verificado no texto completo).
+    Um unico scaffold: Claude Code (fonte: texto completo). A frase entre aspas usada
+    anteriormente aqui ("does not evaluate alternative agent frameworks") NAO existe no texto
+    completo (conferido em https://arxiv.org/html/2603.15401v1 nesta sessao) - era citacao
+    inventada. O que o artigo realmente diz, na secao 5 "Discussion & Future Directions",
+    subsecao "Diverse agent scaffolds": "We intend to benchmark skill utility across multiple
+    open-source and proprietary agent frameworks (e.g., SWE-agent, OpenHands, Aider) to assess
+    whether our findings generalize beyond the specific scaffold used in this study" (citacao
+    verbatim, fonte: texto completo). Ou seja: o artigo declara a INTENCAO de avaliar outros
+    frameworks como trabalho futuro - confirma, por omissao no desenho atual e nao por uma
+    declaracao direta de "nao avaliamos", que a versao publicada usa um unico scaffold.
   oracle: verificacao executavel por instancia, com criterio de aceite deterministico.
   baseline: >-
     89.8% de pass rate agregado SEM skill; 91.0% COM skill (fonte: texto completo) - ou seja,

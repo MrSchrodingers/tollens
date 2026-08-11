@@ -1,5 +1,7 @@
 # Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
-# para a definicao da escala fechada de inference_strength.
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
 literature_id: arxiv-2601.10338
 citation: >-
   Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.
@@ -14,16 +16,22 @@ cited_in:
 provenance: preprint
 study_quality:
   benchmark: "SkillScan (fonte: texto completo - detector proprio do estudo)."
-  n: "31132 skills coletadas de duas marketplaces (fonte: texto completo)."
+  n: >-
+    42447 skills coletadas de duas marketplaces (skills.rest, skillsmp.com); apos filtragem e
+    deduplicacao, 31132 skills unicas foram analisadas com SkillScan (fonte: texto completo -
+    abstract e secao 3, "First large-scale study"). O denominador da versao anterior desta
+    entrada ("31132 skills coletadas") trocava coleta por analise - sao duas contagens distintas
+    do proprio artigo.
   models: >-
     [nao verificado] - SkillScan e um detector estatico/comportamental, nao um LLM avaliado
     como sujeito do estudo; a arquitetura interna do detector nao foi reconferida.
   scaffold: nao aplicavel - o objeto medido e a skill em si, nao um agente executando-a em um scaffold.
   oracle: "deteccao automatica via SkillScan, com precisao e recall reportados (ver findings)."
   baseline: >-
-    26.1% das skills coletadas com pelo menos uma vulnerabilidade (fonte: texto completo); essa
-    proporcao depende da populacao coletada e da precisao/recall do detector (ver findings e
-    limitations) e NAO e prevalencia do universo geral de skills.
+    26.1% das skills ANALISADAS (31132, apos filtragem/deduplicacao das 42447 coletadas) com
+    pelo menos uma vulnerabilidade (fonte: texto completo); essa proporcao depende da populacao
+    analisada e da precisao/recall do detector (ver findings e limitations) e NAO e prevalencia
+    do universo geral de skills.
   trials_repeated: nao aplicavel - estudo de levantamento em corpus fixo, nao trials repetidos.
   uncertainty_reported: >-
     [nao verificado] - intervalo de confianca sobre a taxa de 26.1% nao confirmado na leitura.
@@ -44,23 +52,30 @@ inference_strength: SUPPORTED
 inference_rationale: >-
   O estudo mede diretamente a mesma classe de artefato (agent skills publicadas) que a politica
   de quarentena e promocao deste repositorio governa, em escala grande o bastante para ser mais
-  que um caso isolado (fonte: findings.skills_collected). A proporcao agregada de skills com
-  vulnerabilidade (fonte: findings.skills_with_vulnerability_pct) tem uma ressalva
-  metodologica explicita - depende da populacao coletada e da precisao/recall do detector,
-  ambos reportados e portanto auditaveis - o que impede DIRECT (nao mede skills deste
-  repositorio), mas a proximidade do objeto medido e a escala do levantamento sustentam
-  SUPPORTED, um nivel acima de SUGGESTIVE. Este e, junto com arxiv-2602.06547, o warrant mais
-  direto para quarentena e least-privilege de skill neste repositorio - mais direto que os
-  estudos de eficacia (arxiv-2603.15401, arxiv-2602.12670), porque a justificativa de seguranca
-  nao depende de a skill melhorar pass rate.
+  que um caso isolado (fonte: findings.skills_collected e findings.skills_analyzed). A proporcao
+  agregada de skills com vulnerabilidade (fonte: findings.skills_with_vulnerability_pct) tem uma
+  ressalva metodologica explicita - depende da populacao ANALISADA (31132, apos filtragem das
+  42447 coletadas) e da precisao/recall do detector, ambos reportados e portanto auditaveis - o
+  que impede DIRECT (nao mede skills deste repositorio), mas a proximidade do objeto medido e a
+  escala do levantamento sustentam SUPPORTED, um nivel acima de SUGGESTIVE. Este e, junto com
+  arxiv-2602.06547, o warrant mais direto para quarentena e least-privilege de skill neste
+  repositorio - mais direto que os estudos de eficacia (arxiv-2603.15401, arxiv-2602.12670),
+  porque a justificativa de seguranca nao depende de a skill melhorar pass rate.
 findings:
 - metric: skills_collected
+  value: "42447"
+  source: fulltext
+  note: total coletado das duas marketplaces (skills.rest, skillsmp.com), antes de filtragem/deduplicacao.
+- metric: skills_analyzed
   value: "31132"
   source: fulltext
+  note: >-
+    subconjunto unico apos filtragem e deduplicacao das 42447 coletadas; e o denominador da taxa
+    de vulnerabilidade de 26.1% abaixo, nao as 42447 coletadas.
 - metric: skills_with_vulnerability_pct
   value: "26.1%"
   source: fulltext
-  note: depende da populacao coletada e do detector - nao e prevalencia do universo de skills.
+  note: depende da populacao ANALISADA (31132) e do detector - nao e prevalencia do universo de skills.
 - metric: vulnerability_pattern_count
   value: "14 padroes em 4 categorias"
   source: fulltext
@@ -83,10 +98,10 @@ findings:
   value: "82.5%"
   source: fulltext
 limitations:
-- A taxa de skills com vulnerabilidade depende da populacao coletada (duas marketplaces
-  especificas) e da precisao/recall do detector (fonte - findings acima); nao e uma estimativa
-  de prevalencia do universo geral de agent skills - ressalva que o proprio estudo declara e
-  que esta camada preserva.
+- A taxa de skills com vulnerabilidade depende da populacao ANALISADA apos filtragem/deduplicacao
+  (31132 de 42447 coletadas, ambas de duas marketplaces especificas - fonte - findings acima) e
+  da precisao/recall do detector; nao e uma estimativa de prevalencia do universo geral de agent
+  skills - ressalva que o proprio estudo declara e que esta camada preserva.
 - Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
   quarentena/promocao aqui adotado; mede a classe geral de artefato.
 - Detector estatico/comportamental pode nao capturar vulnerabilidade que depende de contexto de
