@@ -46,7 +46,25 @@ Este probe segue a mesma doutrina para a rede e a API:
                                                   e ainda assim mergear).
   - bypass_actors nao vazio, ou
     `current_user_can_bypass` != "never"    -> FAIL, exit 1. Bypass(a,P) = True para algum a.
+  - resposta de rulesets/{id} que nao e
+    um objeto (oraculo malformado)          -> NOT_VERIFIED, exit 2. Nunca AttributeError/exit 1.
+  - `bypass_actors` ou `current_user_can_bypass`
+    AUSENTES da resposta do ruleset         -> NOT_VERIFIED, exit 2 (a menos que outro campo
+                                                  medido ja prove FAIL - ver abaixo). A API so
+                                                  devolve `bypass_actors` a quem tem acesso de
+                                                  escrita ao ruleset ("Get a repository ruleset",
+                                                  https://docs.github.com/en/rest/repos/rules).
+                                                  Um GITHUB_TOKEN de Actions com `contents: read`
+                                                  (o perfil de execucao agendada) nao tem essa
+                                                  permissao: o campo nao vem, e ausencia nao e
+                                                  "medido: ninguem burla". `or []` sobre um campo
+                                                  nao devolvido era exatamente essa confusao.
   - tudo acima satisfeito                    -> PASS, exit 0.
+
+Quando ha violacao PROVADA (bypass_actors nao vazio, current_user_can_bypass!=never,
+enforcement!=active, strict desligado) E, em outro ruleset aplicavel, um campo nao foi
+divulgado, o resultado e FAIL, nao NOT_VERIFIED: Bypass(a,P)=True ja esta demonstrado, e
+rebaixar isso para "nao medido" esconderia um problema real atras de uma lacuna de permissao.
 
 NUNCA "PASS porque o YAML parece certo". O YAML nunca entra nesta decisao.
 
@@ -203,8 +221,21 @@ def probe(owner, repo, branch, context):
         )
 
     # --- ¬Bypass(a,P): so o endpoint de RULESET individual traz bypass_actors e
-    # current_user_can_bypass. rules/branches/{branch} nao os inclui (medido: ver observacao). ---
+    # current_user_can_bypass. rules/branches/{branch} nao os inclui (medido: ver observacao).
+    #
+    # NENHUM dos dois campos e garantido na resposta. A documentacao da API ("Get a repository
+    # ruleset", https://docs.github.com/en/rest/repos/rules) declara: "To prevent leaking
+    # sensitive information, the bypass_actors property is only returned if the user making the
+    # API request has write access to the ruleset." Medido nesta sessao contra um repositorio
+    # onde o token NAO tem write no ruleset (`gh api repos/github/docs/rulesets/19633356`):
+    # 'bypass_actors' ausente da resposta, 'current_user_can_bypass' presente. Um GITHUB_TOKEN de
+    # Actions com `contents: read` (o perfil que evidence/claims/C-018.yaml recomenda para
+    # execucao AGENDADA) esta nessa mesma situacao. `detalhe.get("bypass_actors") or []`
+    # colapsava "medido: nenhum ator pode burlar" com "nao divulgado por falta de permissao" - o
+    # mesmo defeito que este probe existe para corrigir, agora sobre o proprio termo
+    # not Bypass(a,P). Campo ausente e NOT_VERIFIED, nunca PASS por omissao de sinal.
     problemas = []
+    nao_medidos = []
     bypass_total = []
     detalhes_rulesets = {}
     for rid in sorted(ruleset_ids):
@@ -212,6 +243,14 @@ def probe(owner, repo, branch, context):
         if err:
             return Resultado(NOT_VERIFIED,
                               f"nao foi possivel ler o ruleset {rid} para resolver bypass: {err}")
+        if not isinstance(detalhe, dict):
+            # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
+            # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
+            # NOT_VERIFIED - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
+            return Resultado(
+                NOT_VERIFIED,
+                f"resposta de rulesets/{rid} nao e um objeto: {type(detalhe).__name__} - "
+                f"oraculo malformado, nao ha como resolver bypass_actors nem enforcement")
         detalhes_rulesets[rid] = detalhe
         enforcement = detalhe.get("enforcement")
         if enforcement != "active":
@@ -219,13 +258,26 @@ def probe(owner, repo, branch, context):
             # ativa. Se um dia esse filtro mudar de comportamento, este probe nao herda a
             # suposicao em silencio.
             problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
-        atores = detalhe.get("bypass_actors") or []
-        if atores:
-            bypass_total.extend({"ruleset_id": rid, **a} for a in atores)
-        cucb = detalhe.get("current_user_can_bypass")
-        if cucb not in (None, "never"):
-            problemas.append(
-                f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
+
+        if "bypass_actors" not in detalhe:
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
+                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+        else:
+            atores = detalhe["bypass_actors"] or []
+            if atores:
+                bypass_total.extend({"ruleset_id": rid, **a} for a in atores)
+
+        if "current_user_can_bypass" not in detalhe:
+            nao_medidos.append(
+                f"ruleset {rid}: 'current_user_can_bypass' ausente da resposta - not Bypass(a,P) "
+                f"NAO foi medido para o ator autenticado (mesma doutrina de 'bypass_actors': "
+                f"ausencia nao e 'never').")
+        else:
+            cucb = detalhe["current_user_can_bypass"]
+            if cucb != "never":
+                problemas.append(
+                    f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
 
     if bypass_total:
         problemas.append(f"bypass_actors nao vazio: {bypass_total}")
@@ -237,10 +289,25 @@ def probe(owner, repo, branch, context):
             f"({strict_flags})")
 
     if problemas:
+        # FAIL vence sobre "nao medido": uma violacao ja PROVADA (bypass_actors nao vazio,
+        # current_user_can_bypass != never, enforcement != active, strict desligado) decide
+        # Bypass(a,P) = True de qualquer forma, mesmo que outro ruleset aplicavel nao tenha
+        # divulgado o proprio campo. Rebaixar isso a NOT_VERIFIED esconderia um problema real
+        # atras de "faltou permissao para medir" - o oposto do fail-closed que este bloco existe
+        # para impor.
         return Resultado(
             FAIL,
             "Applies(P,r) e Required(P) valem, mas Bypass(a,P) ou a politica de atualizacao "
             "falham: " + "; ".join(problemas),
+            {"rules": rules, "rulesets": detalhes_rulesets},
+        )
+
+    if nao_medidos:
+        return Resultado(
+            NOT_VERIFIED,
+            "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+            "medidos, mas not Bypass(a,P) NAO foi medido por completo - PASS exigiria medir, "
+            "nao supor: " + "; ".join(nao_medidos),
             {"rules": rules, "rulesets": detalhes_rulesets},
         )
 
