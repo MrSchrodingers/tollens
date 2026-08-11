@@ -117,5 +117,7 @@ jobs:
         run: bash tests/mutation/literatura.sh
       - name: validacao por mutacao (claim ledger)
         run: bash tests/mutation/claims.sh
+      - name: validacao por mutacao (capability declarada)
+        run: bash tests/mutation/capabilities.sh
       - name: suite legada
         run: bash tests/unit/run.sh

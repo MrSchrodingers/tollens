@@ -66,6 +66,9 @@ trap 'rm -f "$TMP"' EXIT
   m_claims="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/claims.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/claims.sh >/dev/null 2>&1
   printf '| claim ledger | %s | %s |\n' "${m_claims:-?}" "$?"
+  m_cap="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/capabilities.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/capabilities.sh >/dev/null 2>&1
+  printf '| capability declarada | %s | %s |\n' "${m_cap:-?}" "$?"
 
   printf '\n## Componentes\n\n| Tipo | Qtd |\n|---|---:|\n'
   awk -F'\t' '!/^#/{c[$1]++} END{for(t in c) printf "| %s | %s |\n", t, c[t]}' install/manifest.lock | sort
