@@ -76,9 +76,25 @@ findings:
 - metric: domain_count
   value: "8 dominios"
   source: fulltext
-- metric: model_harness_configurations_claimed
+- metric: model_harness_configurations
   value: "18 configuracoes model-harness"
-  source: "[nao verificado] - citado no prompt de delegacao, nao confirmado na fonte primaria"
+  source: fulltext
+  note: >-
+    Promovido de [nao verificado] para verificado em 2026-08-11, lendo o HTML v4 cru.
+    Verbatim - "evaluated under matched no-Skills and curated-Skills conditions across 18
+    model-harness configurations". Heterogeneidade por configuracao +4.1 a +25.7pp; o ganho
+    normalizado e 25.5%.
+- metric: task_selection_conditioned_on_effect
+  value: "tarefas sem separacao mensuravel entre condicoes sao REJEITADAS na construcao"
+  source: fulltext
+  note: >-
+    Promovido de [nao verificado] em 2026-08-11. Verbatim, HTML v4 - "tasks with no measurable
+    separation between conditions are rejected as low-signal. The current public evaluation
+    aggregate retains 87 tasks". Inventario final vem de 400 submissoes de 142 contribuidores.
+    CONSEQUENCIA INFERENCIAL, e nao apenas um detalhe de construcao - o criterio de aceitacao
+    de tarefa depende do EFEITO DA INTERVENCAO que o benchmark mede. Isso e valido para
+    construir benchmark de capacidade de uso de skill, e invalido para estimar o efeito medio
+    de adicionar skill a uma tarefa arbitraria. Ver limitations.
 - metric: submission_date
   value: "submetido em 2026-02-13, v4 em 2026-06-14"
   source: fulltext (metadados do arXiv)
@@ -89,6 +105,17 @@ limitations:
   relevante que nao foi decomposta aqui.
 - Sem ganho medio para skills auto-geradas (mencionado no texto completo, sem numero
   especifico confiavel para citar).
-- Tres pecas metodologicas (configuracoes model-harness, rejeicao de tarefas de baixo sinal,
-  intervalos de confianca de Wald) permanecem [nao verificado] nesta camada de evidencia -
-  quem for citar esses detalhes precisa ler a fonte primaria antes.
+- Intervalos de confianca de Wald permanecem [nao verificado] nesta camada. As outras duas
+  pecas que antes estavam nesta linha (configuracoes model-harness, rejeicao de tarefas de
+  baixo sinal) foram lidas na fonte primaria em 2026-08-11 e promovidas para findings.
+- O +16.6pp NAO estima o efeito de adicionar skill a uma tarefa arbitraria, e nao deve ser
+  citado como se estimasse (fonte - findings.task_selection_conditioned_on_effect acima). O
+  criterio de aceitacao de tarefa do benchmark exige separacao mensuravel entre as condicoes,
+  isto e, condiciona a amostra ao proprio efeito que se quer medir.
+- SIMETRIA COM arxiv-2603.15401, e a razao de os dois numeros nao serem contraditorios (fonte -
+  a entrada arxiv-2603.15401.yaml desta mesma camada, e findings.task_selection_conditioned_on_effect
+  acima). La o baseline agregado e alto e 24 de 49 tarefas marcam 100% nos DOIS bracos, o que enche a
+  amostra de tarefa incapaz de revelar ganho e puxa a media para baixo. Aqui a construcao
+  REMOVE exatamente esse tipo de tarefa e puxa para cima. +1.2pp e +16.6pp sao estimandos
+  diferentes sobre populacoes construidas por criterios opostos; tratar um como refutacao do
+  outro e erro de leitura, nao divergencia empirica.
