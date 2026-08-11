@@ -1,0 +1,175 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+#
+# cited_in intencionalmente OMITIDO: nenhum documento deste repositorio cita esta entrada ainda.
+# Atualizar ADR, prompt de agente ou README para referencia-la esta fora do escopo desta tarefa
+# (a delegacao autoriza so criar arquivos novos em evidence/literature/).
+literature_id: arxiv-2512.07850
+citation: >-
+  Cuadron, A.; Yu, P.; Liu, Y.; Gupta, A. SABER: Small Actions, Big Errors - Safeguarding
+  Mutating Steps in LLM Agents. arXiv:2512.07850, pre-print submetido ao ICLR2026 (fonte -
+  campo Comments da pagina abs, "submitted to ICLR2026", conferido nesta sessao).
+identifier: arXiv:2512.07850
+url: https://arxiv.org/abs/2512.07850
+provenance: preprint
+study_quality:
+  benchmark: >-
+    tau-Bench (Airline e Retail) e SWE-Bench Verified; os autores tambem lancam tau-Bench
+    Verified, uma revisao propria do dataset original (fonte - texto completo, secao 5,
+    conferido no HTML cru nesta sessao).
+  n: >-
+    tau-Bench e tau-Bench Verified sao avaliados com tres modelos (Qwen3-235B-A22B-Thinking-
+    2507, gpt-5-2025-08-07 medium reasoning, claude-sonnet-4-20250514); SWE-Bench Verified e
+    avaliado com apenas UM modelo, Qwen3-235B-A22B-Thinking-2507 - GPT-5 e Claude Sonnet 4 NAO
+    foram avaliados nesse benchmark, por decisao explicita de custo dos autores (fonte - texto
+    completo, secao 6.1, string "due to the inherent cost of evaluating closed-source models
+    we only evaluate Qwen3-235B-A22B-Thinking-2507 on SWE-Bench Verified" conferida no HTML
+    cru nesta sessao; Table 2 mostra travessao nas colunas ChatGPT-5 e Claude Sonnet 4 para a
+    linha SWE-Bench V).
+  models: >-
+    Qwen3-235B-A22B-Thinking-2507 (aberto), gpt-5-2025-08-07 medium reasoning e
+    claude-sonnet-4-20250514 (fonte - texto completo, secao 6.1, conferido no HTML cru nesta
+    sessao).
+  scaffold: >-
+    tau-Bench para Airline/Retail; OpenHands como framework de tool-calling para SWE-Bench
+    Verified (fonte - texto completo, secao 6.1, conferido no HTML cru nesta sessao). Nenhum
+    dos dois e Claude Code nem Codex, mas SWE-Bench Verified com OpenHands e o mesmo GENERO de
+    tarefa (edicao de repositorio de codigo real com patch e teste) que este repositorio
+    trata.
+  oracle: >-
+    Regressao logistica sobre desvios acao-a-nivel que classifica cada acao como mutante (muda
+    o ambiente) ou nao-mutante (so le), com "decisive deviations" definidas como o primeiro
+    desvio que inverte sucesso em falha (fonte - texto completo, secao 3, string "earliest
+    action-level divergences that flip success to failure" conferida no HTML cru nesta
+    sessao). O sucesso em si e verificacao executavel padrao de cada benchmark (reward do
+    tau-Bench, teste do SWE-Bench Verified), nao julgamento de LLM.
+  baseline: >-
+    Em tau-Bench Airline com Claude 4, um desvio adicional em acao mutante reduz a chance de
+    sucesso em 96% (OR=0.04); um desvio adicional em acao nao-mutante reduz em apenas 19%
+    (OR=0.81) (fonte - texto completo, secao 4, citacao verbatim "a mutating mismatch cuts the
+    odds of success by 96% (OR=0.04), compared to only 19% for a non-mutating mismatch
+    (OR=0.81)", conferida no HTML cru nesta sessao). Acoes mutantes sao raras - cerca de 14-18%
+    dos passos totais - mas concentram o risco de falha (fonte - texto completo, secao 3.1).
+  trials_repeated: >-
+    Sim para tau-Bench - Table 2 reporta media de tres execucoes ("we report the average score
+    over three runs", fonte - texto completo, legenda da Table 2, conferida no HTML cru nesta
+    sessao). Numero de repeticoes para SWE-Bench Verified [nao verificado] nesta camada.
+  uncertainty_reported: >-
+    Parcial - a regressao logistica reporta faixas de odds ratio com p<0.001 para os
+    coeficientes de acao mutante (fonte - texto completo, secao 3.1, conferido no HTML cru
+    nesta sessao), mas os ganhos de SABER na Table 2 sao reportados como pontos percentuais
+    unicos, sem intervalo de confianca. [nao verificado] se ha IC em outra parte do artigo alem
+    do que foi lido nesta sessao.
+  code_data_available: "[nao verificado] - disponibilidade de codigo/dados nao confirmada na leitura desta sessao."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta - a distincao mutante/nao-mutante e diretamente acionavel para o desenho de portao
+    deste repositorio - uma acao que MUTA estado (escrever arquivo, executar comando com
+    efeito colateral, alterar dado) e candidata natural a validacao mais estrita do que uma
+    acao so-leitura, exatamente o principio que o artigo mede com significancia estatistica
+    (fonte - study_quality.baseline acima).
+  scaffold_similarity: >-
+    Media - a parte de tau-Bench (Airline/Retail) usa um scaffold conversacional distante deste
+    repositorio, mas a parte de SWE-Bench Verified usa OpenHands sobre edicao de repositorio de
+    codigo real, o mesmo GENERO de tarefa que este repositorio opera, ainda que nao o mesmo
+    scaffold (Claude Code/Codex) (fonte - study_quality.scaffold acima). O resultado de
+    SWE-Bench Verified, porem, vem de UM UNICO modelo (fonte - study_quality.n acima) - ver
+    limitations.
+  oracle_similarity: >-
+    Alta - o oraculo de sucesso do estudo (reward do tau-Bench, teste do SWE-Bench Verified) e
+    verificacao executavel/deterministica, o mesmo principio de oraculo que este repositorio
+    usa (exit code de comando), nao julgamento de LLM (fonte - study_quality.oracle acima).
+inference_strength: SUPPORTED
+inference_rationale: >-
+  O estudo mede diretamente, com regressao logistica e p<0.001, que o risco de falha se
+  concentra nas acoes que mutam estado, com diferenca de magnitude grande e estatisticamente
+  significativa entre mutante e nao-mutante (OR=0.04 vs OR=0.81 em tau-Bench Airline com
+  Claude 4, fonte - study_quality.baseline acima). Esse e exatamente o principio de desenho
+  aplicavel a um portao de validacao - acao que muta estado nao deve receber o mesmo nivel de
+  escrutinio que acao que so le. O oraculo de sucesso do proprio estudo (verificacao
+  executavel, nao juiz LLM) e proximo do oraculo deste repositorio, o que evita a lacuna de
+  "julgamento versus verificacao" que limitou a forca da entrada arxiv-2603.03116 nesta mesma
+  leva. Por isso SUPPORTED, nao DIRECT (o estudo nao mede o mecanismo deste repositorio
+  especificamente, e o resultado mais proximo de dominio - SWE-Bench Verified - vem de um
+  UNICO modelo, nao dos tres avaliados, por restricao de custo declarada pelos proprios
+  autores - fonte: study_quality.n acima, ver limitations) e nao EXTRAPOLATED (a proximidade
+  de oraculo e a magnitude estatistica do efeito compensam a diferenca de scaffold em
+  tau-Bench).
+findings:
+- metric: odds_ratio_mutating_airline_claude4
+  value: "OR=0.04 (reducao de 96% na chance de sucesso por desvio)"
+  source: fulltext
+  note: tau-Bench Airline, Claude 4, por desvio adicional em acao mutante.
+- metric: odds_ratio_nonmutating_airline_claude4
+  value: "OR=0.81 (reducao de 19% na chance de sucesso por desvio)"
+  source: fulltext
+  note: tau-Bench Airline, Claude 4, por desvio adicional em acao nao-mutante.
+- metric: mutating_action_share_of_steps
+  value: "aproximadamente 14-18% dos passos totais"
+  source: fulltext
+  note: >-
+    "these actions account for only 14-18% of total steps (e.g., Qwen3-Airline: 15.5%,
+    Qwen3-Retail: 18.3%)" - acoes mutantes sao raras mas concentram o risco de falha.
+- metric: decisive_deviation_definition
+  value: "primeiro desvio acao-a-nivel que inverte sucesso em falha"
+  source: fulltext
+  note: >-
+    "decisive deviations - earliest action-level divergences that flip success to failure" -
+    citacao verbatim, resumo e secao 3.
+- metric: swe_bench_verified_models_evaluated
+  value: "1 de 3 (apenas Qwen3-235B-A22B-Thinking-2507)"
+  source: fulltext
+  note: >-
+    Table 2, linha "SWE-Bench V": GPT-5 e Claude Sonnet 4 aparecem com travessao (nao
+    avaliados); o texto declara explicitamente "due to the inherent cost of evaluating
+    closed-source models we only evaluate Qwen3-235B-A22B-Thinking-2507 on SWE-Bench Verified"
+    - citacao verbatim, secao 6.1.
+- metric: swe_bench_verified_qwen3_gain
+  value: "42.6% sem SABER, 45.1% com SABER (Table 2)"
+  source: fulltext
+  note: >-
+    O resumo do artigo arredonda esse ganho como "+7%" relativo, e um paragrafo do corpo do
+    texto o descreve como "about 4 pp"; nenhuma das duas formulacoes bate aritmeticamente de
+    forma exata com os valores de Table 2 (42.6 para 45.1 e +2.5pp absoluto, +5.9% relativo) -
+    registrado aqui como inconsistencia interna do proprio artigo entre secoes, nao como erro
+    de leitura desta entrada. Alem disso, no SWE-Bench Verified "only the enhanced reflection
+    can be applied" (citacao verbatim, secao 6.1) - ou seja, o ganho reportado ali vem de um
+    SABER PARCIAL (so a reflexao, sem o gate de verificacao mutante nem a limpeza de contexto
+    por blocos), nao do metodo completo.
+- metric: gains_tau_bench_verified_qwen3_mixed_pairing
+  value: "+19.7pp Airline Verified (58.5% para 78.2%), +10.8pp Retail Verified (66.9% para 77.7%)"
+  source: fulltext
+  note: >-
+    Par Qwen3-Thinking (principal) com auxiliar Qwen3-Instruct, mesma combinacao citada no
+    resumo do artigo ("Qwen3-Thinking-235B paired with a Qwen3-Instruct-235B auxiliary
+    improves 19.7% on Airline Verified, 10.8% on Retail Verified"), consistente com a
+    Table 2.
+limitations:
+- O resultado em SWE-Bench Verified vem de UM UNICO modelo dos tres avaliados
+  (Qwen3-235B-A22B-Thinking-2507); GPT-5 e Claude Sonnet 4 NAO foram avaliados nesse
+  benchmark, por decisao explicita de custo dos autores (fonte -
+  findings.swe_bench_verified_models_evaluated acima). Descrever o achado como "SABER melhora
+  em tau-Bench e SWE-Bench Verified" sem esse limite superestima a forca da afirmacao - o
+  segundo benchmark tem evidencia de UM modelo, nao tres.
+- No SWE-Bench Verified, apenas o componente de reflexao do SABER pode ser aplicado, nao o
+  gate de verificacao mutante nem a limpeza de contexto por blocos (fonte -
+  findings.swe_bench_verified_qwen3_gain acima) - a parte do metodo mais diretamente ligada a
+  distincao mutante/nao-mutante (o gate de verificacao) nao foi testada no benchmark mais
+  proximo do dominio deste repositorio.
+- O ganho de SWE-Bench Verified e reportado de forma inconsistente entre secoes do proprio
+  artigo - +7% relativo no resumo, "about 4pp" no corpo, +2.5pp/+5.9% pela Table 2 (fonte -
+  findings.swe_bench_verified_qwen3_gain acima); os tres numeros apontam na mesma direcao
+  (ganho pequeno, nao nulo) mas nao sao aritmeticamente identicos entre si.
+- A parte de tau-Bench (Airline/Retail) usa um scaffold conversacional distante deste
+  repositorio (fonte - study_quality.scaffold acima); a generalizacao do PRINCIPIO (mutante
+  exige mais escrutinio) e mais forte do que a generalizacao dos NUMEROS especificos de odds
+  ratio.
+- Os autores propoem tau-Bench Verified, uma revisao propria do benchmark original, alegando
+  efeitos-teto e anotacoes incorretas no dataset original (fonte - texto completo, secao 5);
+  os numeros comparativos entre a versao original e a Verified vem do MESMO grupo que propos a
+  correcao, sem replicacao independente (study_quality.replicated acima).
+- Preprint submetido ao ICLR2026, sem confirmacao de aceite nesta sessao (fonte - citation
+  acima).
