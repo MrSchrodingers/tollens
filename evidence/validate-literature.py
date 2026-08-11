@@ -131,6 +131,31 @@ O QUE ESTE VALIDADOR NAO FAZ - limites declarados
     .../fabricada/fabricado/...), que nao casam "inventario".
     Ambos os casos tem teste de regressao dedicado em `tests/unit/literatura.sh` (par controlado
     idioma-honesto-passa / fabricacao-real-e-pega).
+  - REGRA 5 teve um TERCEIRO falso negativo, estrutural, medido em 2026-08-11 (onda 5, D8): a
+    janela de proximidade exigia que o trecho ENTRE ASPAS INTEIRO coubesse dentro dos
+    JANELA_RETRATACAO (100) caracteres de cada lado do marcador (`RE_ASPAS.finditer(texto, ini,
+    fim)` tratava o texto como se terminasse em `fim` - o casamento tinha de comecar E terminar
+    dentro da fatia). RE_ASPAS aceita aspas de ate 300 caracteres; toda aspa entre ~97 e 300
+    caracteres colada ao marcador (gap de poucos caracteres) ESCAPAVA, porque o span INTEIRO nao
+    cabia na janela de 200 caracteres (100 para cada lado) - o oposto do falso positivo que
+    motivou a janela: aqui uma citacao LONGA e PROXIMA nao contava como retratada por nao COUBER,
+    nao por estar longe. Medido: aspa de 96 caracteres coladas ao marcador DETECTAVA, 97+
+    ESCAPAVA; alcancavel no corpus real (`arxiv-2603.15401.yaml`, `study_quality.scaffold`, aspa
+    de 223 caracteres a 113 do marcador mais proximo - hoje classificada corretamente como NAO
+    retratada porque e o texto genuino do artigo, mas pelo motivo ERRADO: o escape veio do
+    comprimento, nao da distancia semantica, e uma fabricacao do mesmo tamanho na mesma posicao
+    teria escapado igual). Corrigido trocando o CRITERIO de proximidade: em vez de "o span
+    inteiro cabe numa janela fixa ao redor do marcador", agora e "a distancia entre o marcador e
+    a BORDA MAIS PROXIMA da aspa e <= JANELA_RETRATACAO" (`_distancia_span`), o mesmo principio
+    de "por perto" que a mensagem de violacao sempre alegou, so que sem o teto artificial de
+    RE_ASPAS entrar na conta - o comprimento da aspa deixa de decidir deteccao. As duas
+    referencias reais continuam discriminando com a MESMA margem: a citacao fabricada de
+    arxiv-2602.06547 fica a 2 caracteres do marcador mais proximo (detecta), o titulo correto do
+    mesmo campo a ~306 (nao detecta) - a alternativa descartada foi so alargar JANELA_RETRATACAO
+    ate cobrir o teto de RE_ASPAS (300): isso reabriria o falso positivo original com uma janela
+    ainda maior, porque duas aspas curtas DENTRO de ~300 caracteres do MESMO marcador (comum em
+    paragrafo de citacao bibliografica) voltariam a colidir independente do proprio comprimento
+    delas.
   - A JANELA_RETRATACAO (100 caracteres) e um heuristico de CARACTERE, nao de SENTENCA: nao ha
     parser de fronteira de frase (citacoes academicas tem pontos apos iniciais de autor - "Zhang,
     L. Y." - que quebrariam uma divisao ingenua por ".") . Residual conhecido: se o titulo
@@ -278,19 +303,44 @@ def _coleta_folhas(valor, caminho, folhas):
         folhas.append((caminho, valor))
 
 
+def _distancia_span(a, b):
+    """Distancia em caracteres entre dois intervalos `(inicio, fim)` semi-abertos - o vao entre
+    a BORDA mais proxima de um e a BORDA mais proxima do outro; zero se se sobrepoem. Nao importa
+    qual dos dois vem primeiro no texto (a aspa pode vir antes OU depois do marcador - o corpus
+    real usa as duas ordens).
+
+    ONDA 5, D8 - por que a distancia e medida por BORDA, nao por span inteiro caber numa janela:
+    a versao anterior exigia que o trecho entre aspas INTEIRO coubesse dentro de
+    `[marcador.start()-JANELA, marcador.end()+JANELA)`, e RE_ASPAS aceita ate 300 caracteres -
+    uma aspa longa colada ao marcador (gap de poucos caracteres) podia UM POUCO mais que a metade
+    da janela e escapar so por comprimento, nunca por distancia real. Medir a distancia entre a
+    BORDA mais proxima de cada intervalo decide "por perto" pelo mesmo criterio, sem que o
+    comprimento da aspa entre na conta - ver docstring do modulo, secao de LIMITES, para os dois
+    casos reais que ancoram o valor de JANELA_RETRATACAO."""
+    if a[1] <= b[0]:
+        return b[0] - a[1]
+    if b[1] <= a[0]:
+        return a[0] - b[1]
+    return 0
+
+
 def _citacoes_retratadas(texto):
-    """Retorna {citacao_normalizada: texto_original} para toda citacao entre aspas que aparece
-    a ATE JANELA_RETRATACAO caracteres de um marcador de retratacao NESTE MESMO texto - nao
-    qualquer aspa do campo inteiro. Isto e o mecanismo que torna 'por perto' (a mensagem de
-    violacao abaixo) literalmente verdadeiro: um campo pode legitimamente conter, na MESMA
-    frase, o marcador de retratacao junto do titulo INCORRETO (perto - fica retratado) e, numa
-    frase diferente do MESMO campo, o titulo CORRETO sendo citado de forma legitima (longe - nao
-    fica retratado, e por isso pode reaparecer alhures como fato sem acusar contradicao)."""
+    """Retorna {citacao_normalizada: texto_original} para toda citacao entre aspas cuja BORDA
+    mais proxima fica a ATE JANELA_RETRATACAO caracteres de um marcador de retratacao NESTE
+    MESMO texto - nao qualquer aspa do campo inteiro, e nao limitado pelo comprimento da aspa
+    (ver `_distancia_span` e a nota de D8 na docstring do modulo). Isto e o mecanismo que torna
+    'por perto' (a mensagem de violacao abaixo) literalmente verdadeiro: um campo pode
+    legitimamente conter, na MESMA frase, o marcador de retratacao junto do titulo INCORRETO
+    (perto - fica retratado) e, numa frase diferente do MESMO campo, o titulo CORRETO sendo
+    citado de forma legitima (longe - nao fica retratado, e por isso pode reaparecer alhures
+    como fato sem acusar contradicao)."""
     achadas = {}
-    for marcador in RE_RETRATACAO.finditer(texto):
-        ini = max(0, marcador.start() - JANELA_RETRATACAO)
-        fim = min(len(texto), marcador.end() + JANELA_RETRATACAO)
-        for m in RE_ASPAS.finditer(texto, ini, fim):
+    marcadores = [m.span() for m in RE_RETRATACAO.finditer(texto)]
+    if not marcadores:
+        return achadas
+    for m in RE_ASPAS.finditer(texto):
+        aspa = m.span()
+        if any(_distancia_span(marcador, aspa) <= JANELA_RETRATACAO for marcador in marcadores):
             bruto = m.group(1).strip()
             norm = re.sub(r"\s+", " ", bruto).lower()
             if len(norm) >= 8:

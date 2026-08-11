@@ -29,6 +29,20 @@
 # reproduz A1 ('parameters' sem guard, `or {}`); MV11 reproduz A2 ('enforcement' ausente coagido
 # em violacao fabricada).
 #
+# MV12-MV16 fecham a QUINTA onda (2026-08-11, O QUINTO DEGRAU e RAMOS DE DECISAO SEM CASO - ver o
+# docstring de evidence/probes/github-ruleset.py, secao "O SEXTO CAMPO, ANTES DO SCHEMA"). MV12 e
+# MV13 provam que a deteccao de `enforcement`/`current_user_can_bypass` PRESENTES mas invalidos
+# (nao a ausencia, ja coberta por MV11) e codigo REALMENTE testado, nao so escrito - antes desta
+# onda nenhum caso de regressao isolava esses dois ramos, e trocar cada `elif` por `elif False:`
+# deixava a suite inteira verde. MV14 prova o mesmo para `strict_required_status_checks_policy`
+# ausente/nulo/tipo-errado (so a variante `false` EXPLICITA tinha caso). MV15 fecha a MESMA classe
+# de coercao de ausencia um passo antes de `valida_campo` ser sequer chamado: o campo `context` de
+# cada item de `required_status_checks`. MV16 e O QUINTO DEGRAU propriamente dito: reverte o laco
+# que valida `type` de cada elemento de `rules/branches/{branch}` - a fronteira de entrada que
+# alimenta TODO o resto do schema - para o filtro original de uma linha, que descartava em
+# silencio qualquer elemento com `type` ausente/nulo/tipo errado, e para a linha seguinte, que
+# crashava com `TypeError` quando `type` ausente coexistia com um `type` presente no mesmo laco.
+#
 # TROCA POR ARQUIVO, NAO POR ARGUMENTO DE SHELL. Os trechos mutados tem aspas simples e duplas
 # aninhadas (`f"ruleset {rid}: '{cucb}'"`); escrever isso como argumento de shell (single ou
 # double-quoted) obrigaria a escapar aspas dentro de aspas - fragil e ilegivel, e exatamente a
@@ -45,7 +59,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=11
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=16
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -150,7 +164,7 @@ cat > "$TMP/mv1-para.txt" <<'EOF'
             bypass_total.extend({"ruleset_id": rid, **a} for a in atores)
 EOF
 mutante MV1 "campo ausente vira PASS fabricado outra vez ('or []' sobre bypass_actors)" \
-  "  motivo cita 'bypass_actors' ausente" "$TMP/mv1-de.txt" "$TMP/mv1-para.txt"
+  "  motivo cita 'bypass_actors' ausente (ruleset unico)" "$TMP/mv1-de.txt" "$TMP/mv1-para.txt"
 
 # MV2 - mesma doutrina, segundo campo: current_user_can_bypass ausente volta a ser aceito como
 # "never" por omissao (`cucb not in (None, "never")`), em vez de NOT_VERIFIED. Reancorado na
@@ -201,7 +215,7 @@ cat > "$TMP/mv3-de.txt" <<'EOF'
 EOF
 : > "$TMP/mv3-para.txt"
 mutante MV3 "resposta nao-dict de rulesets/{id} crasha com TypeError, nao NOT_VERIFIED" \
-  "  nao ha traceback do Python em stderr" "$TMP/mv3-de.txt" "$TMP/mv3-para.txt"
+  "  nao ha traceback do Python em stderr (resposta-nao-dict)" "$TMP/mv3-de.txt" "$TMP/mv3-para.txt"
 
 # MV4 - a DETECCAO de campo ausente continua populando `nao_medidos`, mas o portao final que a
 # transforma em NOT_VERIFIED some. Ponto de codigo DIFERENTE de MV1/MV2 (o guard por-campo
@@ -220,7 +234,7 @@ cat > "$TMP/mv4-de.txt" <<'EOF'
 EOF
 : > "$TMP/mv4-para.txt"
 mutante MV4 "deteccao sem efeito: nao_medidos preenchido mas nunca vira NOT_VERIFIED" \
-  "  motivo cita 'bypass_actors' ausente" "$TMP/mv4-de.txt" "$TMP/mv4-para.txt"
+  "  motivo cita 'bypass_actors' ausente (ruleset unico)" "$TMP/mv4-de.txt" "$TMP/mv4-para.txt"
 
 echo "== mutacao: a precedencia (FAIL vence NOT_VERIFIED) removida DEVE reprovar =="
 
@@ -239,7 +253,7 @@ cat > "$TMP/mv5-para.txt" <<'EOF'
                               f"nao foi possivel ler o ruleset {rid} para resolver bypass: {err}")
 EOF
 mutante MV5 "erro de rede/permissao em UM ruleset volta a mascarar violacao ja provada em outro" \
-  "  motivo cita 'bypass_actors nao vazio'" "$TMP/mv5-de.txt" "$TMP/mv5-para.txt"
+  "  motivo cita 'bypass_actors nao vazio' (duplo-inacessivel)" "$TMP/mv5-de.txt" "$TMP/mv5-para.txt"
 
 # MV6 - reverte o SEGUNDO ponto do laco que retornava cedo: resposta de rulesets/{id} que nao e
 # um objeto volta a `return NOT_VERIFIED` imediato em vez de registrar e CONTINUAR. Mesma classe
@@ -266,7 +280,7 @@ cat > "$TMP/mv6-para.txt" <<'EOF'
                 f"oraculo malformado, nao ha como resolver bypass_actors nem enforcement")
 EOF
 mutante MV6 "resposta nao-objeto em UM ruleset volta a mascarar violacao ja provada em outro" \
-  "  motivo cita 'bypass_actors nao vazio'" "$TMP/mv6-de.txt" "$TMP/mv6-para.txt"
+  "  motivo cita 'bypass_actors nao vazio' (duplo-nao-dict)" "$TMP/mv6-de.txt" "$TMP/mv6-para.txt"
 
 # MV7 - inverte a ORDEM dos dois `if` do portao final: `nao_medidos` passa a ser checado ANTES
 # de `problemas`. Sem os dois `return` cedo (MV5/MV6 ja cobrem isso), a precedencia declarada
@@ -366,7 +380,7 @@ cat > "$TMP/mv9-para.txt" <<'EOF'
         bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list)
 EOF
 mutante MV9 "guard do ELEMENTO de bypass_actors removido - TypeError nao tratado outra vez" \
-  "  nao ha traceback do Python em stderr" "$TMP/mv9-de.txt" "$TMP/mv9-para.txt"
+  "  nao ha traceback do Python em stderr (c2-elemento)" "$TMP/mv9-de.txt" "$TMP/mv9-para.txt"
 
 # MV10 - A1: reverte a validacao de 'parameters' para a linha exata do defeito em producao -
 # `r.get("parameters") or {}`, sem guard nenhum. Um valor truthy nao-dict (string) passa direto;
@@ -429,6 +443,204 @@ EOF
 mutante MV11 "'enforcement' ausente coagido em violacao fabricada outra vez" \
   "  NAO afirma \"enforcement='None'\" (nao fabrica violacao sobre campo nao medido)" \
   "$TMP/mv11-de.txt" "$TMP/mv11-para.txt"
+
+echo "== mutacao: o QUINTO DEGRAU (wave5, 2026-08-11) - o filtro que alimenta o schema, e ramos de =="
+echo "== decisao que existiam SEM caso ate aqui (D3/D4 nao sao defeito de codigo - sao garantia sem teste) =="
+
+# MV12 - (D4a) a deteccao de `enforcement` PRESENTE mas != "active" vira `elif False:`. O codigo
+# ja estava correto; nenhum caso isolava esta forma ate V21 (so a AUSENCIA, via A2/V19, tinha
+# caso). Kill em V21, nao em V19: sao ramos DIFERENTES do mesmo campo.
+cat > "$TMP/mv12-de.txt" <<'EOF'
+        elif enforcement != "active":
+            # Defesa em profundidade: rules/branches/{branch} ja deveria filtrar por regra
+            # ativa. Se um dia esse filtro mudar de comportamento, este probe nao herda a
+            # suposicao em silencio.
+            problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
+EOF
+cat > "$TMP/mv12-para.txt" <<'EOF'
+        elif False:  # MUTANTE (D4a): deteccao de enforcement != active removida
+            problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
+EOF
+mutante MV12 "enforcement != active PRESENTE e medido deixa de ser deteccao de violacao" \
+  "  motivo cita enforcement='evaluate'" "$TMP/mv12-de.txt" "$TMP/mv12-para.txt"
+
+# MV13 - (D4b) mesma forma para `current_user_can_bypass` PRESENTE mas != "never". Kill em V22.
+cat > "$TMP/mv13-de.txt" <<'EOF'
+        elif cucb != "never":
+            problemas.append(
+                f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
+EOF
+cat > "$TMP/mv13-para.txt" <<'EOF'
+        elif False:  # MUTANTE (D4b): deteccao de current_user_can_bypass != never removida
+            problemas.append(
+                f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
+EOF
+mutante MV13 "current_user_can_bypass != never PRESENTE e medido deixa de ser deteccao de violacao" \
+  "  motivo cita current_user_can_bypass='always'" "$TMP/mv13-de.txt" "$TMP/mv13-para.txt"
+
+# MV14 - (D3) reverte a resolucao de 'strict_required_status_checks_policy' para a linha exata do
+# defeito de A2 - `bool(params.get(...))`, que coage a AUSENCIA da chave em `False` (uma violacao
+# FABRICADA). O codigo ja usava `valida_campo` corretamente; nenhum caso isolava strict ausente/
+# nulo/tipo-errado (so `strict:false` EXPLICITO, via V7/V14/V15). Kill em V23.
+cat > "$TMP/mv14-de.txt" <<'EOF'
+        strict_status, strict_val = valida_campo(params, "strict_required_status_checks_policy", bool)
+        if strict_status == FALTANTE:
+            # A2 (metade 1): `bool(params.get(...))` coagia a AUSENCIA da chave em `False` - uma
+            # violacao FABRICADA, nao medida. Ausencia agora e "nao medido", nunca "medido: false".
+            nao_medidos.append(
+                f"{rotulo}: 'strict_required_status_checks_policy' ausente de 'parameters' - "
+                f"strict NAO foi medido para esta regra.")
+        elif strict_status == NULO:
+            nao_medidos.append(
+                f"{rotulo}: 'strict_required_status_checks_policy' e null - mesma doutrina de campo ausente.")
+        elif strict_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"{rotulo}: 'strict_required_status_checks_policy' tem tipo inesperado "
+                f"({type(strict_val).__name__}, esperava booleano) - nao medido.")
+        else:
+            strict_medidos.append(strict_val)
+EOF
+cat > "$TMP/mv14-para.txt" <<'EOF'
+        strict_medidos.append(bool(params.get("strict_required_status_checks_policy")))
+EOF
+mutante MV14 "strict ausente/nulo/tipo-errado volta a ser coagido em False (violacao fabricada)" \
+  "  motivo cita 'strict_required_status_checks_policy' ausente" "$TMP/mv14-de.txt" "$TMP/mv14-para.txt"
+
+# MV15 - (D5) reverte a extracao de 'context' de cada item de 'required_status_checks' para
+# `chk.get("context")` - a AUSENCIA da chave (ou um valor null/tipo errado) volta a significar
+# silenciosamente "este item nao contribui contexto", sem entrar em `nao_medidos`. Fail-closed na
+# DIRECAO (o efeito e um FAIL fabricado, nao um PASS), mas a mesma violacao doutrinaria. Kill em
+# V26.
+cat > "$TMP/mv15-de.txt" <<'EOF'
+        if checks_status is None and checks is not None:
+            for j, chk in enumerate(checks):
+                # (D5, wave5) `chk.get("context")` tratava a AUSENCIA da chave, o valor `null`
+                # explicito e um tipo errado como a MESMA coisa - "este item nao contribui
+                # contexto algum" - a mesma coercao de ausencia em conclusao que A2 ja fechou para
+                # enforcement/strict, agora sobre o elemento de `required_status_checks`. Fail-
+                # closed na DIRECAO (nunca produzia PASS por omissao), mas era a mesma violacao
+                # doutrinaria: ausencia nao e medicao, mesmo quando o resultado por omissao e um
+                # FAIL fabricado em vez de um PASS fabricado.
+                ctx_status, ctx_val = valida_campo(chk, "context", str)
+                if ctx_status == FALTANTE:
+                    nao_medidos.append(
+                        f"{rotulo}: 'required_status_checks[{j}]' sem 'context' - esta regra NAO "
+                        f"pode ser confirmada nem descartada como fonte do contexto exigido.")
+                elif ctx_status == NULO:
+                    nao_medidos.append(
+                        f"{rotulo}: 'required_status_checks[{j}].context' e null - mesma doutrina "
+                        f"de campo ausente.")
+                elif ctx_status == TIPO_INVALIDO:
+                    nao_medidos.append(
+                        f"{rotulo}: 'required_status_checks[{j}].context' tem tipo inesperado "
+                        f"({type(ctx_val).__name__}, esperava string) - nao medido.")
+                else:
+                    contextos.add(ctx_val)
+EOF
+cat > "$TMP/mv15-para.txt" <<'EOF'
+        if checks_status is None and checks is not None:
+            for chk in checks:
+                if chk.get("context"):
+                    contextos.add(str(chk["context"]))
+EOF
+mutante MV15 "'context' ausente/nulo/tipo-errado de um item volta a ser silenciosamente ignorado" \
+  "  motivo cita 'required_status_checks[0]' sem 'context'" "$TMP/mv15-de.txt" "$TMP/mv15-para.txt"
+
+# MV16 - (D1+D2, O QUINTO DEGRAU) reverte o laco que valida `type` de CADA elemento de `rules`
+# (ANTES de decidir se ele entra em `rsc`) para o filtro original de uma linha - que descartava em
+# SILENCIO qualquer elemento com `type` ausente/nulo/tipo errado ou nao-dict, sem nunca entrar em
+# `nao_medidos` - e para a linha seguinte, que recomputava `tipos` com um list/set comprehension
+# sem guard e estourava `TypeError` quando `type` ausente coexistia com um `type` presente.
+# Kill designado em V30 (o sinal mais distintivo: ausencia de traceback), mas o mesmo mutante
+# tambem quebra V27/V28/V29 (o PASS fabricado sobre 'type' ilegivel volta a acontecer) - a mesma
+# forma de MV1 tambem quebrar V19 alem de V4: um mutante pode manifestar em mais de um caso, o que
+# importa e que o ALVO designado tenha ROTULO UNICO na suite inteira.
+cat > "$TMP/mv16-de.txt" <<'EOF'
+    nao_medidos = []
+    rsc = []
+    tipos_legiveis = []
+    for i, r in enumerate(rules):
+        if not isinstance(r, dict):
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: nao e um objeto "
+                f"({type(r).__name__}) - nao e possivel determinar se e uma regra "
+                f"required_status_checks aplicavel.")
+            continue
+        tipo_status, tipo_val = valida_campo(r, "type", str)
+        if tipo_status == FALTANTE:
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: 'type' ausente - nao e possivel "
+                f"determinar se e uma regra required_status_checks aplicavel (os demais elementos "
+                f"legiveis, se aplicavel, continuam sendo medidos).")
+            continue
+        elif tipo_status == NULO:
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: 'type' e null - mesma doutrina de "
+                f"campo ausente.")
+            continue
+        elif tipo_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: 'type' tem tipo inesperado "
+                f"({type(tipo_val).__name__}, esperava string) - nao medido.")
+            continue
+        tipos_legiveis.append(tipo_val)
+        if tipo_val == "required_status_checks":
+            rsc.append(r)
+
+    if not rsc:
+        if nao_medidos:
+            # Sem isto, um elemento de `rules` cujo `type` nao pode ser lido faria este ramo
+            # concluir `Required(P) = False` (o mesmo FAIL fabricado que A2 ja fechou para
+            # enforcement/strict) sem nunca saber se o elemento ilegivel era, ele mesmo, uma regra
+            # required_status_checks com bypass aberto - reproduzido: duas regras, a segunda sem
+            # `type`, cujo ruleset tinha bypass_actors NAO VAZIO, saiam `PASS exit=0` antes desta
+            # correcao porque a regra ilegivel nunca chegava a `rsc`.
+            return Resultado(
+                NOT_VERIFIED,
+                f"Required(P) para '{context}' nao pode ser determinado: nenhum elemento legivel "
+                f"de rules/branches/{branch} e 'required_status_checks' (tipos legiveis: "
+                f"{sorted(set(tipos_legiveis)) or '(nenhum)'}), mas ao menos um elemento nao pode "
+                f"ser classificado e poderia te-lo sido: " + "; ".join(nao_medidos),
+                {"rules": rules},
+            )
+        return Resultado(
+            FAIL,
+            f"Applies(P,r) = True (regras aplicaveis: {sorted(set(tipos_legiveis))}), mas nenhuma "
+            f"e 'required_status_checks' - Required(P) = False para '{branch}'.",
+            {"rules": rules},
+        )
+
+    # `problemas` nasce AQUI, antes do laco sobre `rsc` - nao apos ele como nas ondas anteriores.
+    # `nao_medidos` ja nasceu ACIMA, antes do filtro que produziu `rsc`, e persiste por todo o
+    # resto da funcao. C1 e A1 (ruleset_id/parameters ausentes ou malformados em PARTE das regras
+    # aplicaveis) sao lacunas de medicao que acontecem DENTRO deste laco, e precisam do MESMO
+    # acumulador que o resto do arquivo usa: uma entrada aqui nunca faz este laco `return` cedo,
+    # pela mesma razao ja documentada para o laco de rulesets abaixo - um `return` descartaria uma
+    # violacao de `strict` ja medida numa regra ANTERIOR do mesmo laco.
+    problemas = []
+    contextos = set()
+    strict_medidos = []
+    ruleset_ids = set()
+EOF
+cat > "$TMP/mv16-para.txt" <<'EOF'
+    rsc = [r for r in rules if isinstance(r, dict) and r.get("type") == "required_status_checks"]
+    if not rsc:
+        tipos = sorted({r.get("type") for r in rules if isinstance(r, dict)})
+        return Resultado(
+            FAIL,
+            f"Applies(P,r) = True (regras aplicaveis: {tipos}), mas nenhuma e "
+            f"'required_status_checks' - Required(P) = False para '{branch}'.",
+            {"rules": rules},
+        )
+
+    problemas = []
+    nao_medidos = []
+    contextos = set()
+    strict_medidos = []
+    ruleset_ids = set()
+EOF
+mutante MV16 "'type' ausente/nulo/nao-dict volta a ser descartado em silencio; type misto crasha" \
+  "  nao ha traceback do Python em stderr (rsc-vazio-tipo-misto)" "$TMP/mv16-de.txt" "$TMP/mv16-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

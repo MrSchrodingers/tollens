@@ -128,6 +128,39 @@ ilegivel), o contexto ausente do conjunto lido NAO prova mais `Required(P) = Fal
 prova NOT_VERIFIED, porque a regra ilegivel PODERIA te-lo exigido. So quando NENHUMA regra
 aplicavel ficou ilegivel e o contexto ainda assim nao aparece e que `Required(P) = False` e
 uma conclusao medida, nao suposta.
+
+O SEXTO CAMPO, ANTES DO SCHEMA (wave5, 2026-08-11) - o filtro que alimenta o schema
+-----------------------------------------------------------------------------------------------
+`valida_campo` fecha a classe de formas invalidas de um campo JA LIDO - mas o filtro que decide
+QUAIS elementos de `rules/branches/{branch}` chegam a ser lidos como `required_status_checks`
+nunca passava por ele: `rsc = [r for r in rules if isinstance(r, dict) and r.get("type") ==
+"required_status_checks"]` descartava, em SILENCIO, qualquer regra com `type` ausente, nulo, ou
+de tipo errado - a mesma classe C1/A1/A2 fecharam para `ruleset_id`/`parameters`/`enforcement`,
+um passo mais cedo, na propria FRONTEIRA de entrada de `rules`. Reproduzido: duas regras, a
+segunda sem `type`, cujo ruleset tinha `bypass_actors` NAO VAZIO - `estado: PASS exit=0`, com a
+afirmacao universal de bypass_actors=[] sem ter resolvido a segunda regra. A linha seguinte do
+filtro original, `tipos = sorted({r.get("type") for r in rules if isinstance(r, dict)})`, e a
+MESMA classe de defeito ainda mais visivel: com `type` ausente ao lado de um presente o set vira
+`{None, "deletion"}` e `sorted` estoura `TypeError` nao tratado - exit 1 por acidente do
+interprete, a classe que V9/V17/MV3/MV9 existem para proibir em qualquer outro campo. Corrigido
+com o MESMO mecanismo: um laco sobre `rules` valida `type` via `valida_campo` ANTES de decidir
+se um elemento entra em `rsc`, e um elemento ilegivel vira `nao_medidos`, nunca um `PASS`
+silencioso nem uma excecao. `chk.get("context")`, dentro do laco que extrai contexto de
+`required_status_checks`, tinha a mesma forma - ausencia coagida em "este item nao contribui" -
+fail-closed na DIRECAO (o resultado por omissao era FAIL, nunca PASS), mas a mesma violacao
+doutrinaria: ausencia nao e medicao, mesmo quando o efeito e conservador. Corrigido com
+`valida_campo(chk, "context", str)`, a mesma chamada ja usada para qualquer outro campo.
+
+`strict_required_status_checks_policy` (ausente/nulo/tipo errado) e `enforcement != "active"` /
+`current_user_can_bypass != "never"` (valor presente e MEDIDO, nao ausente) ja eram tratados
+corretamente pelo codigo antes desta onda - o defeito aqui nao era no CODIGO, era na AUSENCIA de
+caso: nenhum caso de `tests/unit/fronteira-viva.sh` isolava `strict` ausente/nulo/tipo-errado
+(so a variante `strict:false` EXPLICITA tinha caso), e nenhum isolava um `enforcement`/
+`current_user_can_bypass` PRESENTE mas de valor invalido (so a AUSENCIA desses campos tinha
+caso). Reintroduzir a coercao de ausencia em `strict_medidos.append(bool(params.get(...)))`, ou
+substituir por sempre-falso a comparacao que detecta enforcement e current_user_can_bypass
+invalidos, deixava a suite inteira verde - garantia sem teste e o mesmo risco de uma garantia
+removida em silencio.
 """
 from __future__ import annotations
 
@@ -275,24 +308,81 @@ def probe(owner, repo, branch, context):
         )
 
     # --- Required(P): existe regra required_status_checks aplicavel, e ela exige `context`. ---
-    rsc = [r for r in rules if isinstance(r, dict) and r.get("type") == "required_status_checks"]
+    # `nao_medidos` nasce AQUI, ANTES do filtro que separa `rsc` do resto de `rules` - o quinto
+    # degrau (wave5, 2026-08-11): um elemento cujo `type` nao pode ser lido (ausente, nulo, tipo
+    # errado) OU que nao e sequer um objeto nao pode ser classificado como required_status_checks
+    # ou nao. O filtro original, um list comprehension com `isinstance` e `==`, descartava esse
+    # elemento em SILENCIO - nunca entrava em `rsc`, seu `ruleset_id` nunca era resolvido, seu
+    # ruleset nunca era consultado, e nada entrava em `nao_medidos`: a MESMA classe de defeito que
+    # C1/A1/A2 fecharam mais abaixo (onda 4), um passo mais cedo, na FRONTEIRA de entrada do
+    # proprio `rules`, antes que exista sequer um `rsc` para iterar. A linha seguinte do filtro
+    # original, `sorted({r.get("type") for r in rules if isinstance(r, dict)})`, e a MESMA classe
+    # de defeito ainda mais visivel: com `type` ausente ao lado de um presente o set vira
+    # `{None, "deletion"}` e `sorted` estoura `TypeError: '<' not supported between instances of
+    # 'str' and 'NoneType'` - traceback nao tratado, exit 1 por acidente do interprete. `tipos_
+    # legiveis` abaixo so acumula strings JA validadas por `valida_campo`, nunca `None`.
+    nao_medidos = []
+    rsc = []
+    tipos_legiveis = []
+    for i, r in enumerate(rules):
+        if not isinstance(r, dict):
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: nao e um objeto "
+                f"({type(r).__name__}) - nao e possivel determinar se e uma regra "
+                f"required_status_checks aplicavel.")
+            continue
+        tipo_status, tipo_val = valida_campo(r, "type", str)
+        if tipo_status == FALTANTE:
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: 'type' ausente - nao e possivel "
+                f"determinar se e uma regra required_status_checks aplicavel (os demais elementos "
+                f"legiveis, se aplicavel, continuam sendo medidos).")
+            continue
+        elif tipo_status == NULO:
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: 'type' e null - mesma doutrina de "
+                f"campo ausente.")
+            continue
+        elif tipo_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"elemento #{i + 1} de rules/branches/{branch}: 'type' tem tipo inesperado "
+                f"({type(tipo_val).__name__}, esperava string) - nao medido.")
+            continue
+        tipos_legiveis.append(tipo_val)
+        if tipo_val == "required_status_checks":
+            rsc.append(r)
+
     if not rsc:
-        tipos = sorted({r.get("type") for r in rules if isinstance(r, dict)})
+        if nao_medidos:
+            # Sem isto, um elemento de `rules` cujo `type` nao pode ser lido faria este ramo
+            # concluir `Required(P) = False` (o mesmo FAIL fabricado que A2 ja fechou para
+            # enforcement/strict) sem nunca saber se o elemento ilegivel era, ele mesmo, uma regra
+            # required_status_checks com bypass aberto - reproduzido: duas regras, a segunda sem
+            # `type`, cujo ruleset tinha bypass_actors NAO VAZIO, saiam `PASS exit=0` antes desta
+            # correcao porque a regra ilegivel nunca chegava a `rsc`.
+            return Resultado(
+                NOT_VERIFIED,
+                f"Required(P) para '{context}' nao pode ser determinado: nenhum elemento legivel "
+                f"de rules/branches/{branch} e 'required_status_checks' (tipos legiveis: "
+                f"{sorted(set(tipos_legiveis)) or '(nenhum)'}), mas ao menos um elemento nao pode "
+                f"ser classificado e poderia te-lo sido: " + "; ".join(nao_medidos),
+                {"rules": rules},
+            )
         return Resultado(
             FAIL,
-            f"Applies(P,r) = True (regras aplicaveis: {tipos}), mas nenhuma e "
-            f"'required_status_checks' - Required(P) = False para '{branch}'.",
+            f"Applies(P,r) = True (regras aplicaveis: {sorted(set(tipos_legiveis))}), mas nenhuma "
+            f"e 'required_status_checks' - Required(P) = False para '{branch}'.",
             {"rules": rules},
         )
 
-    # `problemas` e `nao_medidos` nascem AQUI, antes do laco sobre `rsc` - nao apos ele como nas
-    # ondas anteriores. C1 e A1 (ruleset_id/parameters ausentes ou malformados em PARTE das
-    # regras aplicaveis) sao lacunas de medicao que acontecem DENTRO deste laco, e precisam do
-    # MESMO acumulador que o resto do arquivo usa: uma entrada aqui nunca faz este laco `return`
-    # cedo, pela mesma razao ja documentada para o laco de rulesets abaixo - um `return`
-    # descartaria uma violacao de `strict` ja medida numa regra ANTERIOR do mesmo laco.
+    # `problemas` nasce AQUI, antes do laco sobre `rsc` - nao apos ele como nas ondas anteriores.
+    # `nao_medidos` ja nasceu ACIMA, antes do filtro que produziu `rsc`, e persiste por todo o
+    # resto da funcao. C1 e A1 (ruleset_id/parameters ausentes ou malformados em PARTE das regras
+    # aplicaveis) sao lacunas de medicao que acontecem DENTRO deste laco, e precisam do MESMO
+    # acumulador que o resto do arquivo usa: uma entrada aqui nunca faz este laco `return` cedo,
+    # pela mesma razao ja documentada para o laco de rulesets abaixo - um `return` descartaria uma
+    # violacao de `strict` ja medida numa regra ANTERIOR do mesmo laco.
     problemas = []
-    nao_medidos = []
     contextos = set()
     strict_medidos = []
     ruleset_ids = set()
@@ -353,18 +443,39 @@ def probe(owner, repo, branch, context):
 
         checks_status, checks = valida_campo(params, "required_status_checks", list, tipo_item=dict)
         if checks_status is None and checks is not None:
-            for chk in checks:
-                if chk.get("context"):
-                    contextos.add(str(chk["context"]))
+            for j, chk in enumerate(checks):
+                # (D5, wave5) `chk.get("context")` tratava a AUSENCIA da chave, o valor `null`
+                # explicito e um tipo errado como a MESMA coisa - "este item nao contribui
+                # contexto algum" - a mesma coercao de ausencia em conclusao que A2 ja fechou para
+                # enforcement/strict, agora sobre o elemento de `required_status_checks`. Fail-
+                # closed na DIRECAO (nunca produzia PASS por omissao), mas era a mesma violacao
+                # doutrinaria: ausencia nao e medicao, mesmo quando o resultado por omissao e um
+                # FAIL fabricado em vez de um PASS fabricado.
+                ctx_status, ctx_val = valida_campo(chk, "context", str)
+                if ctx_status == FALTANTE:
+                    nao_medidos.append(
+                        f"{rotulo}: 'required_status_checks[{j}]' sem 'context' - esta regra NAO "
+                        f"pode ser confirmada nem descartada como fonte do contexto exigido.")
+                elif ctx_status == NULO:
+                    nao_medidos.append(
+                        f"{rotulo}: 'required_status_checks[{j}].context' e null - mesma doutrina "
+                        f"de campo ausente.")
+                elif ctx_status == TIPO_INVALIDO:
+                    nao_medidos.append(
+                        f"{rotulo}: 'required_status_checks[{j}].context' tem tipo inesperado "
+                        f"({type(ctx_val).__name__}, esperava string) - nao medido.")
+                else:
+                    contextos.add(ctx_val)
         elif checks_status == ITEM_INVALIDO:
             idx, item = checks
             nao_medidos.append(
                 f"{rotulo}: 'required_status_checks[{idx}]' tem tipo inesperado "
                 f"({type(item).__name__}, esperava objeto) - o contexto desta regra NAO pode "
                 f"ser lido por completo.")
-        # FALTANTE/NULO/TIPO_INVALIDO de 'required_status_checks' apenas significa que esta
-        # regra nao contribui contexto algum - a mesma consequencia de uma lista vazia, que ja
-        # nao era um defeito antes desta correcao.
+        # FALTANTE/NULO/TIPO_INVALIDO de 'required_status_checks' (a LISTA em si) apenas significa
+        # que esta regra nao contribui contexto algum - a mesma consequencia de uma lista vazia,
+        # que ja nao era um defeito antes desta correcao. O CAMPO 'context' de cada item da lista
+        # passa pela mesma validacao de schema que qualquer outro campo decisivo (ver acima).
 
     if context not in contextos:
         if nao_medidos:

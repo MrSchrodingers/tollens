@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: f97fc70b606f40ecd05e4879bdf2b5ac207f8b69
+  subject_snapshot: 734283eb28af73f346589cc7a152bf88af9d8447
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -20,8 +20,10 @@ scope:
     gh_cli: 2.96.0
 evidence:
   regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15,
-               V16, V17, V18, V19, V20]
-  mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7, MV8, MV9, MV10, MV11]
+               V16, V17, V18, V19, V20, V21, V22, V23, V24, V25, V26, V27, V28,
+               V29, V30, V31]
+  mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7, MV8, MV9, MV10, MV11, MV12, MV13,
+            MV14, MV15, MV16]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
@@ -159,7 +161,54 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   exemplo, se ele passar a ler `conditions` do ruleset, ou `current_user_can_bypass` de uma regra
   `pull_request`) exigiria uma entrada de schema propria; `valida_campo` fecha a classe de formas
   invalidas de um campo ja declarado, nao adivinha campos que o codigo ainda nao le. Ver
-  `limitations` para o que continua fora.'
+  `limitations` para o que continua fora.
+
+  ADENDO (wave5, 2026-08-11, achado do PORTAO FINAL sobre o diff de onda 4): O SEXTO CAMPO estava
+  ANTES do schema, nao dentro dele - a mesma classe C1/A1/A2 fecharam para `ruleset_id`/
+  `parameters`/`enforcement`, um passo mais cedo. `rsc = [r for r in rules if isinstance(r, dict)
+  and r.get("type") == "required_status_checks"]` descartava, em SILENCIO, qualquer elemento de
+  `rules` com `type` ausente, nulo, ou de tipo errado - nunca entrava em `rsc`, seu `ruleset_id`
+  nunca era resolvido, seu ruleset nunca era consultado, e NADA entrava em `nao_medidos`.
+  Reproduzido com o binario `gh` stubado ANTES desta correcao: duas regras aplicaveis, a segunda
+  SEM `type`, cujo ruleset tinha `bypass_actors` NAO VAZIO e `current_user_can_bypass: always` ->
+  `estado: PASS  exit=0`, com a afirmacao universal "bypass_actors=[] em todos os rulesets de
+  origem" sem ter resolvido a segunda regra. A linha seguinte do mesmo filtro, `tipos =
+  sorted({r.get("type") for r in rules if isinstance(r, dict)})`, e a MESMA classe de defeito
+  ainda mais visivel: com `type` ausente ao lado de um `type` presente o set vira `{None,
+  "deletion"}` e `sorted` estoura `TypeError` (comparacao entre `str` e `NoneType` nao suportada)
+  - traceback nao tratado, exit 1 por acidente do interprete, a mesma classe que
+  V9/V17/MV3/MV9 ja existiam para proibir em qualquer OUTRO campo. Corrigido com o MESMO
+  mecanismo: um laco valida `type` de cada elemento via `valida_campo` ANTES de decidir se ele
+  entra em `rsc`, e um elemento ilegivel vira `nao_medidos` (nunca PASS silencioso, nunca
+  excecao); `tests/unit/fronteira-viva.sh` ganhou V27 (type ausente), V28 (type null), V29
+  (elemento que nao e um objeto), V30 (rsc vazio com type MISTO - a reproducao exata do crash) e
+  V31 (rsc vazio com tipos CONHECIDOS, sem ambiguidade - prova que o caminho FAIL legitimo
+  sobrevive a refatoracao); `tests/mutation/fronteira-viva.sh` ganhou MV16, morto em V30.
+
+  O PORTAO TAMBEM achou dois ramos de decisao que EXISTIAM e estavam CORRETOS, mas sem caso
+  algum: `enforcement != "active"` e `current_user_can_bypass != "never"` (o valor PRESENTE e
+  MEDIDO, nao a ausencia - essa ja tinha V19/V6) so tinham caso para a ausencia dos dois campos;
+  trocar cada `elif` por `elif False:` deixava a suite inteira verde, porque nenhum caso isolava
+  o valor invalido PRESENTE. O mesmo valia para `strict_required_status_checks_policy` ausente/
+  nulo/tipo-errado - so a variante `strict:false` EXPLICITA (V7/V14/V15) tinha caso; reintroduzir
+  a ausencia-coagida (`strict_medidos.append(bool(params.get(...)))`, a mesma forma que A2 ja
+  fechou) mantinha 78/78 verde. Nestes tres pontos o CODIGO nao mudou - a correcao foi adicionar
+  V21/V22 (enforcement/cucb presentes e invalidos) e V23-V25 (strict ausente/nulo/tipo-errado) e
+  os mutantes MV12/MV13/MV14, provando por mutacao que cada ramo agora tem um caso que o mata.
+  `chk.get("context")`, ao extrair o contexto de cada item de `required_status_checks`, tinha a
+  MESMA coercao de ausencia - a chave ausente (ou um valor null/tipo errado) virava
+  silenciosamente "este item nao contribui contexto", sem entrar em `nao_medidos`. Fail-closed na
+  DIRECAO (o efeito por omissao era `Required(P) = False` FABRICADO, nunca um PASS), mas a mesma
+  violacao doutrinaria de A2/C1: ausencia nao e medicao, mesmo quando o resultado por omissao e
+  conservador. Corrigido com `valida_campo(chk, "context", str)`, a mesma chamada ja usada para
+  qualquer outro campo; V26 e MV15 fecham o caso e o mutante.
+
+  Os cinco pontos foram reproduzidos com o binario `gh` stubado ANTES desta correcao, contra o
+  HEAD herdado da onda 4 (`9156bee24894b1fb2224dada69e724cb4666003a`), e as saidas batem
+  exatamente com o descrito acima. O PASS
+  legitimo (repositorio proprio `MrSchrodingers/evidence-gate`, token com escopo `repo` e acesso
+  de escrita ao ruleset 20385799) foi reexecutado ANTES e DEPOIS desta correcao e permanece
+  PASS/exit 0 nos dois commits.'
 limitations:
 - 'Endereca DIRETAMENTE a limitacao que C-017 ja declarava: "A suite `tests/unit/fronteira-externa.sh`
   e ESTATICA: le os arquivos de workflow. Ela nao observa check-runs reais - isso e o que a
@@ -237,7 +286,18 @@ limitations:
   tres ramos (FALTANTE/NULO/TIPO_INVALIDO -> nao_medidos), mas nao tem mutante proprio: a
   garantia depende da simetria estrutural do codigo, nao de uma prova direta por mutacao. Se as
   duas metades divergirem no futuro (por exemplo, um refactor que atualize so uma), esta suite
-  nao detecta a divergencia na outra.'
+  nao detecta a divergencia na outra.
+  CORRECAO (wave5, 2026-08-11, achado do PORTAO FINAL): a frase acima estava calibrada OTIMISTA
+  demais. "A garantia depende da simetria estrutural do codigo" descrevia um risco teorico,
+  distante; na pratica ERA um buraco aberto do MESMO tamanho que A2 original - nao so "sem
+  mutante", sem CASO NENHUM de regressao. Reintroduzir a ausencia-coagida
+  (`strict_medidos.append(bool(params.get("strict_required_status_checks_policy")))`, a mesma
+  forma exata que A2 fechou para `enforcement`) deixava a suite inteira - as 78 chk() daquele
+  momento - VERDE, exit 0. Nao havia nenhum caso isolando `strict` ausente/nulo/tipo-errado; so a
+  variante `strict:false` EXPLICITA (V7/V14/V15) tinha caso, e nenhuma delas exercita o ramo
+  FALTANTE/NULO/TIPO_INVALIDO de `strict_status`. Fechado com V23 (ausente), V24 (null), V25
+  (tipo errado) e MV14 (reverte para a coercao, morto em V23) - a simetria estrutural agora tem
+  prova direta, nao suposicao.'
 - 'A extensao de `Required(P)` para um terceiro estado (nao_medido, alem de medido-conforme e
   medido-violando - ver ADENDO no `warrant`) e nova nesta correcao e testada por V18/V20
   (parameters malformado; item de required_status_checks nao-objeto), mas nao tem mutante
@@ -245,7 +305,21 @@ limitations:
   da checagem de contexto - MV8/MV9/MV10 provam os GUARDS que alimentam `nao_medidos` nesse
   ponto, nao o CONSUMO dele ali. Um mutante que removesse so esse `if` (voltando ao
   `Required(P) = False` incondicional anterior) sobreviveria a mutacao, ainda que V18/V20 o
-  peguem na suite de regressao normal.'
+  peguem na suite de regressao normal.
+  CORRECAO (wave5, 2026-08-11, achado do PORTAO FINAL): a frase final estava calibrada PESSIMISTA
+  demais - o risco descrito ("sobreviveria a mutacao") foi testado por REPRODUCAO direta, nao por
+  suposicao. Reverter manualmente o `if nao_medidos:` dentro da checagem de contexto para
+  `return Resultado(FAIL, ...)` incondicional e RODAR a suite de regressao ja existente (sem
+  formalizar mutante algum) produz 11 assercoes FAIL, entre elas as tres de V18 e as quatro de
+  V20 - e, apos esta correcao, tambem as quatro de V26 (D5). O mecanismo do arnes de mutacao
+  (`mutante()` em tests/mutation/fronteira-viva.sh) credita kill exatamente por essa condicao:
+  suite reprova E o alvo designado aparece como FAIL. Um mutante formal para este `if` NAO
+  sobreviveria - ele MORRERIA em V18, V20 ou V26, exatamente como qualquer outro. O que continua
+  faltando e so a FORMALIZACAO (nenhum MVxx foi escrito especificamente para este `if`, entao ele
+  nao conta para `EXPECTED_MUTANTS`), nao uma lacuna de protecao real. Registrado aqui para que a
+  proxima onda nao gaste esforco perseguindo um "achado critico" que a propria suite de regressao
+  ja fecha - se quiser a formalizacao, e trabalho de baixo risco (repetir o padrao de MV4, que
+  faz exatamente isto para o portao final de not Bypass(a,P)), nao uma correcao de seguranca.'
 - 'O schema declarado em `valida_campo` cobre exatamente os campos que `evidence/probes/
   github-ruleset.py` LE hoje (`ruleset_id`, `parameters`, `strict_required_status_checks_policy`,
   `required_status_checks`, `enforcement`, `bypass_actors`, `current_user_can_bypass`). Um campo

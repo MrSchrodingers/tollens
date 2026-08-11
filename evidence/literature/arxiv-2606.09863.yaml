@@ -31,12 +31,18 @@ study_quality:
     Claude Code nem Codex.
   oracle: >-
     AUROC de juizes LLM na deteccao de falso sucesso, comparado contra detectores leves
-    (fonte: texto completo).
+    (fonte: texto completo). O detector leve e TF-IDF + XGBoost, nao TF-IDF sozinho (fonte:
+    texto completo, legenda da Table 6, conferido no HTML cru nesta sessao).
   baseline: >-
     AUROC dos juizes LLM: no maximo 0.65 em tau2-bench, 0.54 em AppWorld (fonte: texto
     completo). Detectores leves atingem 0.83 (tau2-bench) e 0.95 (AppWorld), acima dos juizes
     LLM e mais rapidos - achado NAO usado hoje por este repositorio (ver limitations).
-  trials_repeated: "[nao verificado] - nao confirmado na leitura."
+  trials_repeated: >-
+    Sim, para a avaliacao task-disjoint: "GroupShuffleSplit over task_id, ensuring no task
+    appears in both train and test, averaged over 5 random seeds" (fonte: texto completo,
+    secao de protocolo de avaliacao, string conferida no HTML cru nesta sessao). Os autores a
+    chamam de "our cleanest generalization evaluation". Nao verificado se as demais condicoes
+    (LODO, in-domain) repetem sementes.
   uncertainty_reported: "[nao verificado] - nao confirmado na leitura."
   code_data_available: "[nao verificado] - nao confirmado na leitura."
   replicated: false
@@ -91,6 +97,42 @@ findings:
 - metric: false_success_rate_appworld
   value: "75.8%"
   source: fulltext
+- metric: judge_surface_proxy_assertion_language_tau2
+  value: "+0.27-0.36"
+  source: fulltext
+  note: >-
+    "Trajectories containing assertion vocabulary score 0.27-0.36 points more 'completed'
+    regardless of actual outcome" - o juiz ancora em linguagem de asseveracao, nao em mudanca
+    de estado verificada. RELEVANTE PARA ESTE REPOSITORIO: evidence/hooks/subagent-contract.sh
+    mede uma ANCORA lexical (arquivo:linha, exit code, comando, prompt de shell), que e
+    proxy de superficie da mesma classe - ver limitations.
+- metric: judge_checklist_helps_gpt4o_hurts_sonnet
+  value: "GPT-4o 0.394->0.537; Sonnet 4.5 blind 0.368 -> with-task 0.289 -> checklist 0.274"
+  source: fulltext
+  note: >-
+    Instruir o juiz explicitamente que "GET-only sequences cannot complete write tasks" eleva
+    o GPT-4o mas DEGRADA o Sonnet 4.5 monotonicamente conforme se acrescenta contexto. Mais
+    instrucao ao juiz nao e monotonicamente melhor.
+- metric: detector_ablation_sem_mensagem_final
+  value: "AUROC 0.924 (sem a mensagem de fechamento) vs 0.934 (so a mensagem de fechamento)"
+  source: fulltext
+  note: >-
+    "the signal is distributed throughout the trajectory, not concentrated in the labeled
+    closing message" - o sinal de falso sucesso esta na trajetoria inteira, nao so na
+    declaracao final.
+- metric: triagem_recall_a_10pct_flag
+  value: "detector 72% [IC95 63-80] vs melhor juiz 13% [8-17]"
+  source: fulltext
+- metric: triagem_precisao_a_10pct_flag
+  value: "50%"
+  source: fulltext
+  note: >-
+    "At a 10% flag rate, precision is 50%: half of flagged trajectories are false alarms." Os
+    autores declaram: "The detector is a triage signal, not an autonomous monitor."
+- metric: taxonomia_de_falha
+  value: "falso sucesso 35.6% (616) / falha honesta 43.5% (753) / ambiguo 20.9% (361)"
+  source: fulltext
+  note: proporcoes sobre o conjunto de FALHAS de tau2-bench, rotuladas por regex.
 - metric: historical_miscitation_corrected
   value: "45-89% (faixa que NAO existe no artigo)"
   source: "docs/adr/0011-de-encenacao-a-mecanismo.md"
@@ -110,3 +152,22 @@ limitations:
   mecanismo deste repositorio hoje; citar esse achado como justificativa para uma capacidade
   ainda inexistente seria SPECULATIVE, nao SUPPORTED - por isso ele fica registrado como
   finding, e nao como parte do inference_rationale.
+- O detector NAO e portao. Os proprios autores o escopam como triagem ("The detector is a
+  triage signal, not an autonomous monitor", fonte - findings.triagem_precisao_a_10pct_flag
+  acima), com precisao 50% a 10% de flag rate. Citar 0.83/0.95 sem esse limite reproduz a
+  citacao seletiva que docs/adr/0011 corrigiu neste mesmo identificador.
+- APLICABILIDADE AO subagent-contract.sh, registrada como observacao NAO MEDIDA. O hook mede
+  presenca de ancora lexical (evidence/hooks/subagent-contract.sh, bloco ORACULO DA ANCORA);
+  o estudo mede que juizes ancorados em linguagem de asseveracao erram de forma sistematica
+  (fonte - findings.judge_surface_proxy_assertion_language_tau2 acima). A analogia e de
+  MECANISMO, nao de medicao - ninguem mediu a taxa de falso sucesso que o hook deixa passar
+  neste harness. Enquanto nao houver essa medicao, a afirmacao "o hook e um detector de proxy
+  de superficie" e HIPOTESE sustentada por analogia, e o estimando correto para esse uso
+  especifico e EXTRAPOLATED, nao o SUPPORTED do campo inference_strength - que se refere
+  apenas a decisao de usar exit code como sinal externo.
+- Construir aqui o analogo do detector de AppWorld (vetorizar a sequencia de tool-calls do
+  subagente) NAO e viavel sobre historico - medido e verificado nesta sessao (fonte - execucao direta sobre o log), de 1200 registros de
+  ~/.claude/logs/subagent-probe.jsonl com agent_transcript_path, apenas 35 (2%) ainda tinham o
+  transcript em disco, e 1165 de 1200 tinham agent_type vazio. O log do probe guarda ponteiro
+  e mensagem final, nao a sequencia de ferramentas. Capturar a sequencia exigiria extrai-la no
+  proprio SubagentStop, antes da coleta do transcript - trabalho futuro, nao capacidade atual.

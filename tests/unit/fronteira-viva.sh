@@ -75,6 +75,17 @@
 #        mutante proprio (MV7): sem ele, trocar a ORDEM dos dois `if` finais (nao_medidos antes
 #        de problemas) sobrevive em silencio.
 #
+# V21-V31 fecham a QUINTA onda (2026-08-11, ver o docstring de evidence/probes/github-ruleset.py,
+# secao "O SEXTO CAMPO, ANTES DO SCHEMA"): V21/V22 isolam `enforcement`/`current_user_can_bypass`
+# PRESENTES mas invalidos (nao a ausencia, ja coberta por V19/V6) - garantias que o codigo ja
+# implementava mas nenhum caso exercitava; V23-V25 isolam `strict_required_status_checks_policy`
+# ausente/nulo/tipo-errado (so a variante `false` EXPLICITA tinha caso ate aqui); V26 isola o
+# `context` ausente de um item de `required_status_checks`; V27-V29 isolam `type` ausente/nulo/
+# elemento-nao-objeto no proprio `rules/branches/{branch}` - o filtro que decide quem chega a ser
+# lido como `required_status_checks`, ANTES de qualquer schema; V30 reproduz o `TypeError` que a
+# linha seguinte desse filtro estourava; V31 prova que o caminho FAIL legitimo (sem ambiguidade)
+# sobrevive a refatoracao.
+#
 # NAO VERIFICA o servidor real do GitHub a cada execucao (isso e o proprio probe, exercitado
 # manualmente contra o repositorio e registrado na evidencia da claim). Esta suite mede o
 # COMPORTAMENTO DE DECISAO do probe diante de cada forma de resposta - nao a configuracao atual
@@ -111,7 +122,7 @@ case "$REQ" in
       empty) echo '[]' ;;
       # As variantes abaixo so divergem no que rulesets/{id} devolve: a resposta de
       # rules/branches e a mesma "regra aplicavel, contexto verify-pr presente" de `pass`.
-      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado)
+      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado|enforcement-nao-active|cucb-nao-never)
         cat <<'JSON'
 [
   {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
@@ -226,6 +237,129 @@ JSON
 ]
 JSON
         ;;
+      strict-ausente)
+        # (D3, wave5) 'strict_required_status_checks_policy' AUSENTE de 'parameters' - nao a
+        # variante explicita 'strict:false' que V7/V14/V15 ja cobrem, e sim a chave que nunca
+        # veio. O codigo ja tratava isto corretamente (valida_campo), mas nenhum caso isolava
+        # esta forma - garantia sem teste, nao limitacao.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      strict-nulo)
+        # (D3, wave5) valor NULL explicito - nao e chave ausente, mesma doutrina.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":null,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      strict-tipo-errado)
+        # (D3, wave5) tipo que nao e booleano (string "true").
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":"true",
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      context-ausente-no-check)
+        # (D5, wave5) o item de 'required_status_checks' e um objeto valido (o SCHEMA da lista ja
+        # aceita), mas o proprio item nao tem a chave 'context'. `chk.get("context")` tratava
+        # isto como "este item nao contribui contexto" - Required(P) = False FABRICADO, nao
+        # medido (fail-closed na direcao, mas a mesma violacao doutrinaria de A2/C1).
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"integration_id":15368}]}}
+]
+JSON
+        ;;
+      tipo-ausente-com-regra-valida)
+        # (D1, wave5, O QUINTO DEGRAU) DUAS regras aplicaveis: a primeira (ruleset 501) e uma
+        # required_status_checks legivel e limpa; a segunda (ruleset 998) TEM a mesma forma mas
+        # NAO declara 'type' - o filtro original a descartava em silencio, seu ruleset_id nunca
+        # entrava em ruleset_ids, e o ruleset 998 (que na reproducao real tem bypass_actors nao
+        # vazio) nunca era consultado. Aqui basta provar que o probe NUNCA emite PASS enquanto
+        # esta regra permanecer ilegivel - nao precisa da parte "suja" do ruleset 998 para isso.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":501,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}},
+  {"ruleset_source_type":"Repository","ruleset_source":"stub/repo2",
+   "ruleset_id":998,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"outro-check","integration_id":99}]}}
+]
+JSON
+        ;;
+      tipo-nulo-com-regra-valida)
+        # (D1, wave5) mesma forma de tipo-ausente-com-regra-valida, mas 'type' esta presente e
+        # e null - nao e a mesma coisa que a chave ausente, mesma doutrina.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":501,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}},
+  {"type":null,"ruleset_source_type":"Repository","ruleset_source":"stub/repo2",
+   "ruleset_id":998,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"outro-check","integration_id":99}]}}
+]
+JSON
+        ;;
+      elemento-nao-dict-com-regra-valida)
+        # (D1, wave5) o SEGUNDO elemento da lista de rules/branches nao e sequer um objeto - um
+        # oraculo malformado no NIVEL do proprio elemento, nao so de um campo dele.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":501,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}},
+  "elemento-nao-objeto"
+]
+JSON
+        ;;
+      rsc-vazio-tipo-misto)
+        # (D2, wave5) NENHUMA regra e required_status_checks, e uma delas nao declara 'type' -
+        # `tipos = sorted({r.get("type") for r in rules if isinstance(r, dict)})` estourava
+        # TypeError ('<' not supported between instances of 'str' and 'NoneType') com {None,
+        # "deletion"} - traceback nao tratado, exit 1 por acidente do interprete, nunca a lacuna
+        # de oraculo que de fato existe (o segundo elemento pode ou nao ser required_status_checks
+        # - nao ha como saber).
+        cat <<'JSON'
+[
+  {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
+  {"ruleset_source_type":"Repository","ruleset_source":"stub/repo2","ruleset_id":998}
+]
+JSON
+        ;;
+      rsc-vazio-tipos-conhecidos)
+        # SEM ambiguidade: as duas regras tem 'type' legivel, nenhuma e required_status_checks -
+        # Required(P) = False e uma conclusao MEDIDA aqui, nao suposta. Prova que a refatoracao
+        # do filtro (acima) preserva o caminho FAIL legitimo, nao so o caminho NOT_VERIFIED novo.
+        cat <<'JSON'
+[
+  {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
+  {"type":"non_fast_forward","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999}
+]
+JSON
+        ;;
       *) echo "fake-gh: STUB_MODE nao reconhecido: ${STUB_MODE:-<vazio>}" >&2; exit 1 ;;
     esac
     ;;
@@ -243,6 +377,14 @@ JSON
                "bypass_actors":[{"actor_type":"Team","actor_id":42,"bypass_mode":"always"}]}' ;;
       cucb-ausente)
         echo '{"id":999,"enforcement":"active","bypass_actors":[]}' ;;
+      enforcement-nao-active)
+        # (D4a, wave5) 'enforcement' PRESENTE e MEDIDO, mas != 'active' - nao a ausencia (ja
+        # coberta por A2/V19), e sim o valor que a defesa em profundidade do `elif enforcement !=
+        # "active":` existe para pegar.
+        echo '{"id":999,"enforcement":"evaluate","current_user_can_bypass":"never","bypass_actors":[]}' ;;
+      cucb-nao-never)
+        # (D4b, wave5) 'current_user_can_bypass' PRESENTE e MEDIDO, mas != 'never'.
+        echo '{"id":999,"enforcement":"active","current_user_can_bypass":"always","bypass_actors":[]}' ;;
       resposta-nao-dict)
         # rulesets/{id} devolvendo um ESCALAR em vez de um objeto - oraculo malformado. Um
         # escalar (nao uma lista/string) e o caso que realmente PROVA a necessidade do guard:
@@ -372,7 +514,10 @@ MRK="$T/chamou-ruleset-v4"; rm -f "$MRK"
 RC="$(rodar bypass-ausente "$MRK")"
 chk "exit code 2 (nao mais 0 - o PASS fabricado)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
-chk "  motivo cita 'bypass_actors' ausente" "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
+# ROTULO UNICO na suite inteira (wave5): antes desta correcao, este texto tambem aparecia em
+# V19 (a2-coercao) - o arnes de mutacao credita kill por ROTULO, e um rotulo repetido entre
+# casos permite que um mutante seja "morto" pelo caso ERRADO sem que ninguem perceba.
+chk "  motivo cita 'bypass_actors' ausente (ruleset unico)" "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'bypass_actors=[]' sem ter medido" \
     "$(grep -q 'bypass_actors=\[\]' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
 
@@ -381,7 +526,8 @@ MRK="$T/chamou-ruleset-v5"; rm -f "$MRK"
 RC="$(rodar bypass-nao-vazio "$MRK")"
 chk "exit code 1" "$RC" 1
 chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
-chk "  motivo cita 'bypass_actors nao vazio'" \
+# ROTULO UNICO (wave5): o mesmo texto tambem aparecia em V12 e V13 - ver a nota em V4/V19.
+chk "  motivo cita 'bypass_actors nao vazio' (ruleset unico)" \
     "$(grep -q 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
 
 echo "== V6. 'current_user_can_bypass' AUSENTE da resposta -> NOT_VERIFIED (mesma doutrina) =="
@@ -417,7 +563,9 @@ MRK="$T/chamou-ruleset-v9"; rm -f "$MRK"
 RC="$(rodar resposta-nao-dict "$MRK")"
 chk "exit code 2 (nao 1 por AttributeError nao tratado)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
-chk "  nao ha traceback do Python em stderr" \
+# ROTULO UNICO (wave5): MV3 mata especificamente AQUI - o mesmo texto tambem aparecia em
+# V11/V17/V18, o que permitia um mutante ser creditado ao caso errado.
+chk "  nao ha traceback do Python em stderr (resposta-nao-dict)" \
     "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
 
 echo "== V10. 'bypass_actors' e NULL na resposta -> NOT_VERIFIED (valor nulo != chave ausente) =="
@@ -441,7 +589,7 @@ chk "exit code 2 (nao 1 por TypeError nao tratado)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
 chk "  motivo cita 'bypass_actors' tipo inesperado" \
     "$(grep -q "'bypass_actors' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
-chk "  nao ha traceback do Python em stderr" \
+chk "  nao ha traceback do Python em stderr (bypass-tipo-errado)" \
     "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
 
 echo "== V12. violacao PROVADA num ruleset + outro ruleset ILEGIVEL (rede) -> FAIL, nunca NOT_VERIFIED =="
@@ -453,7 +601,8 @@ MRK="$T/chamou-ruleset-v12"; rm -f "$MRK"
 RC="$(rodar duplo-inacessivel "$MRK")"
 chk "exit code 1 (nao 2 - a violacao provada NAO pode ser mascarada por outro ruleset ilegivel)" "$RC" 1
 chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
-chk "  motivo cita 'bypass_actors nao vazio'" \
+# ROTULO UNICO (wave5): MV5 mata especificamente AQUI - o rotulo nao pode coincidir com V5/V13.
+chk "  motivo cita 'bypass_actors nao vazio' (duplo-inacessivel)" \
     "$(grep -q 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
 
 echo "== V13. violacao PROVADA num ruleset + outro ruleset NAO-OBJETO -> FAIL, nunca NOT_VERIFIED =="
@@ -463,7 +612,8 @@ MRK="$T/chamou-ruleset-v13"; rm -f "$MRK"
 RC="$(rodar duplo-nao-dict "$MRK")"
 chk "exit code 1" "$RC" 1
 chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
-chk "  motivo cita 'bypass_actors nao vazio'" \
+# ROTULO UNICO (wave5): MV6 mata especificamente AQUI - o rotulo nao pode coincidir com V5/V12.
+chk "  motivo cita 'bypass_actors nao vazio' (duplo-nao-dict)" \
     "$(grep -q 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
 
 echo "== V14. strict=false (FAIL ja em maos) + o UNICO ruleset aplicavel FALHA -> FAIL =="
@@ -518,7 +668,8 @@ chk "exit code 2 (nao 1 por TypeError nao tratado)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
 chk "  motivo cita 'bypass_actors[0]' tipo inesperado" \
     "$(grep -q "'bypass_actors\[0\]' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
-chk "  nao ha traceback do Python em stderr" \
+# ROTULO UNICO (wave5): MV9 mata especificamente AQUI.
+chk "  nao ha traceback do Python em stderr (c2-elemento)" \
     "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
 
 echo "== V18. (A1) 'parameters' de tipo errado (string) -> NOT_VERIFIED, nunca crash =="
@@ -531,7 +682,7 @@ chk "exit code 2 (nao 1 por AttributeError nao tratado)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
 chk "  motivo cita 'parameters' tipo inesperado" \
     "$(grep -q "'parameters' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
-chk "  nao ha traceback do Python em stderr" \
+chk "  nao ha traceback do Python em stderr (a1-parametros)" \
     "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
 chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
@@ -546,7 +697,9 @@ RC="$(rodar a2-coercao "$MRK")"
 chk "exit code 2 (nao 1 - a ausencia nao e mais coagida em violacao)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
 chk "  motivo cita 'enforcement' ausente" "$(grep -q "'enforcement' ausente" "$T/out" && echo sim || echo nao)" "sim"
-chk "  motivo cita 'bypass_actors' ausente" "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
+# ROTULO UNICO (wave5): ver a nota identica em V4 - o mesmo texto NAO pode aparecer nos dois
+# casos, senao um mutante que so quebra V4 (ou so V19) e creditado ao caso errado.
+chk "  motivo cita 'bypass_actors' ausente (junto de enforcement, a2-coercao)" "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma \"enforcement='None'\" (nao fabrica violacao sobre campo nao medido)" \
     "$(grep -qF "enforcement='None'" "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
 
@@ -567,11 +720,136 @@ chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL a partir de item malfo
 chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
 
+# V21-V31 fecham a QUINTA onda (2026-08-11, o QUINTO DEGRAU e RAMOS DE DECISAO SEM CASO - ver o
+# docstring de evidence/probes/github-ruleset.py, secao "O SEXTO CAMPO, ANTES DO SCHEMA"). D1/D2
+# sao o filtro que alimenta `rsc` e a linha seguinte (silencio + crash); D3/D4 nao eram defeito de
+# CODIGO - eram GARANTIA SEM TESTE: um ramo de decisao existente podia ser deletado sem que a
+# suite notasse; D5 e a mesma classe de coercao de ausencia, um passo antes de `valida_campo`.
+echo "== V21. (D4a) 'enforcement' PRESENTE mas != 'active' -> FAIL (garantia sem teste ate aqui) =="
+# Distinto de V19 (enforcement AUSENTE): aqui o valor FOI medido e e invalido. Antes desta
+# correcao, nenhum caso isolava esta forma - trocar 'elif enforcement != "active":' por
+# 'elif False:' deixava a suite 78/78 verde.
+MRK="$T/chamou-ruleset-v21"; rm -f "$MRK"
+RC="$(rodar enforcement-nao-active "$MRK")"
+chk "exit code 1" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita enforcement='evaluate'" \
+    "$(grep -qF "enforcement='evaluate'" "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V22. (D4b) 'current_user_can_bypass' PRESENTE mas != 'never' -> FAIL =="
+# Distinto de V6 (cucb AUSENTE): aqui o valor FOI medido e e invalido. Trocar
+# 'elif cucb != "never":' por 'elif False:' deixava a suite 78/78 verde antes desta correcao.
+MRK="$T/chamou-ruleset-v22"; rm -f "$MRK"
+RC="$(rodar cucb-nao-never "$MRK")"
+chk "exit code 1" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita current_user_can_bypass='always'" \
+    "$(grep -qF "current_user_can_bypass='always'" "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V23. (D3) 'strict_required_status_checks_policy' AUSENTE (nao a variante 'false' explicita) -> NOT_VERIFIED =="
+# V7/V14/V15 so cobrem strict:false EXPLICITO. Reintroduzir a ausencia-coagida
+# ('strict_medidos.append(bool(params.get(...)))') deixava a suite 78/78 verde: nao havia caso
+# isolando strict ausente/nulo/tipo-errado.
+MRK="$T/chamou-ruleset-v23"; rm -f "$MRK"
+RC="$(rodar strict-ausente "$MRK")"
+chk "exit code 2 (nao 1 - ausencia nao e 'strict:false' medido)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'strict_required_status_checks_policy' ausente" \
+    "$(grep -q "'strict_required_status_checks_policy' ausente" "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V24. (D3) 'strict_required_status_checks_policy' e NULL -> NOT_VERIFIED =="
+MRK="$T/chamou-ruleset-v24"; rm -f "$MRK"
+RC="$(rodar strict-nulo "$MRK")"
+chk "exit code 2" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'strict_required_status_checks_policy' e null" \
+    "$(grep -qF "'strict_required_status_checks_policy' e null" "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V25. (D3) 'strict_required_status_checks_policy' de tipo errado (string) -> NOT_VERIFIED =="
+MRK="$T/chamou-ruleset-v25"; rm -f "$MRK"
+RC="$(rodar strict-tipo-errado "$MRK")"
+chk "exit code 2" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'strict_required_status_checks_policy' tipo inesperado" \
+    "$(grep -qF "'strict_required_status_checks_policy' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V26. (D5) item de 'required_status_checks' sem 'context' -> NOT_VERIFIED, nunca FAIL fabricado =="
+# Antes da correcao: 'chk.get("context")' tratava a chave ausente como "este item nao contribui" -
+# Required(P) = False FABRICADO (FAIL, exit 1), nunca medido. Fail-closed na DIRECAO, mas a mesma
+# coercao de ausencia em conclusao que A2/C1 ja fecharam em outros pontos.
+MRK="$T/chamou-ruleset-v26"; rm -f "$MRK"
+RC="$(rodar context-ausente-no-check "$MRK")"
+chk "exit code 2 (nao 1 - FAIL fabricado por item sem 'context')" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'required_status_checks[0]' sem 'context'" \
+    "$(grep -qF "'required_status_checks[0]' sem 'context'" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL por item sem 'context')" \
+    "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V27. (D1, O QUINTO DEGRAU) 'type' AUSENTE numa regra, ao lado de outra legivel -> NOT_VERIFIED, nunca PASS =="
+# Reproduzido antes desta correcao: com o ruleset da segunda regra (998) trazendo bypass_actors
+# NAO VAZIO, 'estado: PASS exit=0' - a regra sem 'type' desaparecia do filtro em silencio, seu
+# ruleset_id nunca entrava em ruleset_ids, e nada entrava em nao_medidos. Aqui basta provar que o
+# probe NUNCA sai PASS enquanto essa regra permanecer ilegivel.
+MRK="$T/chamou-ruleset-v27"; rm -f "$MRK"
+RC="$(rodar tipo-ausente-com-regra-valida "$MRK")"
+chk "exit code 2 (nao mais 0 - o PASS fabricado sobre 'type' ausente)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita elemento com 'type' ausente" \
+    "$(grep -qF "'type' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado PASS" "$(grep -q '^estado: PASS$' "$T/out" && echo vazou || echo contido)" "contido"
+
+echo "== V28. (D1) 'type' presente e NULL numa regra, ao lado de outra legivel -> NOT_VERIFIED =="
+MRK="$T/chamou-ruleset-v28"; rm -f "$MRK"
+RC="$(rodar tipo-nulo-com-regra-valida "$MRK")"
+chk "exit code 2" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita elemento com 'type' null" \
+    "$(grep -qF "'type' e null" "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V29. (D1) elemento de 'rules' que NAO e um objeto, ao lado de outra regra legivel -> NOT_VERIFIED, nunca crash =="
+MRK="$T/chamou-ruleset-v29"; rm -f "$MRK"
+RC="$(rodar elemento-nao-dict-com-regra-valida "$MRK")"
+chk "exit code 2 (nao 1 por excecao nao tratada)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita elemento que nao e um objeto" \
+    "$(grep -qF "nao e um objeto" "$T/out" && echo sim || echo nao)" "sim"
+chk "  nao ha traceback do Python em stderr (elemento-nao-dict)" \
+    "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
+
+echo "== V30. (D2) rsc VAZIO com 'type' MISTO (um ausente) -> NOT_VERIFIED, nunca traceback =="
+# Antes da correcao: 'sorted({r.get("type") for r in rules if isinstance(r, dict)})' com
+# {None, "deletion"} estourava TypeError ('<' not supported between instances of 'str' and
+# 'NoneType') - traceback nao tratado, exit 1 por acidente do interprete.
+MRK="$T/chamou-ruleset-v30"; rm -f "$MRK"
+RC="$(rodar rsc-vazio-tipo-misto "$MRK")"
+chk "exit code 2 (nao 1 por TypeError nao tratado)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  nao ha traceback do Python em stderr (rsc-vazio-tipo-misto)" \
+    "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
+chk "  NAO chama o endpoint de ruleset (rsc vazio, nada a resolver)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V31. rsc VAZIO com tipos CONHECIDOS, sem ambiguidade -> FAIL (Required(P) = False MEDIDO) =="
+# Sem ambiguidade nenhuma: as duas regras tem 'type' legivel e nenhuma e required_status_checks -
+# prova que a refatoracao do filtro preserva o caminho FAIL legitimo (nao substitui toda
+# ausencia de required_status_checks por NOT_VERIFIED, so a ilegivel).
+MRK="$T/chamou-ruleset-v31"; rm -f "$MRK"
+RC="$(rodar rsc-vazio-tipos-conhecidos "$MRK")"
+chk "exit code 1" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo e Required(P) = False (medido, nao suposto)" \
+    "$(grep -qF 'Required(P) = False' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO chama o endpoint de ruleset (rsc vazio, nada a resolver)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V20 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=78
+# V10-V31 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=117
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

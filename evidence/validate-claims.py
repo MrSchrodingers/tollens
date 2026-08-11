@@ -19,11 +19,25 @@ assim que este projeto comecou (README afirmando "28 assercoes" com a suite em 2
 CONTRATO DE EXTRACAO (o que conta como evidencia existente)
 ----------------------------------------------------------
   regressao : `echo "== <ID>. ..."` em tests/unit/*.sh
-  mutante   : `mutante <ID> ...` no inicio da linha, OU `# <ID>: ...`, em tests/mutation/*.sh
+  mutante   : `mutante <ID> ...` no INICIO da linha (a chamada real da funcao `mutante()` do
+              arnes de mutacao), em tests/mutation/*.sh
 
 Os dois espacos sao lidos de diretorios DISTINTOS de proposito: sem isso, um comentario
 qualquer contendo "G12" num runner de mutacao passaria a valer como mutante, e a resolucao
 deixaria de discriminar.
+
+MUTANTES FANTASMAS - defeito MEDIDO em 2026-08-11 (onda 5, D6). A versao anterior aceitava
+TAMBEM `# <ID>[-: ]...` - qualquer linha de COMENTARIO comecando por um ID - como prova de
+mutante. Isso aceitava MENCAO como se fosse INVOCACAO: um comentario como
+"# K10 planta o caso EXATO..." (explicando outro caso, sem nunca chamar `mutante K10`) inflava
+o inventario com um ID que a suite de mutacao nunca executa. Medido: inventariado=56,
+invocado de fato=54, dois fantasmas (K10, L6) - e os dois sao IDs de REGRESSAO reais em
+tests/unit/, entao a mesma "prova" tambem colidia com o espaco que este contrato declara
+disjunto ha duas linhas. Uma claim podia citar `mutants: [K10, L6]` e passar: exercicio de
+exploracao medido, com controle (`ZZ9`, que nao aparece em lugar nenhum, era rejeitado). O
+CONTRATO agora exige a INVOCACAO de verdade (`mutante <ID> ...`, a chamada da funcao de mesmo
+nome que cada arnes de tests/mutation/*.sh define) - mencionar um ID num comentario nao basta,
+e nunca deveria ter bastado.
 
 SCHEMA v2 - POR QUE O ENDERECO DA EVIDENCIA PASSOU A SER O CONTEUDO
 ------------------------------------------------------------------
@@ -123,32 +137,116 @@ RE_EVID_ID = re.compile(r"^[A-Z]{1,3}[0-9]{1,3}[a-z]?$")
 
 
 RE_CASO = re.compile(r"""^echo\s+['"]==\s+([A-Z]{1,3}[0-9]{1,3}[a-z]?)\.""")
-RE_MUT = re.compile(r"^(?:mutante\s+|#\s*)([A-Z]{1,3}[0-9]{1,3})\b\s*[-: ]")
+# SO invocacao real, nunca mencao em comentario - ver "MUTANTES FANTASMAS" no docstring do
+# modulo. A forma anterior aceitava `#\s*<ID>[-: ]` e qualquer linha de COMENTARIO que comecasse
+# por um ID virava "mutante", inventariando K10 e L6 (IDs de REGRESSAO reais, nunca invocados
+# como mutante) - dois fantasmas medidos. `RE_MUT` cobre a chamada da funcao `mutante()` do
+# arnes compartilhado (a maioria dos arquivos de tests/mutation/); `RE_CASO` (o MESMO padrao
+# usado para regressao) cobre `tests/mutation/install.sh`, que nao usa aquele arnes e numera seus
+# mutantes com o cabecalho `echo "== <ID>. ..."` - convencao DIFERENTE, mas igualmente uma
+# INVOCACAO real (o mutante e aplicado e morto logo abaixo do echo, nao apenas mencionado): exigir
+# so `RE_MUT` faria MI1..MI5 desaparecerem do inventario, e a claim C-007 (que cita MI1, um
+# mutante real) passaria a reprovar por um falso NEGATIVO simetrico ao problema que esta correcao
+# fecha. As duas formas sao ANCORADAS (chamada de funcao / cabecalho `echo "==`), nunca
+# comentario solto - nenhuma delas reabre a classe de fantasma.
+RE_MUT = re.compile(r"^mutante\s+([A-Z]{1,3}[0-9]{1,3})\b\s")
+REGEXES_MUTANTE = (RE_MUT, RE_CASO)
 
 
-def _extrai(texto, rgx, strip):
+def _extrai(texto, regexes, strip):
+    """`regexes`: um `re.Pattern` unico, ou uma tupla de padroes tentados em ordem (a primeira
+    que casar decide) - usado para aceitar as DUAS formas de invocacao de mutante (ver
+    REGEXES_MUTANTE) sem duplicar o loop de extracao."""
+    if not isinstance(regexes, tuple):
+        regexes = (regexes,)
     achados = set()
     for linha in texto.splitlines():
-        m = rgx.match(linha.strip() if strip else linha)
-        if m:
-            achados.add(m.group(1))
+        alvo = linha.strip() if strip else linha
+        for rgx in regexes:
+            m = rgx.match(alvo)
+            if m:
+                achados.add(m.group(1))
+                break
     return achados
 
 
+def _contrato_extracao_ok(por_arquivo_regressao, por_arquivo_mutante):
+    """As DUAS garantias estruturais de que a resolucao por ID nao e ambigua (onda 5, D6):
+
+    1. Nenhum ID de REGRESSAO aparece em mais de um arquivo de tests/unit/. `inventario()` funde
+       tudo num set plano por design (`Evidence = Claim.Evidence` nao precisa saber DE QUE
+       ARQUIVO veio um ID) - mas um set plano tambem APAGA a duplicidade em silencio: se dois
+       arquivos declaram o mesmo ID, o set resolve para "existe" sem dizer qual dos dois
+       documentos a claim realmente cita. Medido: `tests/unit/claims.sh` e
+       `tests/unit/literatura.sh` usavam o MESMO prefixo `L` (`L1`..`L18` vs `L1`..`L22`) ate
+       esta correcao renomear o segundo para `LT` - nenhuma claim citava um ID `L*`, entao a
+       ambiguidade nunca produziu um falso-verde real, mas a garantia estava falsa mesmo assim.
+       ESCOPO DELIBERADO: so o espaco de REGRESSAO e checado aqui. O espaco de MUTANTE tem a
+       MESMA classe de duplicidade, ja hoje, entre `tests/mutation/run.sh` e `.../schedule.sh`
+       (M1..M10) e entre `capabilities.sh`/`conformidade.sh`/`contrato.sh` (MC1..MC7) - e, ao
+       contrario do caso acima, esta duplicidade E CITADA por claims REAIS (C-001..C-010, C-017,
+       C-018). Bloquear nesta correcao quebraria o ledger inteiro por um achado que exige decidir,
+       claim a claim, qual arquivo cada citacao pretendia - fora do escopo desta entrega (D6/D7).
+       Registrado como risco separado; nao verificado por este validador ainda.
+    2. Os dois espacos de nome (regressao, mutante) sao disjuntos - ver comentario de RE_EVID_ID.
+       Uma intersecao nao-vazia e a MESMA classe de defeito do item 1 (resolucao ambigua), so que
+       entre espacos em vez de dentro de um so; foi exatamente essa intersecao que os dois
+       mutantes fantasmas (K10, L6) produziam antes da correcao de RE_MUT acima. Este lado E
+       checado incondicionalmente: independe da duplicidade interna do espaco de mutante (item 1),
+       porque uniao de conjuntos nao amplifica colisao entre espacos DIFERENTES.
+
+    Devolve a lista de problemas encontrados; vazia significa contrato integro.
+    """
+    problemas = []
+
+    dono_regressao = {}
+    for nome, ids in por_arquivo_regressao.items():
+        for i in ids:
+            dono_regressao.setdefault(i, set()).add(nome)
+    for i in sorted(dono_regressao):
+        arqs = dono_regressao[i]
+        if len(arqs) > 1:
+            problemas.append(
+                f"regressao '{i}' declarada em mais de um arquivo: {sorted(arqs)} - "
+                f"resolucao ambigua (o inventario funde tudo num set plano)")
+
+    regressoes = set().union(*por_arquivo_regressao.values()) if por_arquivo_regressao else set()
+    mutantes = set().union(*por_arquivo_mutante.values()) if por_arquivo_mutante else set()
+    colisao = regressoes & mutantes
+    if colisao:
+        problemas.append(
+            f"ID presente nos DOIS espacos de nome (regressao E mutante), que este contrato "
+            f"declara disjuntos de proposito: {sorted(colisao)} - uma claim que cite este ID "
+            f"resolveria para os dois ao mesmo tempo, e a resolucao deixaria de discriminar")
+    return problemas
+
+
 def inventario(raiz):
-    """Inventario do WORKTREE. Nunca de lista digitada: uma lista mantida a mao seria uma
-    segunda copia da verdade, e duas copias divergem em silencio."""
+    """Inventario do WORKTREE, por arquivo. Nunca de lista digitada: uma lista mantida a mao
+    seria uma segunda copia da verdade, e duas copias divergem em silencio.
+
+    Devolve `(regressoes, mutantes, por_arquivo)`: os dois primeiros sao os sets planos que o
+    resto do modulo consome; `por_arquivo` e `{"regression": {nome: set(ids)}, "mutant": {...}}`
+    - a granularidade que `_contrato_extracao_ok` precisa para detectar ID duplicado ENTRE
+    arquivos, que o set plano por si so apagaria em silencio.
+    """
     regressoes, mutantes = set(), set()
-    for sub, alvo, rgx, strip in (("unit", regressoes, RE_CASO, False),
-                                  ("mutation", mutantes, RE_MUT, True)):
+    por_arquivo = {"regression": {}, "mutant": {}}
+    for sub, chave, rgx, strip in (("unit", "regression", RE_CASO, False),
+                                   ("mutation", "mutant", REGEXES_MUTANTE, True)):
         d = os.path.join(raiz, "tests", sub)
         if not os.path.isdir(d):
             continue
         for nome in sorted(os.listdir(d)):
             if nome.endswith(".sh"):
                 with open(os.path.join(d, nome), encoding="utf-8", errors="replace") as fh:
-                    alvo |= _extrai(fh.read(), rgx, strip)
-    return regressoes, mutantes
+                    achados = _extrai(fh.read(), rgx, strip)
+                por_arquivo[chave][nome] = achados
+                if chave == "regression":
+                    regressoes |= achados
+                else:
+                    mutantes |= achados
+    return regressoes, mutantes, por_arquivo
 
 
 _CACHE_SNAP = {}
@@ -187,7 +285,7 @@ def inventario_no_commit(raiz, commit):
             if caminho.startswith("tests/unit/"):
                 regressoes |= _extrai(g.stdout, RE_CASO, False)
             else:
-                mutantes |= _extrai(g.stdout, RE_MUT, True)
+                mutantes |= _extrai(g.stdout, REGEXES_MUTANTE, True)
         _CACHE_SNAP[commit] = (regressoes, mutantes)
         return _CACHE_SNAP[commit]
     except (OSError, subprocess.SubprocessError):
@@ -574,7 +672,7 @@ def main(argv):
         os.path.join(os.path.dirname(__file__), ".."))
     cdir = argv[2] if len(argv) > 2 else os.path.join(raiz, "evidence", "claims")
 
-    regressoes, mutantes = inventario(raiz)
+    regressoes, mutantes, por_arquivo = inventario(raiz)
     # AUTOCHECAGEM: inventario vazio significa que a extracao quebrou. Sem isto o validador
     # reprovaria TUDO (falso vermelho) ou, se a regex passasse a casar demais, aprovaria tudo
     # (falso verde). Em ambos os casos ele deixaria de medir o que diz medir.
@@ -583,6 +681,18 @@ def main(argv):
             f"NAO VERIFICADO: extracao de inventario vazia "
             f"(regressoes={len(regressoes)}, mutantes={len(mutantes)}). "
             f"O contrato de extracao nao casa com tests/ - corrija antes de confiar no ledger.\n")
+        return EXIT_NAO_VERIFICADO
+
+    # AUTOCHECAGEM (onda 5, D6): ID duplicado entre arquivos do mesmo espaco de nome, ou
+    # colisao entre os dois espacos (regressao, mutante) que este contrato declara disjuntos -
+    # ver `_contrato_extracao_ok`. Mesma familia de defeito da checagem de vazio acima: a
+    # extracao nao casa mais com o contrato, e "nao reprovou" seria indistinguivel de "resolveu
+    # sem ambiguidade" quando na verdade nao resolveu.
+    problemas_contrato = _contrato_extracao_ok(por_arquivo["regression"], por_arquivo["mutant"])
+    if problemas_contrato:
+        sys.stderr.write(
+            "NAO VERIFICADO: contrato de extracao violado - a resolucao por ID deixou de ser "
+            "nao-ambigua:\n" + "\n".join(f"  - {p}" for p in problemas_contrato) + "\n")
         return EXIT_NAO_VERIFICADO
 
     if not os.path.isdir(cdir):

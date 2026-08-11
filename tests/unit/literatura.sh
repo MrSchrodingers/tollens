@@ -2,16 +2,28 @@
 # CAMADA DE QUALIDADE DE EVIDENCIA PARA LITERATURA - a suite do validador
 # (evidence/validate-literature.py).
 #
-# O caso L1 sozinho nao vale nada: um validador que aprovasse QUALQUER coisa passaria nele. O
+# O caso LT1 sozinho nao vale nada: um validador que aprovasse QUALQUER coisa passaria nele. O
 # valor desta suite esta nos casos NEGATIVOS, cada um mutando UM campo do MOLDE (base.py) para
 # que a reprovacao seja atribuivel aquele campo, nunca a um documento genericamente malformado
 # - mesma disciplina de tests/unit/claims.sh.
 #
 # Os TRES requisitos da delegacao viram tres grupos de caso:
-#   L3-L7   - campos obrigatorios presentes (raiz, study_quality, applicability, findings);
-#   L8-L9   - inference_strength e provenance dentro dos vocabularios FECHADOS;
-#   L12-L16 - toda afirmacao numerica com fonte declarada, pelos DOIS mecanismos do validador:
-#             findings[].source (estrutural) e o marcador 'fonte'/'verificad' no resto do texto.
+#   LT3-LT7   - campos obrigatorios presentes (raiz, study_quality, applicability, findings);
+#   LT8-LT9   - inference_strength e provenance dentro dos vocabularios FECHADOS;
+#   LT12-LT16 - toda afirmacao numerica com fonte declarada, pelos DOIS mecanismos do validador:
+#               findings[].source (estrutural) e o marcador 'fonte'/'verificad' no resto do texto.
+#
+# PREFIXO 'LT' (Literatura Test), nao 'L': ate esta correcao os casos daqui usavam 'L1'..'L22',
+# o MESMO prefixo que tests/unit/claims.sh ja usava em `main` para os SEUS proprios casos (L1..
+# L18). O inventario de mutantes/regressoes de evidence/validate-claims.py e um SET PLANO por
+# design (`inventario()`), entao os dois espacos colidiam - "L6" citado por uma claim resolveria
+# para QUALQUER um dos dois casos, e o proprio validador declara os espacos "disjuntos de
+# proposito". Nenhuma claim cita um ID 'L*' hoje (conferido), entao a colisao nunca produziu um
+# falso-verde real, mas a garantia de resolucao nao-ambigua estava falsa. Renomeado o prefixo
+# DESTE arquivo (o mais novo dos dois) em vez de qualificar o inventario por arquivo: qualificar
+# exigiria mudar o FORMATO de citacao em evidence/claims/*.yaml (risco maior, nenhuma claim usa
+# hoje) para resolver uma colisao que nunca foi citada; renomear e uma mudanca so de rotulo,
+# confinada a este arquivo e a tests/mutation/literatura.sh, sem tocar o schema do ledger.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 # LOCK: suites deste repo nao sao reentrantes entre si (tests/lib/lock.sh).
@@ -33,7 +45,7 @@ val(){ python3 "$V" "$REPO" "$1" >/dev/null 2>&1; echo $?; }
 
 # MOLDE: um documento MINIMO e VALIDO, reutilizado por todo caso negativo abaixo. Cada caso
 # importa `doc()` e muda UM campo antes de gravar - se o molde sozinho nao validasse, nenhum
-# caso negativo teria controle (foi exatamente a falta de controle que deixou L2 de
+# caso negativo teria controle (foi exatamente a falta de controle que deixou LT2 de
 # tests/unit/claims.sh medir o parser, nao o validador, na primeira versao daquele arquivo).
 cat > "$T/base.py" <<'PY'
 def doc():
@@ -69,10 +81,10 @@ def doc():
     }
 PY
 
-echo "== L1. a camada REAL de evidence/literature/ e valida =="
+echo "== LT1. a camada REAL de evidence/literature/ e valida =="
 chk "evidence/literature/ valida" "$(val "$REPO/evidence/literature")" 0
 
-echo "== L2. o MOLDE, sozinho, e valido (controle geral dos negativos abaixo) =="
+echo "== LT2. o MOLDE, sozinho, e valido (controle geral dos negativos abaixo) =="
 D="$T/l2"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -82,7 +94,7 @@ yaml.safe_dump(doc(), open(sys.argv[1], "w"), allow_unicode=True, sort_keys=Fals
 PY
 chk "molde sem mutacao passa" "$(val "$D")" 0
 
-echo "== L3. campo obrigatorio de raiz ausente reprova =="
+echo "== LT3. campo obrigatorio de raiz ausente reprova =="
 D="$T/l3"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -93,7 +105,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "'citation' ausente -> reprova" "$(val "$D")" 1
 
-echo "== L4. literature_id fora do padrao reprova; controle: id valido passa =="
+echo "== LT4. literature_id fora do padrao reprova; controle: id valido passa =="
 D="$T/l4"; mkdir -p "$D"
 python3 - "$D/BAD ID.yaml" <<PY
 import sys, yaml
@@ -112,7 +124,7 @@ yaml.safe_dump(doc(), open(sys.argv[1], "w"), allow_unicode=True, sort_keys=Fals
 PY
 chk "  o MESMO molde com id valido passa" "$(val "$T/l4b")" 0
 
-echo "== L5. nome do arquivo que nao bate com literature_id reprova =="
+echo "== LT5. nome do arquivo que nao bate com literature_id reprova =="
 D="$T/l5"; mkdir -p "$D"
 python3 - "$D/nome-errado.yaml" <<PY
 import sys, yaml
@@ -122,10 +134,10 @@ yaml.safe_dump(doc(), open(sys.argv[1], "w"), allow_unicode=True, sort_keys=Fals
 PY
 chk "arquivo 'nome-errado.yaml' com literature_id 'arxiv-0000.00000' -> reprova" "$(val "$D")" 1
 
-echo "== L6. literature_id duplicado entre dois arquivos reprova, com a violacao NOMEADA =="
+echo "== LT6. literature_id duplicado entre dois arquivos reprova, com a violacao NOMEADA =="
 # SOBREDETERMINACAO ESTRUTURAL, nao so desta fixture: se dois arquivos no MESMO diretorio
 # declaram o MESMO literature_id, o nome de arquivo de cada um so pode casar com o proprio id
-# (regra de L5) se os dois arquivos tiverem o MESMO nome - impossivel no mesmo diretorio (o
+# (regra de LT5) se os dois arquivos tiverem o MESMO nome - impossivel no mesmo diretorio (o
 # sistema de arquivos nao aceita dois arquivos com nomes identicos). Logo, TODO fixture de
 # duplicidade dispara tambem a violacao de nome de arquivo em pelo menos um dos dois documentos
 # - nao ha como construir um caso onde SO a duplicidade falhe. Um caso que afira apenas o exit
@@ -152,7 +164,7 @@ chk "dois arquivos com o mesmo literature_id -> reprova" "$RC6" 1
 printf '%s' "$OUT6" | grep -qF "duplicado"
 chk "  a violacao de duplicidade e NOMEADA na mensagem (nao so o mismatch de nome de arquivo)" $? 0
 
-echo "== L7. findings vazio reprova; study_quality/applicability incompletos reprovam =="
+echo "== LT7. findings vazio reprova; study_quality/applicability incompletos reprovam =="
 D="$T/l7a"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -190,7 +202,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "limitations=[] -> reprova" "$(val "$D")" 1
 
-echo "== L8. inference_strength fora do vocabulario fechado reprova; controle: valor valido passa =="
+echo "== LT8. inference_strength fora do vocabulario fechado reprova; controle: valor valido passa =="
 D="$T/l8"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -210,7 +222,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "  'DIRECT' (no vocabulario fechado) passa" "$(val "$T/l8b")" 0
 
-echo "== L9. provenance fora do vocabulario fechado reprova; controle: valor valido passa =="
+echo "== LT9. provenance fora do vocabulario fechado reprova; controle: valor valido passa =="
 D="$T/l9"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -230,7 +242,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "  'peer_reviewed' (no vocabulario fechado) passa" "$(val "$T/l9b")" 0
 
-echo "== L10. findings[].metric fora de snake_case reprova =="
+echo "== LT10. findings[].metric fora de snake_case reprova =="
 D="$T/l10"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -241,7 +253,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "metric='Not Snake Case' -> reprova" "$(val "$D")" 1
 
-echo "== L11. findings[] sem 'source' reprova - o campo estrutural E a fonte declarada =="
+echo "== LT11. findings[] sem 'source' reprova - o campo estrutural E a fonte declarada =="
 D="$T/l11"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -252,7 +264,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "findings[0] sem 'source' -> reprova" "$(val "$D")" 1
 
-echo "== L12. numero solto em inference_rationale SEM marcador de fonte reprova =="
+echo "== LT12. numero solto em inference_rationale SEM marcador de fonte reprova =="
 # ESTE E O CASO CENTRAL DO TERCEIRO REQUISITO DA DELEGACAO: "toda afirmacao numerica com fonte
 # declarada". Um numero podia entrar pela prosa argumentativa sem nunca passar por findings -
 # foi exatamente a rota do defeito original da secao 6.1 do README (ver docstring do validador).
@@ -276,7 +288,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "  o MESMO numero com marcador 'fonte' no texto passa" "$(val "$T/l12b")" 0
 
-echo "== L13. numero solto em limitations[] SEM marcador de fonte reprova =="
+echo "== LT13. numero solto em limitations[] SEM marcador de fonte reprova =="
 D="$T/l13"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -287,7 +299,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "'12 instancias' solto, sem marcador -> reprova" "$(val "$D")" 1
 
-echo "== L14. numero solto em study_quality.* SEM marcador de fonte reprova =="
+echo "== LT14. numero solto em study_quality.* SEM marcador de fonte reprova =="
 D="$T/l14"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -298,8 +310,8 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "study_quality.baseline com numero sem marcador -> reprova" "$(val "$D")" 1
 
-echo "== L15. numero DENTRO de findings[].value NAO exige o marcador de texto =="
-# A fonte de um numero em findings[] e o campo estrutural 'source' (L11 ja cobre a ausencia
+echo "== LT15. numero DENTRO de findings[].value NAO exige o marcador de texto =="
+# A fonte de um numero em findings[] e o campo estrutural 'source' (LT11 ja cobre a ausencia
 # dele). Exigir TAMBEM o marcador textual dentro de findings seria redundante e obrigaria
 # prosa artificial em todo 'value' - o desenho deste validador separa os dois mecanismos por
 # regiao do documento (ver docstring: 3a cobre findings, 3b cobre o resto).
@@ -314,7 +326,7 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "findings[].value com numero e SEM marcador de texto ainda passa (source cobre)" "$(val "$D")" 0
 
-echo "== L16. numero em campo BIBLIOGRAFICO (citation/identifier/url/cited_in) nao exige marcador =="
+echo "== LT16. numero em campo BIBLIOGRAFICO (citation/identifier/url/cited_in) nao exige marcador =="
 # citation/identifier/url/cited_in sao ENDERECO (onde o paper esta, onde e citado), nao
 # afirmacao empirica sobre o que o paper mediu - por isso ficam fora da varredura 3b.
 D="$T/l16"; mkdir -p "$D"
@@ -328,26 +340,26 @@ yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
 chk "cited_in com digito (numero de ADR) sem marcador ainda passa" "$(val "$D")" 0
 
-echo "== L17. diretorio de literatura inexistente e NAO VERIFICADO (exit 2), nao aprovacao =="
+echo "== LT17. diretorio de literatura inexistente e NAO VERIFICADO (exit 2), nao aprovacao =="
 chk "diretorio ausente -> exit 2" "$(python3 "$V" "$REPO" "$T/nao-existe" >/dev/null 2>&1; echo $?)" 2
 
-echo "== L18. diretorio de literatura VAZIO (sem yaml) e NAO VERIFICADO (exit 2) =="
+echo "== LT18. diretorio de literatura VAZIO (sem yaml) e NAO VERIFICADO (exit 2) =="
 D="$T/l18-vazio"; mkdir -p "$D"
 chk "diretorio sem entradas -> exit 2" "$(python3 "$V" "$REPO" "$D" >/dev/null 2>&1; echo $?)" 2
 
-echo "== L19. pyyaml ausente e NAO VERIFICADO (exit 2), nao aprovacao =="
+echo "== LT19. pyyaml ausente e NAO VERIFICADO (exit 2), nao aprovacao =="
 # Mesma tecnica usada em tests/unit/claims.sh L9: um modulo que lanca ImportError precede o
 # real no PYTHONPATH.
 SB="$T/sabotagem"; mkdir -p "$SB"; printf 'raise ImportError("indisponivel por fixture")\n' > "$SB/yaml.py"
 rc=$(PYTHONPATH="$SB" python3 "$V" "$REPO" "$REPO/evidence/literature" >/dev/null 2>&1; echo $?)
 chk "sem parser, o validador declara NAO VERIFICADO" "$rc" 2
 
-echo "== L20. YAML sintaticamente invalido reprova, nao trava a suite inteira =="
+echo "== LT20. YAML sintaticamente invalido reprova, nao trava a suite inteira =="
 D="$T/l20"; mkdir -p "$D"
 printf 'literature_id: [nao fecha\n' > "$D/arxiv-0000.00000.yaml"
 chk "YAML quebrado -> reprova (nao exit 0, nao crash)" "$(val "$D")" 1
 
-echo "== L21. CONTRADICAO INTERNA: citacao retratada numa secao reaparece verbatim noutra =="
+echo "== LT21. CONTRADICAO INTERNA: citacao retratada numa secao reaparece verbatim noutra =="
 # ESCOPO DECLARADO (ver evidence/validate-literature.py, docstring, secao de LIMITES): este
 # caso cobre so reaparicao LITERAL da string retratada. Nao existe, neste validador, deteccao
 # de PARAFRASE (a mesma alegacao reescrita com outras palavras) - isso exigiria compreensao de
@@ -374,7 +386,7 @@ chk "citacao retratada reaparece verbatim em limitations -> reprova" "$RC21" 1
 printf '%s' "$OUT21" | grep -qF "contradicao interna"
 chk "  a violacao e NOMEADA como contradicao interna (nao generica)" $? 0
 
-echo "== L22. controle de L21: a MESMA retratacao, SEM a citacao reaparecer alhures, passa =="
+echo "== LT22. controle de LT21: a MESMA retratacao, SEM a citacao reaparecer alhures, passa =="
 D="$T/l22"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -387,22 +399,22 @@ d["study_quality"]["scaffold"] = (
 )
 yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
-chk "  retratacao isolada, sem reaparicao verbatim, passa (controle de L21)" "$(val "$D")" 0
+chk "  retratacao isolada, sem reaparicao verbatim, passa (controle de LT21)" "$(val "$D")" 0
 
-echo "== L23-L26. REGRESSAO: FP e FN medidos por revisao independente em REGRA 5 =="
+echo "== LT23-LT26. REGRESSAO: FP e FN medidos por revisao independente em REGRA 5 =="
 # Par controlado, formato exigido pela delegacao: reproduz a FORMA REAL do campo `citation` de
 # arxiv-2602.06547.yaml (titulo CORRETO citado numa frase, titulo INCORRETO retratado na frase
 # seguinte, marcador "nao existe na" colado no titulo incorreto) e prova as duas pontas:
-#   L23 - o titulo CORRETO, reusado alhures como fato legitimo, PASSA (era o falso positivo:
+#   LT23 - o titulo CORRETO, reusado alhures como fato legitimo, PASSA (era o falso positivo:
 #         antes da janela de proximidade, QUALQUER aspa do campo `citation` virava "retratada").
-#   L24 - controle: o titulo FABRICADO (o que de fato esta retratado), reusado alhures como
+#   LT24 - controle: o titulo FABRICADO (o que de fato esta retratado), reusado alhures como
 #         fato, continua REPROVANDO - prova que a correcao nao apagou a deteccao real.
-#   L25 - o mesmo reuso do titulo fabricado, mas dentro de uma frase que contem a palavra
+#   LT25 - o mesmo reuso do titulo fabricado, mas dentro de uma frase que contem a palavra
 #         "inventario" (raiz "invent-", sem relacao com fabricacao) REPROVA - era o falso
 #         negativo: o marcador antigo (`\binvent\w*`, sem fronteira de palavra) casava
 #         "inventario" e o campo inteiro virava isento, calando a reafirmacao.
-#   L26 - controle par de L25: a MESMA frase com "resumo" no lugar de "inventario" - mesmo
-#         veredito (reprova). O par L25/L26 prova que uma palavra IRRELEVANTE nao muda mais o
+#   LT26 - controle par de LT25: a MESMA frase com "resumo" no lugar de "inventario" - mesmo
+#         veredito (reprova). O par LT25/LT26 prova que uma palavra IRRELEVANTE nao muda mais o
 #         resultado (antes: INVENTARIO->passa/calava, RESUMO->reprova/pegava - a mesma
 #         fabricacao, dois vereditos, so pela presenca acidental de uma raiz de palavra).
 D="$T/l23base"; mkdir -p "$D"
@@ -428,7 +440,7 @@ d["citation"] = CITATION
 d["limitations"] = [f'O titulo real do estudo, "{CORRETO}", descreve o achado central.']
 yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
-chk "L23 titulo CORRETO reusado em limitations -> passa (fix do falso positivo)" "$(val "$D")" 0
+chk "LT23 titulo CORRETO reusado em limitations -> passa (fix do falso positivo)" "$(val "$D")" 0
 
 D="$T/l24"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
@@ -443,7 +455,7 @@ d["limitations"] = [
 ]
 yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
-chk "  L24 controle: titulo FABRICADO reusado como fato -> reprova (deteccao real preservada)" "$(val "$D")" 1
+chk "  LT24 controle: titulo FABRICADO reusado como fato -> reprova (deteccao real preservada)" "$(val "$D")" 1
 
 D="$T/l25"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
@@ -456,7 +468,7 @@ d["citation"] = CITATION
 d["limitations"] = [f'Ver o inventario deste estudo, "{FABRICADO}", para a metodologia completa.']
 yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
-chk "L25 'inventario' (raiz invent- irrelevante) nao desliga mais a deteccao -> reprova" "$(val "$D")" 1
+chk "LT25 'inventario' (raiz invent- irrelevante) nao desliga mais a deteccao -> reprova" "$(val "$D")" 1
 
 D="$T/l26"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
@@ -469,11 +481,62 @@ d["citation"] = CITATION
 d["limitations"] = [f'Ver o resumo deste estudo, "{FABRICADO}", para a metodologia completa.']
 yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
-chk "  L26 par de L25 ('resumo' no lugar de 'inventario') -> mesmo veredito (reprova)" "$(val "$D")" 1
+chk "  LT26 par de LT25 ('resumo' no lugar de 'inventario') -> mesmo veredito (reprova)" "$(val "$D")" 1
+
+echo "== LT27-LT28. REGRESSAO (D8): par controlado por COMPRIMENTO da aspa colada ao marcador =="
+# ONDA 5, D8 (CRITICO). Falso negativo ESTRUTURAL: JANELA_RETRATACAO (100) limitava a
+# PROXIMIDADE corretamente, mas RE_ASPAS aceita aspas de ate 300 caracteres, e o casamento antigo
+# exigia que o SPAN INTEIRO coubesse na janela ao redor do marcador - uma aspa longa colada ao
+# marcador (gap de poucos caracteres, a MESMA proximidade da citacao fabricada real) escapava so
+# por nao COUBER, nunca por estar longe. Medido antes do fix: aspa de 96 caracteres colada ao
+# marcador detectava; 97+ escapava - alcancavel no corpus real (arxiv-2603.15401.yaml,
+# study_quality.scaffold, aspa de 223 chars). Par controlado: LT27 (aspa curta) e LT28 (aspa
+# longa) usam o MESMO gap ate o marcador - so o comprimento muda; as DUAS tem de reprovar.
+fixture_d8(){ # $1=destino  $2=comprimento da aspa fabricada, colada ao marcador
+python3 - "$T" "$1" "$2" <<'PY'
+import sys, yaml
+sys.path.insert(0, sys.argv[1])
+from base import doc
+dest, n = sys.argv[2], int(sys.argv[3])
+fabricado = "Z" * n
+d = doc()
+d["citation"] = (
+    'Fixture, F. "Correct Fixture Title" : A Study. arXiv:0000.00000, 2026 preprint. '
+    'O titulo usado antes desta correcao ("' + fabricado + '") nao existe na fonte.'
+)
+d["limitations"] = [
+    'O estudo descreve seu achado central como "' + fabricado + '", conforme o resumo original.'
+]
+yaml.safe_dump(d, open(dest, "w"), allow_unicode=True, sort_keys=False)
+PY
+}
+D="$T/lt27"; mkdir -p "$D"; fixture_d8 "$D/arxiv-0000.00000.yaml" 20
+chk "LT27 aspa CURTA (20 chars) colada ao marcador, reusada alhures -> reprova" "$(val "$D")" 1
+D="$T/lt28"; mkdir -p "$D"; fixture_d8 "$D/arxiv-0000.00000.yaml" 150
+chk "  LT28 par: aspa LONGA (150 chars, MESMO gap do marcador) tambem reprova (fix do falso negativo)" "$(val "$D")" 1
+
+echo "== LT29. D8, caso do CORPUS REAL: aspa legitima de 223 chars segue NAO retratada =="
+# arxiv-2603.15401.yaml, study_quality.scaffold, tem uma aspa REAL de 223 caracteres a 113 do
+# marcador de retratacao mais proximo - fora da janela de 100 por DISTANCIA (nao mais por
+# comprimento, ver D8 acima). Prova que o fix nao troca o falso negativo por um falso positivo:
+# uma aspa longa e GENUINA, fora da janela, continua nao contando como retratada.
+RES29="$(python3 - <<'PY'
+import sys, yaml, importlib
+sys.path.insert(0, "evidence")
+vl = importlib.import_module("validate-literature")
+doc = yaml.safe_load(open("evidence/literature/arxiv-2603.15401.yaml"))
+scaffold = doc["study_quality"]["scaffold"]
+retratadas = vl._citacoes_retratadas(scaffold)
+alvo = next(m.group(1) for m in vl.RE_ASPAS.finditer(scaffold) if len(m.group(1)) > 200)
+norm = " ".join(alvo.split()).lower()
+print("sim" if norm not in retratadas else "nao")
+PY
+)"
+chk "aspa real de 223 chars (fora da janela por DISTANCIA) segue NAO retratada" "$RES29" "sim"
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=35
+EXPECTED=38
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

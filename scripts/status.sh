@@ -24,7 +24,7 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/propriedades.sh tests/unit/fronteira-externa.sh tests/unit/managed.sh \
            tests/unit/conformidade-managed.sh tests/unit/arnes-de-mutacao.sh \
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
-           tests/unit/capabilities.sh \
+           tests/unit/capabilities.sh tests/unit/cobertura.sh \
            tests/unit/run.sh; do
     bash "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
@@ -69,6 +69,17 @@ trap 'rm -f "$TMP"' EXIT
   m_cap="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/capabilities.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/capabilities.sh >/dev/null 2>&1
   printf '| capability declarada | %s | %s |\n' "${m_cap:-?}" "$?"
+  m_cobertura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/cobertura.sh | head -1 | cut -d= -f2)"
+  bash tests/mutation/cobertura.sh >/dev/null 2>&1
+  printf '| cobertura de decisao | %s | %s |\n' "${m_cobertura:-?}" "$?"
+
+  printf '\n## Cobertura de decisao (branch), medida via subprocesso instrumentado\n\n'
+  printf 'Piso por arquivo (evidence/cobertura.sh --check); ver o script para a mecanica de\n'
+  printf 'medicao e o LIMITE declarado (cobertura prova execucao de ramo, nao correcao de\n'
+  printf 'assercao).\n\n'
+  printf '| Arquivo | Medido | Piso | Status |\n|---|---:|---:|---|\n'
+  bash evidence/cobertura.sh 2>/dev/null \
+    | awk -F'\t' '$1=="COBFILE"{printf "| `%s` | %s%% | %s%% | %s |\n", $2, $3, $4, $5}'
 
   printf '\n## Componentes\n\n| Tipo | Qtd |\n|---|---:|\n'
   awk -F'\t' '!/^#/{c[$1]++} END{for(t in c) printf "| %s | %s |\n", t, c[t]}' install/manifest.lock | sort
@@ -84,6 +95,7 @@ trap 'rm -f "$TMP"' EXIT
   printf -- '- rollback cobre falhas observadas pelo supervisor. `SIGKILL` do supervisor, falha de host/filesystem e comprometimento administrativo permanecem fora da garantia.\n'
   printf -- '- ownership/mode checks usam semantica POSIX/GNU exercitada no CI; ACLs, capabilities e atributos de filesystem fora desse contrato exigem verificacao especifica antes de ampliar a claim.\n'
   printf -- '- o ruleset impoe o check requerido enquanto a regra estiver ativa; administradores com autoridade para alterar a regra permanecem fora desse mecanismo.\n'
+  printf -- '- cobertura de decisao (branch, evidence/cobertura.sh) prova que um ramo foi executado por algum teste; nao prova que a assercao daquele teste esta correta. E piso, nao teto: torna a omissao detectavel (ramo nunca exercitado), nunca a torna impossivel (ramo exercitado e mal testado continua passando).\n'
 
   printf '\n## Propriedades de seguranca medidas\n\n'
   printf -- '- fonte privilegiada user-owned, symlinkada ou group/world-writable e rejeitada antes da delegacao quando o supervisor roda como root na raiz real.\n'
