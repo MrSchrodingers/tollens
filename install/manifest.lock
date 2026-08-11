@@ -14,7 +14,7 @@ hook	execution/hooks/poka-yoke-lint.sh	hooks/poka-yoke-lint.sh	1fc83e6b1c085de08
 hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	750089c2b4f7f4e5083aba4bc7a8c826541ddfd3b5d52f93df89d31d823e1e82
 hook	evidence/hooks/subagent-contract.sh	hooks/subagent-contract.sh	adcbddb4b1fdee0f684da7a876e2413cae9271ba315b74599b931c62f5daad68
 hook	evidence/hooks/subagent-probe.sh	hooks/subagent-probe.sh	9dd4623a90042f2beada89177e4619b78bed5582154bd6c8878cb54d82c3567a
-hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	b8044f89a4f12615093dd2fae8b77972ce6b52d2421b3c50587910043ba5e8fe
+hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	486427303de84d23e5e0e8da06151ad1c7107bb3841a721144a61cd7c96dd3c2
 agent	execution/agents/analista-fluxos.md	agents/analista-fluxos.md	99416b8d46df8b26b860df81e5ef009c9fcd0b2c6b720504a3b898019e96f4f7
 agent	execution/agents/analista-otimalidade.md	agents/analista-otimalidade.md	103b999f42aee7a8fdb6876fc0d3f120264f817eb99c1675db41b5395aff53aa
 agent	execution/agents/auditor-seguranca.md	agents/auditor-seguranca.md	e5773f187f2a3c3645808b7430324b66f441b9d0960c2c59cec721e214482db0
