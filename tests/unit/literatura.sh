@@ -122,7 +122,17 @@ yaml.safe_dump(doc(), open(sys.argv[1], "w"), allow_unicode=True, sort_keys=Fals
 PY
 chk "arquivo 'nome-errado.yaml' com literature_id 'arxiv-0000.00000' -> reprova" "$(val "$D")" 1
 
-echo "== L6. literature_id duplicado entre dois arquivos reprova =="
+echo "== L6. literature_id duplicado entre dois arquivos reprova, com a violacao NOMEADA =="
+# SOBREDETERMINACAO ESTRUTURAL, nao so desta fixture: se dois arquivos no MESMO diretorio
+# declaram o MESMO literature_id, o nome de arquivo de cada um so pode casar com o proprio id
+# (regra de L5) se os dois arquivos tiverem o MESMO nome - impossivel no mesmo diretorio (o
+# sistema de arquivos nao aceita dois arquivos com nomes identicos). Logo, TODO fixture de
+# duplicidade dispara tambem a violacao de nome de arquivo em pelo menos um dos dois documentos
+# - nao ha como construir um caso onde SO a duplicidade falhe. Um caso que afira apenas o exit
+# code (!=0) e por isso estruturalmente incapaz de discriminar um mutante que remova a guarda de
+# duplicidade: o exit code continua 1, vindo so da violacao de nome. Por isso este caso confere
+# tambem a MENSAGEM (mesma tecnica de F2/F3/F5 de tests/unit/schedule.sh): a palavra 'duplicado'
+# tem de aparecer na saida, o que so acontece se a guarda de duplicidade de fato executou.
 D="$T/l6"; mkdir -p "$D"
 python3 - "$D/arxiv-0000.00000.yaml" <<PY
 import sys, yaml
@@ -137,7 +147,10 @@ from base import doc
 d = doc()
 yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
 PY
-chk "dois arquivos com o mesmo literature_id -> reprova" "$(val "$D")" 1
+OUT6="$(python3 "$V" "$REPO" "$D" 2>&1)"; RC6=$?
+chk "dois arquivos com o mesmo literature_id -> reprova" "$RC6" 1
+printf '%s' "$OUT6" | grep -qF "duplicado"
+chk "  a violacao de duplicidade e NOMEADA na mensagem (nao so o mismatch de nome de arquivo)" $? 0
 
 echo "== L7. findings vazio reprova; study_quality/applicability incompletos reprovam =="
 D="$T/l7a"; mkdir -p "$D"
@@ -336,7 +349,7 @@ chk "YAML quebrado -> reprova (nao exit 0, nao crash)" "$(val "$D")" 1
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=27
+EXPECTED=28
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

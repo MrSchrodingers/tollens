@@ -394,7 +394,7 @@ SWE-Skills-Bench evaluates roughly 565 requirement-driven SWE task instances acr
 
 SkillsBench reports stronger average gains for curated skills across a broader multi-domain benchmark, but also reports substantial heterogeneity, negative deltas on some tasks, and no average benefit from self-generated skills [15].
 
-Independently of skill efficacy, large-scale security studies of agent-skill marketplaces report meaningful rates of vulnerable and malicious skills in circulation [17, 18]. That risk surface does not depend on whether a skill improves pass rate, and on its own it motivates the quarantine and compatibility gates below; efficacy uncertainty is the weaker of the two justifications for the policy that follows.
+Independently of skill efficacy, large-scale security studies of agent-skill marketplaces report two distinct risk signals at very different orders of magnitude, and the two should not be conflated: 26.1% of the 31,132 skills one study analyzed with an automated detector contain at least one vulnerability pattern [17]; a separate, behaviorally-verified study confirmed 157 of 98,380 examined skills (about 0.16%) as actively malicious after sandboxed execution, and describes that count as a lower bound [18]. The first number measures presence of a vulnerability *pattern*; the second measures behaviorally *confirmed* malice — different constructs, different populations, not additive. That risk surface does not depend on whether a skill improves pass rate, and on its own it motivates the quarantine and compatibility gates below; efficacy uncertainty is the weaker of the two justifications for the policy that follows.
 
 The policy consequence is intentionally conservative:
 
@@ -977,7 +977,7 @@ Mutation testing provides a disciplined way to test whether a suite distinguishe
 17. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338, 2026 preprint.  
     https://arxiv.org/abs/2601.10338
 
-18. **Malicious Agent Skills in the Wild: A Large-Scale Security Empirical Study.** arXiv:2602.06547, 2026 preprint.  
+18. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547, 2026 preprint.  
     https://arxiv.org/abs/2602.06547
 
 ---

@@ -77,9 +77,23 @@ O QUE O VALIDADOR IMPOE
 
 O QUE ESTE VALIDADOR NAO FAZ - limites declarados
 ---------------------------------------------------
-  - Nao contata a rede, nao baixa o PDF, nao confere se o numero citado bate com o artigo. Essa
-    conferencia e humana - foi feita na investigacao que produziu estes arquivos - e nenhum
-    programa deste repositorio pode reproduzi-la sem acesso a fonte primaria.
+  - Nao contata a rede, nao baixa o PDF, nao confere se o numero, o titulo, os autores ou uma
+    citacao verbatim batem com o artigo. VERDE AQUI E CONFORMIDADE DE FORMA (campos presentes,
+    vocabulario fechado, todo numero com um marcador de fonte declarado), NUNCA FIDELIDADE DE
+    CONTEUDO A FONTE PRIMARIA. Essa conferencia so pode ser humana, com acesso a fonte, numero a
+    numero e citacao a citacao.
+  - PROVA CONCRETA, nao hipotetica: uma rodada anterior desta mesma camada (onda 1) declarou os
+    27 casos de `tests/unit/literatura.sh` verdes e os 6 arquivos de `evidence/literature/*.yaml`
+    validos com (a) o TITULO de arxiv-2602.06547 fabricado - "Malicious Agent Skills in the
+    Wild: A Large-Scale Security Empirical Study", que nao existe; o titulo real e "Do Not
+    Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild
+    -, (b) uma citacao verbatim INVENTADA em arxiv-2603.15401.yaml ("does not evaluate
+    alternative agent frameworks", marcada como "verificado no texto completo" mas ausente da
+    fonte), e (c) iniciais de autor trocadas no mesmo arquivo. Nenhuma dessas tres violacoes e
+    detectavel pelos mecanismos deste programa - `citation` e campo bibliografico (fora da
+    varredura de marcador de fonte, ver CAMPOS_BIBLIOGRAFICOS) e o parser YAML nao sabe o que um
+    arXiv realmente diz. As tres so foram encontradas quando um agente leu a fonte primaria de
+    novo, fora deste validador. Este historico e o motivo desta secao, nao um hipotetico.
   - Nao decide SE a forca de inferencia declarada esta CORRETA - confere so que o valor esta no
     vocabulario fechado. A calibracao entre o estudo e a forca de inferencia e argumento
     humano, exatamente como a ligacao entre evidencia e tese em `evidence/claims`
@@ -89,7 +103,10 @@ O QUE ESTE VALIDADOR NAO FAZ - limites declarados
     parser semantico: uma string que contenha um digito por acidente (ex.: um identificador
     interno) e tratada como afirmacao numerica do mesmo jeito. O custo dessa simplicidade e
     falso positivo ocasional, corrigivel adicionando o marcador; a alternativa - permitir
-    numeros soltos por padrao - e o defeito que este arquivo existe para fechar.
+    numeros soltos por padrao - e o defeito que este arquivo existe para fechar. O mesmo
+    heuristico tambem e CEGO ao CONTEUDO do marcador: uma string pode conter a palavra "fonte"
+    e ainda assim carregar um numero, titulo ou quote que a fonte declarada nao sustenta - o
+    marcador prova que uma fonte foi APONTADA, nao que ela foi CONFERIDA.
 """
 import os
 import re
@@ -281,8 +298,10 @@ def main(argv):
           "provenance no vocabulario fechado; toda afirmacao numerica com fonte declarada "
           "(findings[].source estrutural, ou marcador 'fonte'/'verificad' inline no restante "
           "do documento).")
-    print("NAO verificado aqui: se o numero citado bate com o conteudo real do artigo "
-          "(exigiria acesso a fonte primaria) - ver limitacoes no docstring deste arquivo.")
+    print("ESTE VERDE E FORMA, NAO FIDELIDADE A FONTE PRIMARIA: nao contata a rede, nao baixa o "
+          "PDF, nao confere se titulo, autor, numero ou citacao verbatim batem com o artigo. "
+          "Precedente concreto: uma rodada anterior desta camada saiu 27/27 verde com um titulo "
+          "fabricado e uma citacao verbatim inventada dentro - ver docstring deste arquivo.")
     return EXIT_OK
 
 
