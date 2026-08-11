@@ -17,7 +17,7 @@ ORIG="evidence/validate-claims.py"
 REG="tests/unit/claims.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=6
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=8
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -111,6 +111,26 @@ mutante MK6 "a checagem de duplicidade e chamada tambem para o espaco de MUTANTE
   "mutante ZZD1 declarado em DOIS arquivos de tests/mutation/ -> NAO VERIFICADO (exit 2)" \
   troca '    duplicados_entre_arquivos(por_arquivo_mutante, "mutante")' \
         '    pass  # duplicados_entre_arquivos(por_arquivo_mutante, "mutante")'
+
+# MK7 - onda 6b (TERCEIRA FORMA de mutante fantasma, CRITICO): a ancora de aplicacao do
+# cabecalho `echo "== <ID>. ..."` de tests/mutation/install.sh desliga - qualquer cabecalho,
+# mesmo sem mutacao aplicada nem oraculo invocado no bloco (por exemplo dentro de
+# `if false; then ... fi`, o contraexemplo ZQ7 medido pelo portao final), volta a contar como
+# mutante real.
+mutante MK7 "cabecalho de install.sh exige mutacao aplicada + oraculo invocado no bloco (ZQ7)" \
+  "cabecalho SOZINHO em bloco morto (sem sed, sem oraculo) NAO entra" \
+  troca 'if RE_MUTACAO_APLICADA.search(bloco) and RE_ORACULO_INVOCADO.search(bloco):' \
+        'if True:'
+
+# MK8 - onda 6b (RESIDUO DE AMBIGUIDADE EM SNAPSHOT HISTORICO): a checagem por-claim de
+# ambiguidade contra o inventario do PROPRIO subject_snapshot desliga - uma claim citando um ID
+# que era ambiguo NAQUELE commit (mesmo que o worktree de hoje ja nao tenha essa ambiguidade)
+# voltaria a resolver sem discriminar, exatamente a lacuna que `_contrato_extracao_ok`
+# (worktree-only) nao cobre.
+mutante MK8 "IDs citados sao conferidos contra a ambiguidade do PROPRIO snapshot da claim" \
+  "mutante M1 citado, AMBIGUO naquele snapshot -> reprova mesmo com o worktree hoje limpo" \
+  troca '            elif por_arquivo_snap is not None:' \
+        '            elif False and por_arquivo_snap is not None:'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

@@ -482,9 +482,68 @@ rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
 chk "  controle: com so UM arquivo declarando ZZD1, o ledger REAL volta a validar" "$rc" 0
 rm -f "$D6_FIX_MUT_A"
 
+echo "== L-D6-CASO-ANCORADO: cabecalho 'echo == <ID>.' em tests/mutation/*.sh SO conta com ANCORA DE APLICACAO =="
+# TERCEIRA FORMA de mutante fantasma (onda 6b, achado do portao final). A correcao anterior
+# tratava o cabecalho `echo "== <ID>. ..."` de tests/mutation/install.sh como invocacao por si
+# so - a justificativa era uma afirmacao sobre o CONTEUDO ATUAL de install.sh ("o mutante e
+# aplicado e morto logo abaixo"), nao uma invariante que a regex impunha. Contraexemplo
+# reproduzido aqui tal como medido pelo portao final: um cabecalho SOZINHO dentro de um bloco
+# `if false; then ... fi` - nenhuma mutacao aplicada, nenhum oraculo invocado, o bloco nem
+# executa - e a MESMA classe de defeito dos fantasmas K10/L6 (L-D6-FANTASMA acima), so que pela
+# forma RE_CASO em vez de comentario solto.
+D="$T/l_d6_caso_ancorado"; mkdir -p "$D/tests/mutation"
+escreve_fixture '#!/usr/bin/env bash\nif false; then\necho "== ZQ7. mutante que nunca existiu =="\nfi\necho "== ZQ8. mutante com mutacao aplicada e oraculo invocado =="\nsed -i "s/a/b/" "$ORIG"\nout="$(bash "$REG" 2>&1)"; rc=$?\n' \
+  "$D/tests/mutation/instalador_fixture.sh"
+chk "cabecalho SOZINHO em bloco morto (sem sed, sem oraculo) NAO entra" "$(inv_tem "$D" ZQ7)" "nao"
+chk "  o MESMO arquivo, cabecalho com sed -i + oraculo invocado no bloco, entra" "$(inv_tem "$D" ZQ8)" "sim"
+
+echo "== L-SNAPSHOT-AMBIGUO: claim ancorada num snapshot historico com mutante CITADO ambiguo la reprova =="
+# RESIDUO DE AMBIGUIDADE EM SNAPSHOT HISTORICO (onda 6b). `_contrato_extracao_ok` so confere o
+# inventario do WORKTREE; a resolucao de CADA claim roda contra o inventario do SEU
+# scope.subject_snapshot (inventario_no_commit). Uma claim ancorada num commit ANTERIOR a uma
+# desambiguacao de IDs ainda resolveria contra um inventario ambiguo NAQUELE commit, sem que a
+# checagem do worktree visse. 904b027 (pai de 36d8304, que renomeou M1..M10 de schedule.sh para
+# MS1..MS10) e um snapshot REAL onde `M1` estava declarado tanto em tests/mutation/run.sh quanto
+# em .../schedule.sh - o worktree de hoje ja nao tem essa ambiguidade (D6_FIX_MUT/ZZD1 acima
+# testa a mesma garantia so no worktree; este caso testa que ela TAMBEM vale por snapshot).
+AMBIGUO="$(git -C "$REPO" rev-parse 904b027 2>/dev/null || echo '')"
+if [ -z "$AMBIGUO" ]; then
+  echo "  SKIP  commit 904b027 indisponivel - o caso nao pode ser exercitado"
+else
+  chk "PRECONDICAO: M1 estava de fato em DOIS arquivos naquele snapshot (senao o caso e vacuo)" \
+      "$(git -C "$REPO" show "$AMBIGUO:tests/mutation/run.sh" 2>/dev/null | grep -c '^mutante M1 ')-$(git -C "$REPO" show "$AMBIGUO:tests/mutation/schedule.sh" 2>/dev/null | grep -c '^mutante M1 ')" \
+      "1-1"
+  D="$T/l_snap_amb"; mkdir -p "$D"
+  python3 - "$D/C-001.yaml" "$AMBIGUO" "$SHA" <<'PY'
+import sys, yaml
+dest, amb, head = sys.argv[1:4]
+d = {"claim_id":"C-001","claim":"cita mutante ambiguo no snapshot historico","type":"empirical-invariant",
+     "scope":{"subject_snapshot":amb,"platforms":["local-linux"]},
+     "evidence":{"mutants":["M1"],"ci":{"run_id":30924006484,"head_sha":head,"workflow":"verify-pr"}},
+     "warrant":"fixture","limitations":["fixture"],"status":"supported-in-tested-domain"}
+yaml.safe_dump(d, open(dest,"w"), allow_unicode=True, sort_keys=False)
+PY
+  chk "mutante M1 citado, AMBIGUO naquele snapshot -> reprova mesmo com o worktree hoje limpo" \
+      "$(val "$D")" 1
+  # CONTROLE: o MESMO snapshot, citando um ID que NAO era ambiguo la - sem ele um validador que
+  # reprovasse toda claim ancorada em 904b027 passaria no caso acima pelo motivo errado.
+  D="$T/l_snap_amb_ctrl"; mkdir -p "$D"
+  python3 - "$D/C-001.yaml" "$AMBIGUO" "$SHA" <<'PY'
+import sys, yaml
+dest, amb, head = sys.argv[1:4]
+d = {"claim_id":"C-001","claim":"cita regressao NAO ambigua no mesmo snapshot","type":"empirical-invariant",
+     "scope":{"subject_snapshot":amb,"platforms":["local-linux"]},
+     "evidence":{"regression":["G1"],"ci":{"run_id":30924006484,"head_sha":head,"workflow":"verify-pr"}},
+     "warrant":"fixture","limitations":["fixture"],"status":"supported-in-tested-domain"}
+yaml.safe_dump(d, open(dest,"w"), allow_unicode=True, sort_keys=False)
+PY
+  chk "  o MESMO snapshot, citando G1 (nao ambiguo la) passa - a checagem discrimina por ID" \
+      "$(val "$D")" 0
+fi
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=49
+EXPECTED=54
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
