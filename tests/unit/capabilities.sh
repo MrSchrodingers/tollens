@@ -2,8 +2,8 @@
 # SUITE DO VERIFICADOR DE CAPACIDADE DECLARADA (evidence/runtime-probes/declared-capabilities.py).
 #
 # POR QUE ESTA SUITE EXISTE - o verificador era, ate esta onda, o UNICO executavel novo sem
-# nenhum teste (github-ruleset.py tem 14 casos em fronteira-viva.sh, validate-literature.py tem
-# 27 em literatura.sh, schedule.py tem 15+4). Foi exatamente aqui que o defeito estava: a saida
+# nenhum teste (github-ruleset.py tem 34 casos em fronteira-viva.sh, validate-literature.py tem
+# 28 em literatura.sh, schedule.py tem 29+10). Foi exatamente aqui que o defeito estava: a saida
 # de `--repo-only` era byte-identica a do modo completo (medido por `diff`) enquanto a linha de
 # PASS continuava afirmando "identico nas 3 fontes" - uma prova de comparacao que nao ocorreu,
 # arquivavel em log de CI. Sem suite alguma, nada discriminava essa mentira de saida.
@@ -26,9 +26,21 @@ command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - 
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 
 # --- FIXTURE: um arquivo de agente com frontmatter minimo e `tools:` na forma pedida. ---
-# spec: "INLINE:A,B"  -> `tools: A, B` numa linha so
-#       "BLOCK:A,B"   -> `tools:` seguido de `  - A` / `  - B`
-#       "OMIT"        -> nenhuma chave `tools:` (arquivo existe, frontmatter fecha)
+# spec: "INLINE:A,B"      -> `tools: A, B` numa linha so (escalar separado por virgula)
+#       "BLOCK:A,B"       -> `tools:` seguido de `  - A` / `  - B`
+#       "BLOCKBLANK:N:A,B" -> bloco com uma LINHA EM BRANCO apos os N primeiros itens (os
+#                            demais vem DEPOIS da linha em branco) - a reproducao literal do
+#                            ALTO: o parser artesanal fazia `break` na linha em branco e
+#                            truncava a lista, escondendo tudo que vem depois dela
+#       "BLOCKCOMMENT:A,B"-> bloco com um COMENTARIO YAML entre o 1o item e os demais
+#       "TRAILSPACE:A,B"  -> `tools: ` com ESPACO A MAIS apos os dois-pontos, bloco abaixo
+#                            (P2: `RE_TOOLS` casava a linha com valor vazio e nunca olhava
+#                            o bloco)
+#       "FLOW:A,B"        -> `tools: [A,B]`, forma de FLUXO do YAML (P3)
+#       "QUOTED:A,B"      -> bloco com itens ENTRE ASPAS (`- "A"`) (P3)
+#       "BADYAML"         -> `tools:` com YAML sintaticamente INVALIDO (colchete de fluxo
+#                            nao fechado) - indecidivel, nao violacao
+#       "OMIT"            -> nenhuma chave `tools:` (arquivo existe, frontmatter fecha)
 agente(){  # $1=caminho do .md  $2=spec
   local path="$1" spec="$2"
   mkdir -p "$(dirname "$path")"
@@ -38,6 +50,34 @@ agente(){  # $1=caminho do .md  $2=spec
     echo "description: fixture de teste"
     case "$spec" in
       OMIT) : ;;
+      BADYAML) echo "tools: [Read, Grep" ;;
+      BLOCKBLANK:*)
+        echo "tools:"
+        local resto="${spec#BLOCKBLANK:}"
+        local n="${resto%%:*}"
+        IFS=',' read -ra itens <<< "${resto#*:}"
+        for ((idx=0; idx<n && idx<${#itens[@]}; idx++)); do echo "  - ${itens[$idx]}"; done
+        echo ""
+        for ((idx=n; idx<${#itens[@]}; idx++)); do echo "  - ${itens[$idx]}"; done
+        ;;
+      BLOCKCOMMENT:*)
+        echo "tools:"
+        IFS=',' read -ra itens <<< "${spec#BLOCKCOMMENT:}"
+        echo "  - ${itens[0]}"
+        echo "  # comentario de teste, ignorado por qualquer parser YAML conforme"
+        for ((idx=1; idx<${#itens[@]}; idx++)); do echo "  - ${itens[$idx]}"; done
+        ;;
+      TRAILSPACE:*)
+        printf 'tools: \n'   # espaco apos os dois-pontos e PROPOSITAL (reproducao de P2)
+        IFS=',' read -ra itens <<< "${spec#TRAILSPACE:}"
+        for it in "${itens[@]}"; do echo "  - $it"; done
+        ;;
+      FLOW:*) echo "tools: [${spec#FLOW:}]" ;;
+      QUOTED:*)
+        echo "tools:"
+        IFS=',' read -ra itens <<< "${spec#QUOTED:}"
+        for it in "${itens[@]}"; do echo "  - \"$it\""; done
+        ;;
       BLOCK:*)
         echo "tools:"
         IFS=',' read -ra itens <<< "${spec#BLOCK:}"
@@ -171,11 +211,108 @@ chk "  nao imprime PASS algum (nao chegou a rodar a comparacao)" \
 chk "  stderr nomeia o argumento nao reconhecido" \
     "$(grep -q 'unrecognized arguments' "$T/err" && echo sim || echo nao)" "sim"
 
+echo "== K10. REPRODUCAO DO ALTO: bloco com LINHA EM BRANCO escondia itens extras -> VIOLACAO =="
+# A reproducao literal do achado: canonica declara 4 ferramentas; a projecao tem as MESMAS 4
+# mais Write/Edit APOS uma linha em branco no meio da lista de bloco. O parser artesanal fazia
+# `break` na linha em branco e nunca via Write/Edit - PASS falso. yaml.safe_load le a lista
+# inteira e a divergencia aparece.
+R="$T/k10"; H="$T/k10-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Glob, Bash"
+agente "$R/.claude/agents/a.md"   "BLOCKBLANK:4:Read,Grep,Glob,Bash,Write,Edit"
+agente "$H/agents/a.md"           "INLINE:Read, Grep, Glob, Bash"
+RC="$(rodar "$R" "$H")"
+chk "linha em branco no bloco NAO esconde itens extras -> exit 1 (era exit 0)" "$RC" 1
+chk "  nomeia os dois itens que a linha em branco escondia (Edit, Write)" \
+    "$(grep -q 'a mais ali: Edit, Write' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K11. bloco com linha em branco, MESMO conjunto -> continua batendo, exit 0 =="
+# Controle do K10: uma linha em branco no meio do bloco nao pode, por si so, virar violacao -
+# so itens genuinamente extras/faltantes devem.
+R="$T/k11"; H="$T/k11-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Glob, Bash"
+agente "$R/.claude/agents/a.md"   "BLOCKBLANK:2:Read,Grep,Glob,Bash"
+agente "$H/agents/a.md"           "INLINE:Read, Grep, Glob, Bash"
+RC="$(rodar "$R" "$H")"
+chk "linha em branco com conjunto equivalente -> exit 0" "$RC" 0
+
+echo "== K12. bloco com COMENTARIO YAML no meio -> nao trunca, continua batendo, exit 0 =="
+R="$T/k12"; H="$T/k12-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "BLOCKCOMMENT:Read,Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "comentario YAML no meio do bloco nao trunca a lista -> exit 0" "$RC" 0
+
+echo "== K13. P2: 'tools: ' com ESPACO a mais nao esconde o bloco abaixo dele =="
+# Antes: RE_TOOLS casava a linha 'tools: ' com valor vazio e retornava TOOLS_AUSENTE sem nunca
+# olhar o bloco - VIOLACAO com a alegacao FALSA de que o arquivo nao declara tools:.
+R="$T/k13"; H="$T/k13-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "TRAILSPACE:Read,Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "'tools: ' com espaco ainda le o bloco abaixo -> exit 0 (nao falsa violacao)" "$RC" 0
+chk "  nao alega falsamente 'HERDA TODAS as ferramentas' (P2 corrigido)" \
+    "$(grep -q 'HERDA TODAS' "$T/out" && echo vazou || echo contido)" "contido"
+
+echo "== K14. P3: forma de FLUXO 'tools: [A, B]' reconhecida como igual ao canonico =="
+R="$T/k14"; H="$T/k14-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "FLOW:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "forma de fluxo YAML equivalente ao canonico -> exit 0" "$RC" 0
+
+echo "== K15. P3: itens ENTRE ASPAS no bloco reconhecidos como iguais ao canonico =="
+R="$T/k15"; H="$T/k15-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "QUOTED:Read,Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "itens com aspas no bloco equivalentes ao canonico -> exit 0" "$RC" 0
+
+echo "== K16. YAML INVALIDO numa projecao -> NAO_VERIFICADO, exit 2 (nao VIOLACAO) =="
+# Decisao explicita desta correcao: um frontmatter que fecha mas cujo conteudo nao e YAML
+# valido e indecidivel sobre tools:, nao uma divergencia de capacidade.
+R="$T/k16"; H="$T/k16-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "BADYAML"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "YAML invalido na projecao -> exit 2 (indecidivel, nao violacao)" "$RC" 2
+chk "  nao aparece na secao de VIOLACOES" \
+    "$(grep -A5 '^VIOLACOES' "$T/out" | grep -q ': projecao do repo' && echo vazou || echo contido)" "contido"
+
+echo "== K17. YAML INVALIDO na fonte CANONICA -> NAO_VERIFICADO, exit 2 (nao VIOLACAO) =="
+R="$T/k17"; H="$T/k17-home"
+agente "$R/execution/agents/a.md" "BADYAML"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "YAML invalido na canonica -> exit 2 (indecidivel, nao violacao)" "$RC" 2
+chk "  nao aparece na secao de VIOLACOES" \
+    "$(grep -A5 '^VIOLACOES' "$T/out" | grep -q 'fonte canonica' && echo vazou || echo contido)" "contido"
+
+echo "== K18. P5: falha AMBIENTAL (permissao) na fonte CANONICA -> NAO_VERIFICADO, nao VIOLACAO =="
+# A decisao do revisor (P5): frontmatter_lines() is None conflava OSError (ambiental) com
+# frontmatter malformado (estrutural). Um erro de permissao no arquivo canonico nao pode virar
+# a mesma VIOLACAO de "defeito estrutural" - e a causa esta no ambiente, nao no autor do agente.
+R="$T/k18"; H="$T/k18-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+chmod 000 "$R/execution/agents/a.md"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chmod 644 "$R/execution/agents/a.md"   # devolve permissao antes da limpeza (mktemp -d/trap)
+chk "canonica ilegivel por permissao -> exit 2 (nao 1 - nao e defeito estrutural)" "$RC" 2
+chk "  aponta falha AMBIENTAL, nao alega defeito estrutural" \
+    "$(grep -q 'falha ambiental' "$T/out" && echo sim || echo nao)" "sim"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio - a mesma disciplina
 # de tests/unit/fronteira-viva.sh e tests/unit/literatura.sh.
-EXPECTED=24
+EXPECTED=38
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
