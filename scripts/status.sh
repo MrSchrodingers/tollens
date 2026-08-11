@@ -25,7 +25,6 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/conformidade-managed.sh tests/unit/arnes-de-mutacao.sh \
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
            tests/unit/capabilities.sh \
-           tests/unit/capabilities.sh \
            tests/unit/run.sh; do
     bash "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
@@ -58,15 +57,6 @@ trap 'rm -f "$TMP"' EXIT
   msc="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/schedule.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/schedule.sh >/dev/null 2>&1
   printf '| escalonamento | %s | %s |\n' "${msc:-?}" "$?"
-  m_fronteira_viva="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/fronteira-viva.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/fronteira-viva.sh >/dev/null 2>&1
-  printf '| fronteira viva | %s | %s |\n' "${m_fronteira_viva:-?}" "$?"
-  m_literatura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/literatura.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/literatura.sh >/dev/null 2>&1
-  printf '| camada de literatura | %s | %s |\n' "${m_literatura:-?}" "$?"
-  m_claims="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/claims.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/claims.sh >/dev/null 2>&1
-  printf '| claim ledger | %s | %s |\n' "${m_claims:-?}" "$?"
   m_fronteira_viva="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/fronteira-viva.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/fronteira-viva.sh >/dev/null 2>&1
   printf '| fronteira viva | %s | %s |\n' "${m_fronteira_viva:-?}" "$?"
