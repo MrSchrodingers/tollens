@@ -12,16 +12,17 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/supply-chain.sh` | 6 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
-| `tests/unit/claims.sh` | 41 | 0 |
+| `tests/unit/claims.sh` | 47 | 0 |
 | `tests/unit/propriedades.sh` | 22 | 0 |
 | `tests/unit/fronteira-externa.sh` | 11 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
 | `tests/unit/schedule.sh` | 29 | 0 |
-| `tests/unit/fronteira-viva.sh` | 78 | 0 |
-| `tests/unit/literatura.sh` | 35 | 0 |
+| `tests/unit/fronteira-viva.sh` | 117 | 0 |
+| `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 38 | 0 |
+| `tests/unit/cobertura.sh` | 11 | 0 |
 | `tests/unit/run.sh` | 53 | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -35,10 +36,25 @@ O README referencia este arquivo em vez de duplicar numeros.
 | fronteira externa | 7 | 0 |
 | conformidade de dois escopos | 7 | 0 |
 | escalonamento | 10 | 0 |
-| fronteira viva | 11 | 0 |
-| camada de literatura | 12 | 0 |
-| claim ledger | 2 | 0 |
+| fronteira viva | 16 | 0 |
+| camada de literatura | 13 | 0 |
+| claim ledger | 5 | 0 |
 | capability declarada | 7 | 0 |
+| cobertura de decisao | 2 | 0 |
+
+## Cobertura de decisao (branch), medida via subprocesso instrumentado
+
+Piso por arquivo (evidence/cobertura.sh --check); ver o script para a mecanica de
+medicao e o LIMITE declarado (cobertura prova execucao de ramo, nao correcao de
+assercao).
+
+| Arquivo | Medido | Piso | Status |
+|---|---:|---:|---|
+| `evidence/probes/github-ruleset.py` | 83.3% | 78.8% | OK |
+| `evidence/validate-claims.py` | 79.9% | 77.7% | OK |
+| `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
+| `evidence/runtime-probes/declared-capabilities.py` | 90.0% | 90.0% | OK |
+| `orchestration/schedule.py` | 88.4% | 88.4% | OK |
 
 ## Componentes
 
@@ -62,6 +78,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 - rollback cobre falhas observadas pelo supervisor. `SIGKILL` do supervisor, falha de host/filesystem e comprometimento administrativo permanecem fora da garantia.
 - ownership/mode checks usam semantica POSIX/GNU exercitada no CI; ACLs, capabilities e atributos de filesystem fora desse contrato exigem verificacao especifica antes de ampliar a claim.
 - o ruleset impoe o check requerido enquanto a regra estiver ativa; administradores com autoridade para alterar a regra permanecem fora desse mecanismo.
+- cobertura de decisao (branch, evidence/cobertura.sh) prova que um ramo foi executado por algum teste; nao prova que a assercao daquele teste esta correta. E piso, nao teto: torna a omissao detectavel (ramo nunca exercitado), nunca a torna impossivel (ramo exercitado e mal testado continua passando).
 
 ## Propriedades de seguranca medidas
 
