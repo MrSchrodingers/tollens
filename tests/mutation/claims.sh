@@ -17,7 +17,7 @@ ORIG="evidence/validate-claims.py"
 REG="tests/unit/claims.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=2
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=5
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -74,6 +74,29 @@ mutante MK2 "status terminal permanece isento de frescor" \
   "  'refuted' segue isenta (registro historico terminal)" \
   troca 'EXIGEM_FRESCOR = frozenset({STATUS_ATIVO, "not-verified"})' \
         'EXIGEM_FRESCOR = frozenset(STATUS)'
+
+# MK3 - onda 5, D6 (CRITICO): RE_MUT volta a aceitar MENCAO em comentario (`# <ID>[-: ]`) como se
+# fosse INVOCACAO - o defeito exato dos mutantes fantasmas K10/L6. So a extracao muda; nenhuma
+# claim real cita um ID inventado, entao o alvo e o caso construido para o discriminante.
+mutante MK3 "RE_MUT exige INVOCACAO real, nao mencao em comentario (fantasma K10/L6)" \
+  "  mencao em comentario ('# ZZ9 ...') NAO entra - fantasma fechado" \
+  troca 'RE_MUT = re.compile(r"^mutante\s+([A-Z]{1,3}[0-9]{1,3})\b\s")' \
+        'RE_MUT = re.compile(r"^(?:mutante\s+|#\s*)([A-Z]{1,3}[0-9]{1,3})\b\s*[-: ]")'
+
+# MK4 - onda 5, D6 (CRITICO): a checagem de colisao entre os espacos de nome regressao/mutante
+# desliga. Sem ela, um ID que reusa uma regressao real como mutante resolveria em silencio.
+mutante MK4 "colisao entre os espacos de nome regressao/mutante e detectada" \
+  "mutante que colide com um ID de regressao ja existente -> NAO VERIFICADO (exit 2)" \
+  troca '    if colisao:' \
+        '    if False and colisao:'
+
+# MK5 - onda 5, D6/D7 (CRITICO/AVISO): a checagem de ID de regressao duplicado ENTRE ARQUIVOS
+# desliga - a mesma ambiguidade que L1..L18 tinham de fato entre claims.sh e literatura.sh (D7)
+# antes de o prefixo do segundo ser renomeado para 'LT'.
+mutante MK5 "ID de regressao duplicado entre arquivos e detectado" \
+  "regressao G1 declarada em DOIS arquivos -> NAO VERIFICADO (exit 2)" \
+  troca '        if len(arqs) > 1:' \
+        '        if False and len(arqs) > 1:'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo
