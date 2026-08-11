@@ -57,9 +57,10 @@ applicability:
     as skills deste repositorio.
   scaffold_similarity: >-
     Baixa - o estudo mede um unico par modelo/scaffold (fonte -
-    findings.single_model_scaffold_disclosure acima) e declara explicitamente nao avaliar
-    outros frameworks; este repositorio roda com Claude Code E Codex, sobre modelos nao
-    fixados por este estudo.
+    findings.single_model_scaffold_disclosure acima) e lista a avaliacao de outros frameworks
+    como trabalho futuro, nao como algo realizado nesta versao (fonte: study_quality.scaffold
+    acima); este repositorio roda com Claude Code E Codex, sobre modelos nao fixados por este
+    estudo.
   oracle_similarity: >-
     Alta - verificacao executavel deterministica e o mesmo padrao de oraculo que
     orchestration/evaluation-protocol.json exige (verifier.deterministic,
@@ -124,7 +125,8 @@ findings:
   note: citacao verbatim do rodape do artigo.
 limitations:
 - Modelo e scaffold unicos (fonte - findings.single_model_scaffold_disclosure acima); o
-  proprio artigo declara nao avaliar frameworks alternativos.
+  proprio artigo lista a avaliacao de frameworks alternativos como trabalho futuro, nao como
+  algo realizado nesta versao (fonte - study_quality.scaffold acima).
 - Efeito-teto em quase metade das skills (fonte - findings.ceiling_effect_skill_count acima),
   o que reduz o poder do desenho para detectar ganho nessas skills especificamente.
 - Pre-print com resultados que os proprios autores descrevem como preliminares.
