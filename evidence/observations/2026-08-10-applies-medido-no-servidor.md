@@ -95,9 +95,88 @@ mesmo tratamento.
   suite stubada.
 - `current_user_can_bypass` no endpoint de ruleset individual reflete o ATOR do token usado
   para medir - aqui, um token com `admin: true` sobre o repositorio, a maior autoridade
-  possivel. `bypass_actors: []` e a garantia mais forte (vale para QUALQUER ator, nao so o
-  medido), e e o que o probe exige para PASS; `current_user_can_bypass` e checado como reforco
-  redundante, nao como substituto.
+  possivel. `bypass_actors: []` e a garantia mais forte quando de fato MEDIDA (vale para
+  QUALQUER ator, nao so o medido); `current_user_can_bypass` e checado como reforco redundante,
+  nao como substituto. **CORRECAO (ver Adendo abaixo)**: a frase original desta observacao
+  afirmava que `bypass_actors: []` "e o que o probe exige para PASS" - isso NAO era verdade no
+  commit medido aqui (`e98629d`/`cfcad5b`). O probe entao vigente tratava um campo AUSENTE da
+  resposta (o caso de um token sem acesso de escrita ao ruleset) da mesma forma que um campo
+  presente e vazio (`detalhe.get("bypass_actors") or []`), e teria saido PASS sem ter medido
+  nada. A garantia so passou a ser genuinamente EXIGIDA no commit
+  `4a1c04678fae7394cc51f17094fe9f5ec818d481`.
 - Nao mede se um administrador poderia DESATIVAR o ruleset (fora do escopo de Applies/
   Required/Bypass sobre a regra ja configurada) - o mesmo limite ja declarado em
   `evidence/observations/2026-08-04-fronteira-externa-e-contrato-no-runtime.md`.
+
+## Adendo - a garantia que a secao "Limites declarados" descrevia mais forte do que era
+
+Achado CRITICO da revisao independente, corrigido no commit `4a1c04678fae7394cc51f17094fe9f5ec818d481`
+(depois desta observacao original). A frase acima, tal como escrita em 2026-08-10, dizia que
+`bypass_actors: []` "e o que o probe exige para PASS". Isso confundia DUAS coisas: o que este
+token de `admin: true` MEDIU naquele momento (bypass_actors, de fato, `[]`), e o que o CODIGO do
+probe efetivamente EXIGIA para sair PASS (naquele commit, nao exigia a presenca do campo -
+apenas que ele, SE presente, nao fosse verdadeiro). Um GITHUB_TOKEN de Actions com
+`contents: read` - o perfil que este arquivo e `evidence/claims/C-018.yaml` recomendam para
+execucao AGENDADA - nao tem acesso de escrita ao ruleset, e a API do GitHub so devolve
+`bypass_actors` a quem tem ("Get a repository ruleset",
+https://docs.github.com/en/rest/repos/rules): "To prevent leaking sensitive information, the
+bypass_actors property is only returned if the user making the API request has write access to
+the ruleset."
+
+### Reproducao ANTES da correcao, contra um repositorio de terceiro (github/docs)
+
+O token desta sessao tem `repo` no escopo mas NAO administra `github/docs` - a mesma classe de
+acesso limitado de um `GITHUB_TOKEN` de Actions. Contra o probe no commit `e98629d` (o codigo
+que esta observacao original mediu):
+
+```
+$ python3 evidence/probes/github-ruleset.py --owner github --repo docs --branch main --context archives
+alvo: github/docs@main  contexto exigido: archives
+estado: PASS
+motivo: Gate(P,a,r) satisfeita para 'main': contexto 'archives' e exigido por regra ativa
+aplicavel, strict_required_status_checks_policy=true, bypass_actors=[] em todos os rulesets de
+origem ([19633356]).
+exit=0
+```
+
+PASS fabricado: o probe afirma `bypass_actors=[]` sobre um campo que a resposta nao continha.
+Confirmado diretamente contra a API:
+
+```
+$ gh api repos/github/docs/rulesets/19633356 | python3 -c \
+  "import json,sys; d=json.load(sys.stdin); print('bypass_actors' in d, 'current_user_can_bypass' in d)"
+False True
+```
+
+`bypass_actors` ausente; `current_user_can_bypass` presente com valor `"never"`. Este segundo
+campo, ao contrario de `bypass_actors`, nao exigiu acesso de escrita nesta medicao. O probe
+corrigido trata a ausencia de QUALQUER um dos dois com a mesma doutrina, por defesa em
+profundidade, mesmo sem evidencia de que `current_user_can_bypass` tambem dependa de escrita.
+
+CONTROLE, o mesmo repositorio onde o token E admin do ruleset (`MrSchrodingers/evidence-gate`,
+ruleset `20385799`): `bypass_actors` presente (`[]`), `current_user_can_bypass` presente
+(`"never"`) - o caso que a observacao original mediu, e o unico caso em que a frase corrigida
+era, coincidentemente, verdadeira sobre o ESTADO, ainda que falsa sobre o CODIGO.
+
+### Reproducao DEPOIS da correcao (commit `4a1c04678fae7394cc51f17094fe9f5ec818d481`)
+
+```
+$ python3 evidence/probes/github-ruleset.py --owner github --repo docs --branch main --context archives
+estado: NOT_VERIFIED
+motivo: Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos medidos,
+mas not Bypass(a,P) NAO foi medido por completo - PASS exigiria medir, nao supor: ruleset
+19633356: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi medido. A API so devolve
+este campo a quem tem acesso de escrita ao ruleset.
+exit=2
+
+$ python3 evidence/probes/github-ruleset.py
+estado: PASS
+motivo: Gate(P,a,r) satisfeita para 'main': contexto 'verify-pr' e exigido por regra ativa
+aplicavel, strict_required_status_checks_policy=true, bypass_actors=[] em todos os rulesets de
+origem ([20385799]).
+exit=0
+```
+
+Contra `MrSchrodingers/evidence-gate`, onde o campo E genuinamente medido (token com write no
+ruleset), o resultado nao muda: PASS continua PASS, porque agora e uma afirmacao MEDIDA, nao
+suposta por omissao.

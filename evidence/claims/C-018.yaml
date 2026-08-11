@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: e98629d8d69201b8e87e8e0e4a0c9052b648c5b6
+  subject_snapshot: 4a1c04678fae7394cc51f17094fe9f5ec818d481
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -19,11 +19,12 @@ scope:
   runtime:
     gh_cli: 2.96.0
 evidence:
-  regression: [V1, V2, V3]
+  regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9]
+  mutants: [MV1, MV2, MV3, MV4]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
-    blob_sha: e3a08b91e3a9b995ccc7d2e7c9344c1261cae7ae
+    blob_sha: 2ada94e9b28411b7e75c7f735707cd8009b905c3
     line_start: 27
     line_end: 44
 warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-externa.sh` declara
@@ -34,14 +35,41 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   os produzidos pelas regras `required_status_checks` aplicaveis (Applies ^ Required),
   `strict_required_status_checks_policy=true`, `bypass_actors=[]` no ruleset de origem 20385799
   (not Bypass). O caso V2 da suite `tests/unit/fronteira-viva.sh` reproduz, com o cliente de API
-  STUBADO (resposta vazia), a MESMA FORMA do defeito historico - e foi validado por MUTACAO
-  manual: substituir o `FAIL` do guard de resposta vazia por `PASS` no probe faz exatamente os
-  dois asserts de V2 reprovarem e a contagem invariante da suite quebrar (14 -> 12 PASS), provando
-  que o caso testa a garantia removida e nao outra coisa (CLAUDE.md 6.3, regra de metodo 2). O
-  controle empirico nao-stubado (observacao, secao 2) mede a MESMA forma - resposta vazia,
-  Applies(P,r)=False - contra uma ref real que o ruleset atual nao cobre, ja que reverter o
-  ruleset real para reproduzir o defeito historico exato estava fora do escopo autorizado desta
-  tarefa.'
+  STUBADO (resposta vazia), a MESMA FORMA do defeito historico - resposta VAZIA de
+  rules/branches/{branch}, nao a auditoria de bypass_actors abaixo - e a MUTACAO manual descrita
+  no historico desta claim (substituir o `FAIL` do guard de resposta vazia por `PASS` faz os
+  dois asserts de V2 reprovarem) foi substituida por `tests/mutation/fronteira-viva.sh`, que
+  automatiza a mesma tecnica para os quatro guards do bloco not Bypass(a,P) (ver ACHADO CRITICO
+  abaixo). O controle empirico nao-stubado (observacao, secao 2) mede a MESMA forma - resposta
+  vazia, Applies(P,r)=False - contra uma ref real que o ruleset atual nao cobre, ja que reverter
+  o ruleset real para reproduzir o defeito historico exato estava fora do escopo autorizado
+  daquela tarefa.
+
+  ACHADO CRITICO corrigido no commit `4a1c04678fae7394cc51f17094fe9f5ec818d481` (revisao
+  independente sobre o snapshot anterior desta claim, `e98629d`/`cfcad5b`): o codigo entao
+  vigente afirmava `bypass_actors=[]` sobre um campo que a API do GitHub NAO devolve a quem nao
+  tem acesso de escrita ao ruleset ("Get a repository ruleset",
+  https://docs.github.com/en/rest/repos/rules) - o mesmo caso de um `GITHUB_TOKEN` de Actions
+  com `contents: read`, o perfil que a limitacao de execucao agendada abaixo recomenda.
+  `detalhe.get("bypass_actors") or []` colapsava "campo nao devolvido" com "medido: vazio", e o
+  probe saia PASS sem ter medido not Bypass(a,P). Reproduzido empiricamente contra um repositorio
+  de terceiro onde o token desta sessao nao administra o ruleset (`github/docs`, ruleset
+  `19633356`): PASS fabricado antes da correcao, `NOT_VERIFIED`/exit 2 depois - registrado no
+  Adendo de `evidence/observations/2026-08-10-applies-medido-no-servidor.md`, que tambem corrige
+  uma frase imprecisa da mesma observacao (ver limitations). A mesma doutrina foi aplicada a
+  `current_user_can_bypass`, e um type-guard fechou um segundo defeito correlato: resposta de
+  `rulesets/{id}` que nao e um objeto produzia `AttributeError` nao tratado (exit 1/FAIL) em vez
+  de `NOT_VERIFIED`/exit 2. `tests/unit/fronteira-viva.sh` ganhou os casos V4 (bypass_actors
+  ausente), V5 (bypass_actors nao vazio), V6 (current_user_can_bypass ausente), V7 (strict
+  desligado), V8 (contexto fora do conjunto - Required(P) = False) e V9 (resposta de ruleset que
+  nao e objeto) - 34/34 verde. `tests/mutation/fronteira-viva.sh` (novo) valida por MUTACAO
+  AUTOMATIZADA os quatro pontos de codigo introduzidos: MV1 reverte a ausencia de bypass_actors
+  para a linha exata do defeito em producao e morre em V4; MV2 faz o mesmo para
+  current_user_can_bypass e morre em V6; MV3 remove o type-guard sobre a resposta do ruleset e
+  morre em V9 (o processo passa a sair 1 com traceback nao tratado); MV4 remove so o EFEITO da
+  deteccao (o campo continua sendo detectado como ausente, mas o veredito nunca vira
+  NOT_VERIFIED) e tambem morre em V4 - provando que a garantia depende de dois pontos de codigo
+  distintos (deteccao e enforcement), nao de um so.'
 limitations:
 - 'Endereca DIRETAMENTE a limitacao que C-017 ja declarava: "A suite `tests/unit/fronteira-externa.sh`
   e ESTATICA: le os arquivos de workflow. Ela nao observa check-runs reais - isso e o que a
@@ -56,7 +84,13 @@ limitations:
   integracao: o probe exige rede e um token com `repo` no escopo, o que o torna inadequado como
   passo OBRIGATORIO e bloqueante de CI (falha de rede vira falso vermelho do pipeline inteiro).
   A leitura recomendada e execucao periodica agendada (ou manual, em auditoria) que registra o
-  resultado como uma nova observacao - nunca como gate de merge.'
+  resultado como uma nova observacao - nunca como gate de merge. ATE `4a1c046`, esta mesma
+  recomendacao era o vetor do achado critico: um `GITHUB_TOKEN` de Actions com `contents: read`
+  (sem `repo` completo, e sem write no ruleset) fazia o probe emitir PASS fabricado em toda
+  execucao agendada, porque `bypass_actors` nao vinha na resposta e o codigo tratava ausencia
+  como vazio. A correcao fecha esse caso especifico (agora sai `NOT_VERIFIED`), mas nao elimina a
+  limitacao geral acima: a execucao agendada continua sendo o UNICO mecanismo deste repositorio
+  para notar que o ruleset mudou, e continua dependendo de alguem ler o resultado.'
 - 'A garantia e do GitHub, nao deste repositorio: quem tem `admin` sobre o repositorio pode
   DESATIVAR ou REEDITAR o ruleset a qualquer momento (o mesmo limite ja declarado em
   `evidence/observations/2026-08-04-fronteira-externa-e-contrato-no-runtime.md`). O probe mede o
@@ -66,11 +100,26 @@ limitations:
   ref, `main` inclusive. Reproduzir o caso exato exigiria reverter o ruleset real, proibido nesta
   tarefa. A reproducao exata e determinística fica so na suite stubada (V2).'
 - 'Nao ha `evidence.ci` nesta alegacao: o snapshot citado vive numa branch de topico
-  (`wave1/n2-ruleset`) que ainda nao passou por PR nem por execucao de CI - inventar um `run_id`
+  (`wave2/w1-bypass`) que ainda nao passou por PR nem por execucao de CI - inventar um `run_id`
   seria fabricar evidencia. Quando esta mudanca for integrada por PR, uma alegacao subsequente
   pode adicionar o bloco `ci` apontando para a execucao real.'
 - 'O probe resolve bypass_actors e enforcement so dos rulesets que contribuem a regra
   `required_status_checks` aplicavel. Outras regras aplicaveis a mesma ref (`pull_request`,
   `deletion`, `non_fast_forward`) podem vir de rulesets DIFERENTES com bypass_actors proprios;
   o probe nao os audita, porque nao sao o que decide se o check exigido barra o merge.'
+- 'A observacao citada acima (`evidence.observation`) tinha, na sua secao "Limites declarados",
+  uma frase imprecisa: dizia que `bypass_actors: []` "e o que o probe exige para PASS", quando no
+  commit entao medido (`e98629d`/`cfcad5b`) o codigo aceitava a AUSENCIA do campo como se fosse
+  `[]` - o proprio achado critico que esta claim agora corrige. A observacao foi emendada com um
+  Adendo (datado desta correcao) que reconhece o erro, explica a confusao entre "o que foi
+  MEDIDO naquele token" e "o que o CODIGO exigia", e registra a reproducao empirica antes/depois
+  contra `github/docs`. Este ledger nao apaga a frase original: releia o Adendo, nao so o
+  resumo aqui.'
+- 'Os quatro mutantes (MV1-MV4) cobrem os pontos de codigo que a correcao introduziu no bloco
+  not Bypass(a,P). Nao ha mutante para a PRECEDENCIA declarada em codigo e no docstring do probe
+  ("FAIL vence sobre NOT_VERIFIED quando ambos se aplicam") porque nenhum caso de
+  `tests/unit/fronteira-viva.sh` combina, no MESMO ruleset aplicavel, uma violacao provada com um
+  campo nao divulgado - cada caso V4-V9 isola uma condicao. Essa precedencia e, portanto,
+  codigo NAO testado por mutacao: um mutante que a removesse (trocando a ordem dos dois `if`)
+  sobreviveria a esta suite.'
 status: supported-in-tested-domain
