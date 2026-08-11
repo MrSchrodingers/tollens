@@ -12,15 +12,16 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/supply-chain.sh` | 6 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
-| `tests/unit/claims.sh` | 37 | 0 |
+| `tests/unit/claims.sh` | 41 | 0 |
 | `tests/unit/propriedades.sh` | 22 | 0 |
 | `tests/unit/fronteira-externa.sh` | 11 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
-| `tests/unit/schedule.sh` | 15 | 0 |
-| `tests/unit/fronteira-viva.sh` | 14 | 0 |
-| `tests/unit/literatura.sh` | 27 | 0 |
+| `tests/unit/schedule.sh` | 29 | 0 |
+| `tests/unit/fronteira-viva.sh` | 34 | 0 |
+| `tests/unit/literatura.sh` | 28 | 0 |
+| `tests/unit/capabilities.sh` | 24 | 0 |
 | `tests/unit/run.sh` | 53 | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -33,7 +34,10 @@ O README referencia este arquivo em vez de duplicar numeros.
 | instalador | 5 | variavel (sudo) |
 | fronteira externa | 7 | 0 |
 | conformidade de dois escopos | 7 | 0 |
-| escalonamento | 4 | 0 |
+| escalonamento | 10 | 0 |
+| fronteira viva | 4 | 0 |
+| camada de literatura | 9 | 0 |
+| claim ledger | 2 | 0 |
 
 ## Componentes
 
