@@ -16,7 +16,7 @@ ORIG="evidence/runtime-probes/declared-capabilities.py"
 REG="tests/unit/capabilities.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=4
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=7
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -143,6 +143,44 @@ mutante MC4 "escalar separado por virgula continua reconhecido como tools:" \
 ' \
         '    if isinstance(valor, dict):
 '
+
+# OS TRES MUTANTES ABAIXO SAO OS "MINIMOS" PEDIDOS PELA DELEGACAO (A3): protegem as decisoes
+# de SEGURANCA que este probe ja carregava ANTES desta onda e que nunca tinham cobertura de
+# mutacao (o motivo original deste arquivo existir). MC1-MC4 acima protegem a troca de parser
+# (A1); MC5-MC7 protegem o que a suite unica ja discriminava - K6, K5 e K9 - sem nunca terem
+# sido provados por mutacao.
+
+# MC5 - `tools:` OMITIDO numa projecao volta a ser NAO_VERIFICADO em vez de VIOLACAO. E a
+# reintroducao literal do defeito D2: uma projecao sem `tools:` HERDA TODAS as ferramentas
+# (concessao MAXIMA, doc primaria do Claude Code) - isso e decidivel e diverge de qualquer
+# lista finita do canonico, nao lacuna indecidivel. K6 e o UNICO caso que discrimina esta
+# garantia; sem mutacao, nada provava que o guard decide o veredito.
+mutante MC5 "tools: omitido numa projecao e VIOLACAO, nao lacuna" \
+  "tools: ausente numa projecao -> exit 1 (VIOLACAO, nao 2)" \
+  troca '            if t_outra is TOOLS_AUSENTE:
+                violacoes.append(' \
+        '            if t_outra is TOOLS_AUSENTE:
+                nao_verificados.append('
+
+# MC6 - `--repo-only` volta a AFIRMAR 3 fontes comparadas enquanto so compara 2. E a
+# reproducao literal do defeito que deu origem a esta suite inteira (ver cabecalho de
+# tests/unit/capabilities.sh): a saida de `--repo-only` virava byte-identica ao modo completo
+# na alegacao de fontes, uma prova arquivavel de comparacao que nunca ocorreu. Mutar so o
+# ROTULO exibido/contado (sem tocar a comparacao real, que continua so 2 fontes) reproduz
+# exatamente essa mentira de saida.
+mutante MC6 "--repo-only declara SO as fontes que de fato comparou" \
+  "  PASS declara SO 2 fontes (nao 3) - a mentira original" \
+  troca 'rotulos_desta_execucao = [ROTULO_PROJECAO] if repo_only else [ROTULO_PROJECAO, ROTULO_INSTALADA]' \
+        'rotulos_desta_execucao = [ROTULO_PROJECAO, ROTULO_INSTALADA]'
+
+# MC7 - flag de CLI desconhecida volta a ser aceita em silencio (o modo completo roda sem
+# aplicar o filtro pedido). Era o comportamento de `"--repo-only" in sys.argv`: um erro de
+# digitacao (`--repoonly`) nunca era sinalizado. `parse_known_args` descarta o argumento nao
+# reconhecido em vez de recusar o pedido.
+mutante MC7 "flag desconhecida nao decide o pedido em silencio" \
+  "flag desconhecida -> exit 2 (nao 0 por omissao de validacao)" \
+  troca 'return ap.parse_args(argv)' \
+        'return ap.parse_known_args(argv)[0]'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

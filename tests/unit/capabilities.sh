@@ -2,8 +2,8 @@
 # SUITE DO VERIFICADOR DE CAPACIDADE DECLARADA (evidence/runtime-probes/declared-capabilities.py).
 #
 # POR QUE ESTA SUITE EXISTE - o verificador era, ate esta onda, o UNICO executavel novo sem
-# nenhum teste (github-ruleset.py tem 14 casos em fronteira-viva.sh, validate-literature.py tem
-# 27 em literatura.sh, schedule.py tem 15+4). Foi exatamente aqui que o defeito estava: a saida
+# nenhum teste (github-ruleset.py tem 34 casos em fronteira-viva.sh, validate-literature.py tem
+# 28 em literatura.sh, schedule.py tem 29+10). Foi exatamente aqui que o defeito estava: a saida
 # de `--repo-only` era byte-identica a do modo completo (medido por `diff`) enquanto a linha de
 # PASS continuava afirmando "identico nas 3 fontes" - uma prova de comparacao que nao ocorreu,
 # arquivavel em log de CI. Sem suite alguma, nada discriminava essa mentira de saida.
