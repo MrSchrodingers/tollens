@@ -1,0 +1,131 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+#
+# cited_in intencionalmente OMITIDO: nenhum documento deste repositorio cita esta entrada ainda.
+# Atualizar ADR, prompt de agente ou README para referencia-la esta fora do escopo desta tarefa
+# (a delegacao autoriza so criar arquivos novos em evidence/literature/).
+literature_id: arxiv-2607.09996
+citation: >-
+  Liu, J.; Xi, H.; Zhang, S.; Zeng, Y.; Yue, T.; Wang, C.; Kang, J.; Wu, Q.; Wang, H. Who&When
+  Pro - Can LLMs Really Attribute Failures in AI Agents? arXiv:2607.09996, pre-print de 2026
+  (fonte - pagina abs, conferida nesta sessao).
+identifier: arXiv:2607.09996
+url: https://arxiv.org/abs/2607.09996
+provenance: preprint
+study_quality:
+  benchmark: >-
+    Who&When Pro, um benchmark de atribuicao de falha em agentes construido por um pipeline
+    proprio de injecao de erro sobre trajetorias bem-sucedidas (fonte - texto completo,
+    secoes 1 e 3, conferido no HTML cru nesta sessao).
+  n: >-
+    12.326 trajetorias falhas com labels-ouro (golden labels), em 3 modalidades (texto,
+    imagem, video), 26 benchmarks-fonte, 9 categorias de tarefa e 15 frameworks de agente
+    (fonte - resumo e texto completo, string "12,326" conferida no HTML cru nesta sessao).
+  models: >-
+    O resumo declara avaliacao de "frontier closed- and open-source LLMs" na tarefa de
+    atribuicao de falha; a lista especifica de modelos nao esta no trecho lido nesta sessao -
+    [nao verificado] nesta camada.
+  scaffold: >-
+    Pipeline proprio de replay com warm-start - reproduz o prefixo bem-sucedido de uma
+    trajetoria, injeta UMA falha conhecida no passo escolhido, e deixa o sistema original
+    continuar a partir dali (fonte - texto completo, secao 1, conferido no HTML cru nesta
+    sessao). Nao e Claude Code nem Codex; e um pipeline de construcao de dataset para
+    benchmark de atribuicao de falha, nao um scaffold de execucao de tarefa deste
+    repositorio.
+  oracle: >-
+    O label-ouro (agente responsavel, passo decisivo, modo de falha) e valido por construcao,
+    nao por julgamento - "Since the injected error is the only controlled change that turns a
+    successful trajectory into a failed one, the resulting task failure can be attributed
+    exactly to the injected agent and step" (citacao verbatim, fonte - texto completo,
+    secao 1, conferida no HTML cru nesta sessao). Esta e a mesma logica de teste por mutacao
+    (mudar uma unica coisa conhecida e atribuir a falha resultante aquela mudanca) que
+    tests/mutation/ deste repositorio usa como garantia, e que estas diretrizes globais deste
+    operador exigem para todo teste de garantia de seguranca.
+  baseline: >-
+    A fidelidade do replay e garantida por cache deterministico de chamadas de ferramenta
+    (hash SHA-256 dos parametros canonicalizados) e por checagens de fidelidade que ABORTAM a
+    tentativa de injecao se o estado observado divergir do estado gravado originalmente
+    (fonte - texto completo, apendice sobre estrategias de mitigacao de drift de ambiente,
+    conferido no HTML cru nesta sessao) - controle de qualidade do proprio pipeline de
+    injecao, nao um baseline de desempenho de modelo.
+  trials_repeated: "[nao verificado] - nao confirmado no trecho lido nesta sessao."
+  uncertainty_reported: "[nao verificado] - nao confirmado no trecho lido nesta sessao."
+  code_data_available: >-
+    Pagina de projeto publica declarada no resumo ("https://whowhenpro.github.io", fonte -
+    texto completo, conferida nesta sessao); disponibilidade de codigo/dados de construcao do
+    benchmark em si [nao verificado] nesta camada.
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta quanto ao METODO de construcao de ground truth, baixa quanto ao dominio de tarefa. O
+    metodo - reproduzir um prefixo bem-sucedido e injetar UMA UNICA falha conhecida,
+    atribuindo a falha resultante exatamente aquela mudanca - e a mesma logica que
+    tests/mutation/ deste repositorio usa (mutar uma garantia e exigir que o teste reprove). O
+    dominio de tarefa (atribuicao de falha em trajetorias multimodais de agente) e diferente
+    do dominio deste repositorio (validacao de camada de evidencia e de garantias de
+    seguranca em codigo).
+  scaffold_similarity: >-
+    Baixa - pipeline de construcao de dataset com replay de ferramentas em cache e checagem de
+    fidelidade de estado, nao Claude Code/Codex nem um harness de execucao de tarefa (fonte -
+    study_quality.scaffold acima).
+  oracle_similarity: >-
+    Alta quanto ao PRINCIPIO - o label-ouro e valido por construcao (mudanca unica e
+    controlada), o mesmo principio de prova por mutacao que este repositorio usa em
+    tests/mutation/; baixa quanto ao OBJETO medido - o estudo constroi um benchmark de
+    atribuicao de falha para avaliar modelos de atribuicao, nao valida garantias de seguranca
+    de codigo como este repositorio faz.
+inference_strength: SUPPORTED
+inference_rationale: >-
+  O artigo nao mede o mecanismo deste repositorio (nao e DIRECT), mas sustenta, em escala
+  muito maior do que qualquer argumento interno deste repositorio (12.326 trajetorias, 26
+  benchmarks, fonte - study_quality.n acima) e no mesmo PRINCIPIO metodologico (nao no mesmo
+  objeto), a logica de validacao que este repositorio ja usa e ate agora so defendia por
+  argumento - mudar UMA UNICA coisa conhecida e atribuir a falha resultante exatamente aquela
+  mudanca produz um label confiavel porque a mudanca injetada e o UNICO fator controlado que
+  torna a trajetoria bem-sucedida em falha (fonte - study_quality.oracle acima, citacao
+  verbatim conferida no HTML cru nesta sessao). Isso e sustentacao independente, em escala, de
+  que a premissa metodologica de tests/mutation/ (teste que sobrevive ao mutante nao testa a
+  garantia) vale fora deste repositorio, nao so como argumento interno seu. SUPPORTED, nao
+  DIRECT - o artigo constroi um benchmark de ATRIBUICAO DE FALHA em agentes multimodais, nao
+  valida testes de seguranca de codigo; o objeto medido difere do objeto deste repositorio,
+  mesmo com o metodo de construcao de ground truth sendo o mesmo principio.
+findings:
+- metric: failed_trajectories_with_gold_labels
+  value: "12326"
+  source: abstract
+  note: 12.326 trajetorias falhas com golden labels, 3 modalidades, 26 benchmarks.
+- metric: source_benchmarks_count
+  value: "26"
+  source: fulltext
+- metric: modalities_count
+  value: "3 (texto, imagem, video)"
+  source: fulltext
+- metric: task_categories_count
+  value: "9"
+  source: fulltext
+- metric: agent_frameworks_count
+  value: "15"
+  source: fulltext
+- metric: single_controlled_change_definition
+  value: "the injected error is the only controlled change that turns a successful trajectory into a failed one"
+  source: fulltext
+  note: citacao verbatim, secao 1 - a base metodologica do label-ouro deste benchmark.
+limitations:
+- Dominio medido (atribuicao de falha em agentes multimodais de proposito geral) difere do
+  dominio deste repositorio (validacao de camada de evidencia e testes de seguranca) - fonte,
+  study_quality.scaffold acima; a sustentacao aqui e para o METODO de construcao de ground
+  truth por mutacao unica, nao para o objeto medido pelo benchmark.
+- A lista especifica de modelos avaliados e os numeros de desempenho de atribuicao por modelo
+  nao foram conferidos nesta sessao alem do que o resumo declara em prosa - [nao verificado]
+  nesta camada; esta entrada nao cita numeros de desempenho de atribuicao por modelo por essa
+  razao.
+- A validade do label-ouro depende da fidelidade do replay (cache deterministico mais
+  checagem que aborta em divergencia, fonte - study_quality.baseline acima); os proprios
+  autores documentam fontes de drift de ambiente (por exemplo rotacao diaria da estrutura de
+  pagina de um motor de busca) que motivam esse mecanismo de aborto - ou seja, a garantia de
+  "mudanca unica controlada" depende de um detector de drift cujos falsos negativos nao estao
+  quantificados no trecho lido nesta sessao.
+- Preprint sem confirmacao de revisao por pares nesta sessao (fonte - pagina abs, sem campo de
+  comentario de submissao localizado, conferida nesta sessao).

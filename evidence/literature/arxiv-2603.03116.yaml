@@ -1,0 +1,178 @@
+# Camada de qualidade de evidencia - ver evidence/validate-literature.py para o contrato e
+# para a definicao da escala fechada de inference_strength. Verde no validador e FORMA (campos
+# presentes, vocabulario fechado, numero com fonte apontada), NAO fidelidade de conteudo a fonte
+# primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
+#
+# ESTA E A ENTRADA MAIS IMPORTANTE DAS TRES DESTA LEVA: ela desafia a tese central deste
+# repositorio ("pronto nasce de execucao, o exit code e o sinal externo suficiente"). Ver
+# limitations, ultimo item, para o flanco em linguagem direta.
+#
+# cited_in intencionalmente OMITIDO: nenhum documento deste repositorio cita esta entrada ainda.
+# Atualizar ADR, prompt de agente ou README para referencia-la esta fora do escopo desta tarefa
+# (a delegacao autoriza so criar arquivos novos em evidence/literature/).
+literature_id: arxiv-2603.03116
+citation: >-
+  Cao, H.; Driouich, I.; Thomas, E. Beyond Task Completion: Revealing Corrupt Success in LLM
+  Agents through Procedure-Aware Evaluation. arXiv:2603.03116, pre-print de 2026 (v1 submetido
+  em 3 de marco de 2026, fonte - pagina abs, conferida nesta sessao).
+identifier: arXiv:2603.03116
+url: https://arxiv.org/abs/2603.03116
+provenance: preprint
+study_quality:
+  benchmark: >-
+    tau-bench (dominios Retail e Airline), avaliado atraves do framework Procedure-Aware
+    Evaluation (PAE) que o proprio artigo introduz (fonte - texto completo, secao 4.1,
+    conferido no HTML cru nesta sessao).
+  n: >-
+    Tres modelos frontier avaliados (GPT-5, Kimi-K2-Thinking, Mistral-Large-3) sobre os dois
+    dominios de tau-bench, k=4 trials independentes por tarefa com seeds diferentes (fonte -
+    texto completo, secao 4.1, string "k=4" conferida no HTML cru nesta sessao). O numero
+    exato de instancias de tarefa por dominio nao aparece no trecho do texto completo lido
+    nesta sessao - [nao verificado] nesta camada.
+  models: >-
+    GPT-5, Kimi-K2-Thinking e Mistral-Large-3 como agentes avaliados; GPT-4.1 como simulador
+    de usuario, seguindo o protocolo tau-Bench (fonte - texto completo, secao 4.1, conferido
+    no HTML cru nesta sessao).
+  scaffold: >-
+    tau-bench Tool-Agent-User (interacao agente-ferramenta-usuario em dominios de atendimento
+    simulado, booking/refund em Airline e e-commerce em Retail); nenhum dos dois dominios e
+    Claude Code nem Codex (fonte - texto completo, secao 4.1).
+  oracle: >-
+    Gated utility U'(tau) - multiplica a utilidade binaria de desfecho U(tau) por seis
+    metricas semanticas (quatro de integridade procedural, duas de qualidade de interacao),
+    cada uma avaliada por juiz LLM, nao por verificacao de estado direta (fonte - texto
+    completo, secao 3, formula de U'(tau) conferida no HTML cru nesta sessao). "Corrupt
+    success" e definido no proprio artigo como U(tau)=1 com ao menos uma dessas seis metricas
+    semanticas igual a zero (fonte - texto completo, secao 3, string "U(tau)=1 yet at least
+    one semantic metric equals zero" conferida no HTML cru nesta sessao).
+  baseline: >-
+    27-78% dos sucessos reportados por avaliacao so-por-desfecho em tau-bench sao "corrupt
+    success" sob PAE - a faixa varia por modelo e dominio (por exemplo, GPT-5 fica em torno de
+    27%, Mistral-Large-3 chega a 76% em Retail e 78% em Airline) (fonte - texto completo,
+    resumo e secao 5.1, string "27-78%" conferida no HTML cru nesta sessao).
+  trials_repeated: >-
+    Sim - cada tarefa e executada em k=4 trials independentes com seeds diferentes (fonte -
+    texto completo, secao 4.1, conferido no HTML cru nesta sessao).
+  uncertainty_reported: >-
+    Parcial - a precisao do juiz por modelo (93.8% GPT-5, 94.4% Kimi-K2-Thinking, 95.2%
+    Mistral-Large-3, Table 4, fonte - texto completo, conferida no HTML cru nesta sessao) nao
+    vem acompanhada de intervalo de confianca explicito no trecho lido; a faixa "27-78%"
+    tambem nao. [nao verificado] se ha IC para esses numeros em outra parte do artigo alem do
+    que foi lido nesta sessao.
+  code_data_available: "[nao verificado] - disponibilidade de codigo/dados nao confirmada na leitura desta sessao."
+  replicated: false
+applicability:
+  domain_similarity: >-
+    Alta quanto ao MECANISMO, baixa quanto ao DOMINIO (fonte - study_quality.oracle acima). O
+    mecanismo - um oraculo de desfecho (U(tau), verificacao de estado) que credita como
+    sucesso uma trajetoria que violou procedimento no caminho - e estruturalmente o mesmo
+    ponto cego que um exit code de comando (build, teste, lint) tem: exit code igual a zero
+    confirma o ESTADO FINAL, nao o PROCESSO que levou a ele. O dominio medido (atendimento ao
+    cliente simulado, tau-bench Retail/Airline) e diferente do dominio deste repositorio
+    (edicao de codigo/CLI) - ver limitations.
+  scaffold_similarity: >-
+    Baixa - tau-bench Tool-Agent-User nao e Claude Code nem Codex (fonte -
+    study_quality.scaffold acima).
+  oracle_similarity: >-
+    Media. A metrica-base de sucesso do estudo (U(tau)) e verificacao de estado, proxima em
+    principio ao exit code deste repositorio; mas o MECANISMO DE DETECCAO de corrupt success
+    (o que importaria para fechar o flanco descrito em limitations) e um juiz LLM com
+    precisao manual validada de 93.8-95.2% (fonte - study_quality.oracle e
+    findings.judge_precision_manual_validation acima) - julgamento, nao verificacao de
+    estado. Esse tipo de oraculo e exatamente o que a regra dura deste repositorio ("pronto
+    nasce de execucao, nunca de auto-avaliacao") rejeita para o proprio julgamento de
+    conclusao de tarefa.
+inference_strength: SUGGESTIVE
+inference_rationale: >-
+  O achado central (avaliacao so-por-desfecho credita como sucesso uma trajetoria que violou
+  procedimento no caminho) aponta na MESMA direcao do risco que a regra dura deste
+  repositorio pretende fechar, mas por um mecanismo que a regra atual nao cobre: a regra hoje
+  defende contra a AUTOAVALIACAO do agente (nao aceitar "pronto" sem execucao); o artigo
+  mostra que mesmo um resultado EXTERNAMENTE VERIFICADO (U(tau)=1, checagem de estado do
+  ambiente) pode ser corrupto se o caminho ate ele violou procedimento - isso nao e coberto
+  por "trocar auto-relato por exit code", porque o exit code so confere o estado final, nao o
+  caminho percorrido. Nao e DIRECT (nao mede este harness) nem SUPPORTED (o dominio -
+  atendimento ao cliente simulado, tau-bench - e distante do dominio deste repositorio -
+  edicao de codigo/CLI -, a amostra e de apenas 3 modelos, e o proprio mecanismo de deteccao
+  de corrupt success e um juiz LLM com precisao manual validada de 93.8-95.2% e falsos
+  positivos reconhecidos pelos autores, validada so no dominio Airline - fonte:
+  study_quality.oracle e limitations abaixo). SUGGESTIVE: a direcao do achado e o argumento de
+  risco sao aproveitaveis como alerta de politica (ver limitations sobre o flanco aberto), mas
+  a magnitude (27-78%) e o mecanismo de deteccao nao se transportam para este harness sem
+  assumir generalizacao que o estudo, sozinho, nao demonstra.
+findings:
+- metric: corrupt_success_range_reported_successes
+  value: "27-78%"
+  source: fulltext
+  note: >-
+    Faixa da proporcao de sucessos reportados por tau-bench que PAE reclassifica como
+    "corrupt success" (U(tau)=1 com ao menos uma das seis metricas semanticas em zero),
+    variando por modelo e dominio.
+- metric: corrupt_success_definition
+  value: "U(tau)=1 com ao menos uma metrica semantica = 0"
+  source: fulltext
+  note: >-
+    "PAE identifies it as unsafe (i.e., U(tau)=1 yet at least one semantic metric equals
+    zero)" - citacao verbatim, secao 3.
+- metric: pae_four_axes
+  value: "Utility, Efficiency, Interaction Quality, Procedural Integrity"
+  source: abstract
+- metric: judge_precision_manual_validation
+  value: "93.8% (GPT-5) / 94.4% (Kimi-K2-Thinking) / 95.2% (Mistral-Large-3)"
+  source: fulltext
+  note: >-
+    Table 4, validacao manual de 131 casos de corrupt success, restrita ao dominio Airline
+    (GPT-5 32 casos, Kimi-K2-Thinking 36 casos, Mistral-Large-3 63 casos). Falsos positivos
+    reconhecidos pelos autores - 4.8-6.2%, atribuidos a "semantic equivalence mismatches" e
+    artefatos de terminacao de simulador (citacao verbatim, texto completo).
+- metric: judge_manual_validation_scope
+  value: "131 casos, dominio Airline apenas, 3 modelos"
+  source: fulltext
+  note: >-
+    A validacao manual do juiz cobre so o dominio Airline, nao o dominio Retail. Retail entra
+    na faixa 27-78% do achado principal, mas a precisao do juiz sobre os casos de Retail nao
+    foi validada manualmente na mesma extensao que Airline.
+- metric: false_success_string_occurrences
+  value: "0"
+  source: fulltext
+  note: >-
+    A string "false success" tem zero ocorrencias neste artigo (busca por substring no HTML
+    cru completo, conferida nesta sessao). O contraste entre "false success" (arxiv-2606.09863)
+    e "corrupt success" (este artigo) e leitura de terceiro, NAO afirmacao do proprio artigo -
+    esta entrada nao atribui esse contraste a fonte primaria.
+limitations:
+- Dominio restrito - tau-bench Retail/Airline (atendimento ao cliente simulado), nao edicao de
+  codigo/CLI, que e o dominio deste repositorio (fonte - study_quality.scaffold acima).
+- Amostra pequena de modelos - tres (GPT-5, Kimi-K2-Thinking, Mistral-Large-3), fonte -
+  study_quality.models acima; nao ha garantia de que o padrao generalize para outros modelos
+  ou familias.
+- O mecanismo de DETECCAO de corrupt success e um juiz LLM, nao verificacao executavel de
+  estado - precisao manual validada de 93.8-95.2%, com 4.8-6.2% de falsos positivos
+  reconhecidos pelos proprios autores (fonte - findings.judge_precision_manual_validation
+  acima), e essa validacao manual cobre so o dominio Airline, nao Retail (fonte -
+  findings.judge_manual_validation_scope acima). Citar 27-78% como se fosse medido por um
+  oraculo tao confiavel quanto um exit code repetiria o defeito que docs/adr/0011 corrigiu
+  para arxiv-2606.09863 - aqui o oraculo de deteccao tem componente de julgamento reconhecido
+  pelos proprios autores.
+- A string "false success" nao existe neste artigo (fonte - findings.false_success_string_occurrences
+  acima); "corrupt success" e um conceito diferente, definido pelo proprio artigo como
+  U(tau)=1 com ao menos uma metrica semantica zerada. Qualquer contraste entre os dois termos
+  e sintese de quem le os dois papers, nao afirmacao de nenhum dos dois - esta entrada nao
+  atribui esse contraste a esta fonte.
+- Preprint sem confirmacao de revisao por pares nesta sessao (fonte - pagina abs, sem campo de
+  comentario de submissao, conferida nesta sessao).
+- FLANCO ABERTO NA TESE DESTE REPOSITORIO, EM LINGUAGEM DIRETA - a regra dura deste
+  repositorio ("pronto nasce de execucao, nunca de auto-avaliacao") defende contra o agente
+  AUTOAVALIAR o proprio sucesso; ela NAO defende contra um sucesso EXTERNAMENTE VERIFICADO
+  (exit code 0, build verde, teste passando) que foi alcancado violando procedimento no
+  caminho - por exemplo, um agente que corrompe dado, contorna autorizacao ou desabilita uma
+  checagem para chegar ao estado final que o exit code aprova. Este artigo mede exatamente
+  essa classe de evento ("corrupt success") em outro dominio, com precisao de deteccao de
+  93.8-95.2% e falsos positivos reconhecidos (fonte - findings.judge_precision_manual_validation
+  acima). Nenhum mecanismo hoje neste repositorio (evidence/validate-claims.py,
+  evidence/validate-literature.py, os hooks de verify-gate) audita o CAMINHO percorrido ate o
+  exit code, so o proprio exit code no final. Fechar esse flanco exigiria um oraculo de
+  PROCESSO alem do oraculo de ESTADO que este repositorio usa hoje - o que este artigo,
+  sozinho, nao entrega para este harness (o detector dele e um juiz LLM, nao uma verificacao
+  deterministica, e foi medido em outro dominio) - mas cuja AUSENCIA como categoria de risco
+  fica registrada aqui, sem suavizar.
