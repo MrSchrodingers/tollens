@@ -19,8 +19,8 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
 | `tests/unit/schedule.sh` | 29 | 0 |
-| `tests/unit/fronteira-viva.sh` | 55 | 0 |
-| `tests/unit/literatura.sh` | 31 | 0 |
+| `tests/unit/fronteira-viva.sh` | 78 | 0 |
+| `tests/unit/literatura.sh` | 35 | 0 |
 | `tests/unit/capabilities.sh` | 38 | 0 |
 | `tests/unit/run.sh` | 53 | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
@@ -35,8 +35,8 @@ O README referencia este arquivo em vez de duplicar numeros.
 | fronteira externa | 7 | 0 |
 | conformidade de dois escopos | 7 | 0 |
 | escalonamento | 10 | 0 |
-| fronteira viva | 7 | 0 |
-| camada de literatura | 10 | 0 |
+| fronteira viva | 11 | 0 |
+| camada de literatura | 12 | 0 |
 | claim ledger | 2 | 0 |
 | capability declarada | 7 | 0 |
 
