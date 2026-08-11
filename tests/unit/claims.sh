@@ -355,9 +355,35 @@ PY3
   chk "  a MESMA claim num snapshot anterior REPROVA (o campo decide)" "$(val "$D")" 1
 fi
 
+echo "== L-FRESCOR: ancora obsoleta reprova conforme o status =="
+# Defeito medido em 2026-08-11. A isencao de frescor cobria TODO status nao-ativo, e
+# `not-verified` caiu nela. Ao renumerar C-018->C-019 a observacao foi editada, o blob_sha ficou
+# apontando para o conteudo pre-edicao, e o validador saiu 0. `not-verified` nao e registro
+# historico: e alegacao ABERTA, que sera relida. `refuted`/`superseded` sao terminais e a isencao
+# ali permanece correta - sem ela seria impossivel preservar o registro de uma alegacao derrubada.
+FALSO="$(git -C "$REPO" hash-object README.md)"
+frescor(){ # $1=status  -> exit code do validador com a ancora quebrada
+  local d="$T/fresc-$1"; mkdir -p "$d"
+  python3 - "$REPO/evidence/claims/C-018.yaml" "$d/C-018.yaml" "$1" "$FALSO" <<'PY2'
+import sys, yaml
+src, dst, status, falso = sys.argv[1:5]
+d = yaml.safe_load(open(src))
+d["status"] = status
+d["evidence"]["observation"]["blob_sha"] = falso
+d["evidence"]["observation"].pop("line_start", None)
+d["evidence"]["observation"].pop("line_end", None)
+yaml.safe_dump(d, open(dst, "w"), allow_unicode=True, sort_keys=False, width=100)
+PY2
+  val "$d"
+}
+chk "ancora obsoleta em claim ATIVA reprova" "$(frescor supported-in-tested-domain)" 1
+chk "  ancora obsoleta em 'not-verified' TAMBEM reprova (alegacao aberta)" "$(frescor not-verified)" 1
+chk "  'refuted' segue isenta (registro historico terminal)" "$(frescor refuted)" 0
+chk "  'superseded' segue isenta (registro historico terminal)" "$(frescor superseded)" 0
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=37
+EXPECTED=41
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
