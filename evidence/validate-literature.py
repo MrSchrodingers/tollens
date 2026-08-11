@@ -12,8 +12,9 @@ o paper foi publicado - e sim "essa evidencia SE APLICA a este harness, e com qu
 O defeito que motivou este arquivo: a secao 6.1 do README citava SWE-Skills-Bench como "39 de
 49 skills sem melhoria de pass rate, ganho medio de +1,2 ponto percentual" sem o baseline
 (89,8% sem skill), sem o teto de melhoria que esse baseline implica (no maximo +10,2pp), sem
-declarar que o experimento usa um UNICO modelo e UNICO scaffold (o proprio artigo declara "does
-not evaluate alternative agent frameworks") e sem o status de pre-print com resultados
+declarar que o experimento usa um UNICO modelo e UNICO scaffold (avaliar outros frameworks de
+agente consta no artigo como trabalho FUTURO, nao como algo que ele realiza) e sem o status de
+pre-print com resultados
 preliminares. Cada numero isolado era verdadeiro; a citacao, no conjunto, selecionava o dado
 mais favoravel ao argumento e descartava o contexto que o qualifica - recall bias, nao
 fabricacao, e por isso resiste a checagem numero-a-numero.
