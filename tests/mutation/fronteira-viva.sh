@@ -21,6 +21,14 @@
 # `problemas` ja acumulado. MV7 inverte a ORDEM dos dois `if` do portao final, provando que a
 # precedencia depende dessa ordem e nao so da ausencia de `return` cedo no laco.
 #
+# MV8-MV11 fecham a QUARTA onda (2026-08-11, C1/C2/A1/A2 - ver o docstring de
+# evidence/probes/github-ruleset.py, secao "SCHEMA NA FRONTEIRA"): a substituicao de guards
+# ad hoc por `valida_campo` nao teria valor se pudesse ser revertida em silencio. MV8 reproduz
+# (C1) ('ruleset_id' ausente em parte das regras aplicaveis volta a sumir sem nao_medido); MV9
+# reproduz C2 (guard do ELEMENTO de bypass_actors removido, container continua validado); MV10
+# reproduz A1 ('parameters' sem guard, `or {}`); MV11 reproduz A2 ('enforcement' ausente coagido
+# em violacao fabricada).
+#
 # TROCA POR ARQUIVO, NAO POR ARGUMENTO DE SHELL. Os trechos mutados tem aspas simples e duplas
 # aninhadas (`f"ruleset {rid}: '{cucb}'"`); escrever isso como argumento de shell (single ou
 # double-quoted) obrigaria a escapar aspas dentro de aspas - fragil e ilegivel, e exatamente a
@@ -37,7 +45,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=7
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=11
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -93,16 +101,19 @@ mutante(){ # $1=nome $2=descricao $3=caso-alvo que DEVE reprovar $4=arq-de $5=ar
 
 echo "== mutacao: cada guard do bloco ¬Bypass(a,P) removido DEVE reprovar =="
 
-# MV1 - O MUTANTE CENTRAL. Reverte a ausencia de 'bypass_actors' para a linha EXATA do defeito em
-# producao: `detalhe.get("bypass_actors") or []`. Isto colapsa "campo nao devolvido" (falta de
-# acesso de escrita ao ruleset) em "medido: []" - o PASS fabricado que a revisao independente
-# encontrou contra github/docs.
+# MV1 - O MUTANTE CENTRAL. Reverte o bloco `valida_campo(detalhe, "bypass_actors", ...)` para a
+# linha EXATA do defeito em producao: `detalhe.get("bypass_actors") or []`. Isto colapsa "campo
+# nao devolvido" (falta de acesso de escrita ao ruleset) em "medido: []" - o PASS fabricado que
+# a revisao independente encontrou contra github/docs. Reancorado na onda 4 (wave4/y1-schema):
+# o corpo do guard mudou de um `if/elif` manual sobre `detalhe["bypass_actors"]` para o schema
+# declarativo `valida_campo`, que tambem fecha C2 (elemento nao mapeavel dentro da lista).
 cat > "$TMP/mv1-de.txt" <<'EOF'
-        if "bypass_actors" not in detalhe:
+        bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
+        if bp_status == FALTANTE:
             nao_medidos.append(
                 f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
                 f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
-        elif detalhe["bypass_actors"] is None:
+        elif bp_status == NULO:
             # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
             # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
             # dois casos no mesmo PASS fabricado que a correcao anterior fechou so para a chave
@@ -110,19 +121,28 @@ cat > "$TMP/mv1-de.txt" <<'EOF'
             nao_medidos.append(
                 f"ruleset {rid}: 'bypass_actors' e null na resposta - not Bypass(a,P) NAO foi "
                 f"medido (mesma doutrina de campo ausente).")
-        elif not isinstance(detalhe["bypass_actors"], list):
+        elif bp_status == TIPO_INVALIDO:
             # Tipo inesperado (ex.: string, numero): sem este guard, `**a` sobre um elemento que
             # nao e mapeamento (ou a propria iteracao sobre uma string) produz TypeError nao
             # tratado - a mesma promessa de "nunca traceback" que ja valia para o OBJETO
             # `detalhe`, agora tambem para este CAMPO dele.
             nao_medidos.append(
                 f"ruleset {rid}: 'bypass_actors' tem tipo inesperado "
-                f"({type(detalhe['bypass_actors']).__name__}, esperava lista) - oraculo "
+                f"({type(bp_valor).__name__}, esperava lista) - oraculo "
                 f"malformado, not Bypass(a,P) NAO foi medido.")
+        elif bp_status == ITEM_INVALIDO:
+            # (C2) o guard acima cobria o CONTAINER (`isinstance(..., list)`), nao o ELEMENTO -
+            # uma lista de nao-mapeamentos (`["OrganizationAdmin"]`) passava por ele e estourava
+            # TypeError em `{"ruleset_id": rid, **a}`. `valida_campo` fecha a mesma classe de
+            # defeito no ELEMENTO que ja fechava no container.
+            idx, item = bp_valor
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors[{idx}]' tem tipo inesperado "
+                f"({type(item).__name__}, esperava objeto) - elemento nao mapeavel, "
+                f"not Bypass(a,P) NAO foi medido por completo.")
         else:
-            atores = detalhe["bypass_actors"]
-            if atores:
-                bypass_total.extend({"ruleset_id": rid, **a} for a in atores)
+            if bp_valor:
+                bypass_total.extend({"ruleset_id": rid, **a} for a in bp_valor)
 EOF
 cat > "$TMP/mv1-para.txt" <<'EOF'
         atores = detalhe.get("bypass_actors") or []
@@ -133,18 +153,25 @@ mutante MV1 "campo ausente vira PASS fabricado outra vez ('or []' sobre bypass_a
   "  motivo cita 'bypass_actors' ausente" "$TMP/mv1-de.txt" "$TMP/mv1-para.txt"
 
 # MV2 - mesma doutrina, segundo campo: current_user_can_bypass ausente volta a ser aceito como
-# "never" por omissao (`cucb not in (None, "never")`), em vez de NOT_VERIFIED.
+# "never" por omissao (`cucb not in (None, "never")`), em vez de NOT_VERIFIED. Reancorado na
+# onda 4: o corpo passou a usar `valida_campo`.
 cat > "$TMP/mv2-de.txt" <<'EOF'
-        if "current_user_can_bypass" not in detalhe:
+        cucb_status, cucb = valida_campo(detalhe, "current_user_can_bypass", str)
+        if cucb_status == FALTANTE:
             nao_medidos.append(
                 f"ruleset {rid}: 'current_user_can_bypass' ausente da resposta - not Bypass(a,P) "
                 f"NAO foi medido para o ator autenticado (mesma doutrina de 'bypass_actors': "
                 f"ausencia nao e 'never').")
-        else:
-            cucb = detalhe["current_user_can_bypass"]
-            if cucb != "never":
-                problemas.append(
-                    f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
+        elif cucb_status == NULO:
+            nao_medidos.append(
+                f"ruleset {rid}: 'current_user_can_bypass' e null na resposta - mesma doutrina de campo ausente.")
+        elif cucb_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"ruleset {rid}: 'current_user_can_bypass' tem tipo inesperado "
+                f"({type(cucb).__name__}, esperava string) - nao medido.")
+        elif cucb != "never":
+            problemas.append(
+                f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
 EOF
 cat > "$TMP/mv2-para.txt" <<'EOF'
         cucb = detalhe.get("current_user_can_bypass")
@@ -155,10 +182,12 @@ EOF
 mutante MV2 "current_user_can_bypass ausente volta a contar como 'never'" \
   "  motivo cita 'current_user_can_bypass' ausente" "$TMP/mv2-de.txt" "$TMP/mv2-para.txt"
 
-# MV3 - o type-guard sobre a resposta de rulesets/{id} some. `detalhe.get(...)` sobre uma lista
-# ou string estoura AttributeError nao tratado: o processo sai com traceback e exit 1 (FAIL) em
-# vez de exit 2 (NOT_VERIFIED) - o mesmo defeito de "oraculo malformado vira FAIL" que a linha
-# `rules` ja evitava, e `detalhe` ainda nao evitava antes desta correcao.
+# MV3 - o type-guard sobre a resposta de rulesets/{id} some. Sem ele, `valida_campo` roda sobre
+# um `detalhe` que nao e dict; para um ESCALAR (int/bool/null) isso estoura TypeError nao tratado
+# em `nome not in objeto` - o processo sai com traceback e exit 1 (FAIL) em vez de exit 2
+# (NOT_VERIFIED). V9 usa um escalar (`42`) exatamente por isto: uma LISTA ou string nao expoe
+# este mutante, porque `in` sobre lista/string testa pertencimento sem crashar - so um valor
+# nao iteravel reproduz o defeito que este guard existe para evitar.
 cat > "$TMP/mv3-de.txt" <<'EOF'
         if not isinstance(detalhe, dict):
             # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
@@ -171,7 +200,7 @@ cat > "$TMP/mv3-de.txt" <<'EOF'
             continue
 EOF
 : > "$TMP/mv3-para.txt"
-mutante MV3 "resposta nao-dict de rulesets/{id} crasha com AttributeError, nao NOT_VERIFIED" \
+mutante MV3 "resposta nao-dict de rulesets/{id} crasha com TypeError, nao NOT_VERIFIED" \
   "  nao ha traceback do Python em stderr" "$TMP/mv3-de.txt" "$TMP/mv3-para.txt"
 
 # MV4 - a DETECCAO de campo ausente continua populando `nao_medidos`, mas o portao final que a
@@ -295,6 +324,111 @@ EOF
 mutante MV7 "ordem do portao final invertida: nao_medidos passa a vencer problemas" \
   "  NAO relata NOT_VERIFIED (a lacuna de bypass_actors nao decide aqui)" \
   "$TMP/mv7-de.txt" "$TMP/mv7-para.txt"
+
+echo "== mutacao: schema na fronteira (onda 4, 2026-08-11) - C1/C2/A1/A2 =="
+
+# MV8 - C1: reverte a resolucao de 'ruleset_id' para o defeito exato - uma regra sem
+# 'ruleset_id' (ou de tipo/valor invalido) simplesmente NAO entra em `ruleset_ids`, sem deixar
+# rastro em `nao_medidos`. `rotulo` continua calculado (usado pelos guards de 'parameters'
+# logo abaixo, que este mutante nao toca) - so o EFEITO do guard de ruleset_id desaparece.
+cat > "$TMP/mv8-de.txt" <<'EOF'
+        if rid_status == FALTANTE:
+            # (C1) a regra some do conjunto sem isto - o bypass dela nunca seria resolvido, e
+            # antes desta correcao nada entrava em `nao_medidos` para dizer que isso aconteceu.
+            nao_medidos.append(
+                f"{rotulo}: 'ruleset_id' ausente da regra - not Bypass(a,P) e enforcement NAO "
+                f"podem ser resolvidos para esta regra especifica (as demais regras aplicaveis, "
+                f"se legiveis, continuam sendo medidas).")
+        elif rid_status == NULO:
+            nao_medidos.append(f"{rotulo}: 'ruleset_id' e null na regra - mesma doutrina de campo ausente.")
+        elif rid_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"{rotulo}: 'ruleset_id' tem tipo inesperado ({type(rid).__name__}, esperava "
+                f"inteiro) - oraculo malformado, nao e possivel resolver bypass_actors nem "
+                f"enforcement para esta regra.")
+        else:
+            ruleset_ids.add(rid)
+EOF
+cat > "$TMP/mv8-para.txt" <<'EOF'
+        if rid is not None:
+            ruleset_ids.add(rid)
+EOF
+mutante MV8 "regra sem ruleset_id some do conjunto sem nao_medido - PASS fabricado outra vez" \
+  "  motivo cita 'ruleset_id' ausente" "$TMP/mv8-de.txt" "$TMP/mv8-para.txt"
+
+# MV9 - C2: remove `tipo_item=dict` da validacao de 'bypass_actors'. O CONTAINER continua
+# validado (lista), mas o ELEMENTO nao - uma lista de strings volta a passar, e `**a` sobre um
+# elemento nao mapeavel estoura TypeError nao tratado, exit 1 (FAIL) por acidente.
+cat > "$TMP/mv9-de.txt" <<'EOF'
+        bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
+EOF
+cat > "$TMP/mv9-para.txt" <<'EOF'
+        bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list)
+EOF
+mutante MV9 "guard do ELEMENTO de bypass_actors removido - TypeError nao tratado outra vez" \
+  "  nao ha traceback do Python em stderr" "$TMP/mv9-de.txt" "$TMP/mv9-para.txt"
+
+# MV10 - A1: reverte a validacao de 'parameters' para a linha exata do defeito em producao -
+# `r.get("parameters") or {}`, sem guard nenhum. Um valor truthy nao-dict (string) passa direto;
+# o proximo campo lido de `params` (strict_required_status_checks_policy) reporta "ausente" em
+# vez de "'parameters' tem tipo inesperado" - a mensagem que nomeia a causa raiz desaparece.
+cat > "$TMP/mv10-de.txt" <<'EOF'
+        params_status, params = valida_campo(r, "parameters", dict)
+        if params_status == FALTANTE:
+            # (A1) sem guard, `r.get("parameters") or {}` deixava passar qualquer coisa truthy
+            # (uma string, por exemplo) e o primeiro `.get()` seguinte estourava AttributeError.
+            nao_medidos.append(
+                f"{rotulo}: 'parameters' ausente da regra - strict_required_status_checks_policy "
+                f"e o contexto exigido NAO puderam ser lidos desta regra.")
+            continue
+        if params_status == NULO:
+            nao_medidos.append(f"{rotulo}: 'parameters' e null na regra - mesma doutrina de campo ausente.")
+            continue
+        if params_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"{rotulo}: 'parameters' tem tipo inesperado ({type(params).__name__}, esperava "
+                f"objeto) - oraculo malformado, strict_required_status_checks_policy e o "
+                f"contexto exigido NAO puderam ser lidos desta regra.")
+            continue
+EOF
+cat > "$TMP/mv10-para.txt" <<'EOF'
+        params = r.get("parameters") or {}
+EOF
+mutante MV10 "'parameters' sem guard - a causa raiz para de ser nomeada" \
+  "  motivo cita 'parameters' tipo inesperado" "$TMP/mv10-de.txt" "$TMP/mv10-para.txt"
+
+# MV11 - A2: reverte 'enforcement' para `detalhe.get("enforcement")`, que coage AUSENCIA em
+# `None` e fabrica a violacao "enforcement='None'" - o retorno FAIL imediato descarta
+# `nao_medidos` (a lacuna real de bypass_actors nem e mencionada), o inverso exato da doutrina.
+cat > "$TMP/mv11-de.txt" <<'EOF'
+        enf_status, enforcement = valida_campo(detalhe, "enforcement", str)
+        if enf_status == FALTANTE:
+            # (A2, metade 2) `detalhe.get("enforcement")` coagia a AUSENCIA em `None`, e
+            # `enforcement != "active"` fabricava uma violacao ("enforcement='None'") sobre um
+            # campo que nao foi medido. Ausencia agora e "nao medido", nunca "medido: inativo".
+            nao_medidos.append(
+                f"ruleset {rid}: 'enforcement' ausente da resposta - enforcement NAO foi medido "
+                f"para este ruleset.")
+        elif enf_status == NULO:
+            nao_medidos.append(f"ruleset {rid}: 'enforcement' e null na resposta - mesma doutrina de campo ausente.")
+        elif enf_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"ruleset {rid}: 'enforcement' tem tipo inesperado ({type(enforcement).__name__}, "
+                f"esperava string) - nao medido.")
+        elif enforcement != "active":
+            # Defesa em profundidade: rules/branches/{branch} ja deveria filtrar por regra
+            # ativa. Se um dia esse filtro mudar de comportamento, este probe nao herda a
+            # suposicao em silencio.
+            problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
+EOF
+cat > "$TMP/mv11-para.txt" <<'EOF'
+        enforcement = detalhe.get("enforcement")
+        if enforcement != "active":
+            problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
+EOF
+mutante MV11 "'enforcement' ausente coagido em violacao fabricada outra vez" \
+  "  NAO afirma \"enforcement='None'\" (nao fabrica violacao sobre campo nao medido)" \
+  "$TMP/mv11-de.txt" "$TMP/mv11-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

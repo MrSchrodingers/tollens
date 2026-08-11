@@ -160,6 +160,72 @@ JSON
 ]
 JSON
         ;;
+      c1-parcial)
+        # (C1): DUAS regras required_status_checks aplicaveis. A segunda NAO declara
+        # 'ruleset_id' - o defeito exato que fazia a regra desaparecer do conjunto sem deixar
+        # rastro em nao_medidos, e o portao emitir PASS com a afirmacao UNIVERSAL "bypass_actors
+        # =[] em todos os rulesets de origem" sem ter resolvido bypass desta segunda regra.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":501,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}},
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo2",
+   "parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15369}]}}
+]
+JSON
+        ;;
+      c2-elemento)
+        # (C2): UMA regra aplicavel, ruleset_id valido - o defeito esta no ELEMENTO de
+        # bypass_actors (ver */rulesets/* abaixo), nao nesta resposta.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      a1-parametros)
+        # (A1): 'parameters' e uma STRING, nao um objeto. `r.get("parameters") or {}` deixava
+        # passar qualquer coisa truthy, e o primeiro `.get()` seguinte estourava AttributeError.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":"nao-e-um-objeto"}
+]
+JSON
+        ;;
+      a2-coercao)
+        # (A2): regra aplicavel legivel (contexto presente, strict medido) - o defeito esta na
+        # resposta de rulesets/999 (ver abaixo), que omite 'enforcement' E 'bypass_actors'.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      schema-item-invalido)
+        # 5o caso (forma inesperada que o SCHEMA recusa, distinto dos quatro acima): o item de
+        # 'required_status_checks' dentro de 'parameters' nao e um objeto - um inteiro no lugar
+        # de {"context": ...}. Prova que o mesmo mecanismo de schema (valida_campo com
+        # tipo_item) cobre um QUARTO campo aninhado sem precisar de um guard escrito a mao.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[42]}}
+]
+JSON
+        ;;
       *) echo "fake-gh: STUB_MODE nao reconhecido: ${STUB_MODE:-<vazio>}" >&2; exit 1 ;;
     esac
     ;;
@@ -178,8 +244,12 @@ JSON
       cucb-ausente)
         echo '{"id":999,"enforcement":"active","bypass_actors":[]}' ;;
       resposta-nao-dict)
-        # rulesets/{id} devolvendo uma LISTA em vez de um objeto - oraculo malformado.
-        echo '[]' ;;
+        # rulesets/{id} devolvendo um ESCALAR em vez de um objeto - oraculo malformado. Um
+        # escalar (nao uma lista/string) e o caso que realmente PROVA a necessidade do guard:
+        # `valida_campo` usa `nome not in objeto`, que nao estoura para lista/string (apenas
+        # testa pertencimento/substring, sem crashar) - so um valor NAO ITERAVEL (int, bool,
+        # null) reproduz o AttributeError/TypeError que o guard existe para evitar.
+        echo '42' ;;
       bypass-null)
         # V10: valor NULL explicito - nao e chave ausente, e nao e "medido: []".
         echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never","bypass_actors":null}' ;;
@@ -220,6 +290,21 @@ JSON
             echo '[]' ;;
           *) echo "fake-gh: ruleset nao stubado para duplo-nao-dict: $REQ" >&2; exit 1 ;;
         esac ;;
+      c1-parcial)
+        # (C1): so o ruleset 501 entra em ruleset_ids (a regra sem 'ruleset_id' nunca chega a
+        # pedir rulesets/{id} nenhum) - este ruleset, sozinho, esta limpo. Se o probe ainda
+        # emitisse PASS aqui, seria exatamente o PASS fabricado que C1 descreve: a segunda
+        # regra nunca foi medida.
+        echo '{"id":501,"enforcement":"active","current_user_can_bypass":"never","bypass_actors":[]}' ;;
+      c2-elemento)
+        # (C2): bypass_actors e uma LISTA (o container tem o tipo certo), mas o elemento e uma
+        # string - nao mapeavel para `{"ruleset_id": rid, **a}`.
+        echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never","bypass_actors":["OrganizationAdmin"]}' ;;
+      a2-coercao)
+        # (A2): 'enforcement' E 'bypass_actors' ausentes da resposta - a forma exata que a onda 3
+        # coagia em violacao fabricada ("enforcement='None'") em vez de registrar como nao
+        # medida.
+        echo '{"id":999,"current_user_can_bypass":"never"}' ;;
       *)
         echo '{"id":999,"enforcement":"active","bypass_actors":[],"current_user_can_bypass":"never"}' ;;
     esac
@@ -392,7 +477,7 @@ chk "  motivo cita strict_required_status_checks_policy" \
     "$(grep -q 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
 
 echo "== V15. strict=false (medido, reprova) + bypass_actors AUSENTE (nao medido) -> FAIL =="
-# A2: prova que a precedencia declarada e ALCANCAVEL sem nenhum 'return' cedo envolvido - basta
+# (A2): prova que a precedencia declarada e ALCANCAVEL sem nenhum 'return' cedo envolvido - basta
 # uma violacao ja medida (strict) coexistir com um campo nao divulgado no MESMO ruleset. Kill
 # desta suposicao exige mutante proprio (MV7): sem ele, inverter a ORDEM dos dois 'if' finais
 # sobrevive em silencio.
@@ -405,11 +490,88 @@ chk "  motivo cita strict_required_status_checks_policy" \
 chk "  NAO relata NOT_VERIFIED (a lacuna de bypass_actors nao decide aqui)" \
     "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
 
+# V16-V20 fecham a QUARTA onda de correcao (2026-08-11) - nao mais um guard por campo, e sim
+# validacao de schema na fronteira (`valida_campo`, evidence/probes/github-ruleset.py). Os
+# quatro primeiros reproduzem C1/C2/A1/A2 tal como a revisao independente mediu; o quinto e a
+# forma inesperada que o proprio schema recusa, distinta das quatro (`required_status_checks[i]`
+# nao-objeto, nao `bypass_actors`/`parameters`/`ruleset_id`/`enforcement`).
+echo "== V16. (C1) 'ruleset_id' ausente em PARTE das regras aplicaveis -> NOT_VERIFIED, nunca PASS =="
+# Antes da correcao: a segunda regra (sem 'ruleset_id') desaparecia do conjunto sem deixar
+# rastro em nao_medidos, e o portao emitia PASS com a afirmacao UNIVERSAL "bypass_actors=[] em
+# todos os rulesets de origem" sem ter resolvido bypass daquela regra. Medido nesta sessao:
+# `estado: PASS  exit=0` antes da correcao, com as DUAS regras aplicaveis e so a primeira lida.
+MRK="$T/chamou-ruleset-v16"; rm -f "$MRK"
+RC="$(rodar c1-parcial "$MRK")"
+chk "exit code 2 (nao mais 0 - o PASS fabricado sobre ruleset_id parcial)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'ruleset_id' ausente" "$(grep -q "'ruleset_id' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'bypass_actors=[] em todos os rulesets de origem' sem ter medido todos" \
+    "$(grep -q 'bypass_actors=\[\] em todos os rulesets de origem' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+
+echo "== V17. (C2) elemento de 'bypass_actors' nao mapeavel (lista de strings) -> NOT_VERIFIED, nunca crash =="
+# Antes da correcao: `isinstance(bypass_actors, list)` cobria o CONTAINER, nao o ELEMENTO -
+# `["OrganizationAdmin"]` passava o guard e `{"ruleset_id": rid, **a}` estourava TypeError,
+# exit 1 (FAIL) por acidente do interprete, nunca a lacuna de oraculo que de fato ocorreu.
+MRK="$T/chamou-ruleset-v17"; rm -f "$MRK"
+RC="$(rodar c2-elemento "$MRK")"
+chk "exit code 2 (nao 1 por TypeError nao tratado)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors[0]' tipo inesperado" \
+    "$(grep -q "'bypass_actors\[0\]' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  nao ha traceback do Python em stderr" \
+    "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
+
+echo "== V18. (A1) 'parameters' de tipo errado (string) -> NOT_VERIFIED, nunca crash =="
+# Antes da correcao: `r.get("parameters") or {}` deixava passar qualquer valor truthy, e o
+# primeiro `.get()` seguinte (`params.get("strict_required_status_checks_policy")`) estourava
+# AttributeError - unico dos quatro campos lidos no laco de 'rsc' sem guard nenhum.
+MRK="$T/chamou-ruleset-v18"; rm -f "$MRK"
+RC="$(rodar a1-parametros "$MRK")"
+chk "exit code 2 (nao 1 por AttributeError nao tratado)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'parameters' tipo inesperado" \
+    "$(grep -q "'parameters' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  nao ha traceback do Python em stderr" \
+    "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
+chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V19. (A2) 'enforcement' E 'bypass_actors' AUSENTES -> NOT_VERIFIED, nunca FAIL fabricado =="
+# Antes da correcao: `detalhe.get("enforcement")` coagia a ausencia em `None`, e
+# `enforcement != "active"` fabricava a violacao "enforcement='None'" - FAIL, exit 1 - com a
+# lacuna real (bypass_actors tambem ausente) nem sequer mencionada, porque o `return FAIL`
+# acontecia antes do bloco que le `nao_medidos`. Medido nesta sessao: exatamente essa saida.
+MRK="$T/chamou-ruleset-v19"; rm -f "$MRK"
+RC="$(rodar a2-coercao "$MRK")"
+chk "exit code 2 (nao 1 - a ausencia nao e mais coagida em violacao)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'enforcement' ausente" "$(grep -q "'enforcement' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors' ausente" "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma \"enforcement='None'\" (nao fabrica violacao sobre campo nao medido)" \
+    "$(grep -qF "enforcement='None'" "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+
+echo "== V20. (schema) 'required_status_checks[i]' nao e objeto -> NOT_VERIFIED, nunca FAIL fabricado =="
+# 5o caso: forma inesperada que o SCHEMA recusa, distinta das quatro acima - o mesmo mecanismo
+# (`valida_campo` com `tipo_item=dict`) cobre um campo aninhado NOVO sem precisar de guard
+# escrito a mao. Sem esta correcao, o item invalido era silenciosamente ignorado (nenhum
+# contexto extraido), 'Required(P) = False' virava FAIL fabricado por omissao - o mesmo defeito
+# de A2, agora sobre Required(P) em vez de bypass/enforcement.
+MRK="$T/chamou-ruleset-v20"; rm -f "$MRK"
+RC="$(rodar schema-item-invalido "$MRK")"
+chk "exit code 2 (nao 1 - Required(P) nao pode ser concluido False por omissao)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'required_status_checks[0]' tipo inesperado" \
+    "$(grep -q "'required_status_checks\[0\]' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL a partir de item malformado)" \
+    "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V15 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=55
+# V10-V20 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=78
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
