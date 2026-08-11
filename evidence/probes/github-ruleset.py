@@ -46,8 +46,12 @@ Este probe segue a mesma doutrina para a rede e a API:
                                                   e ainda assim mergear).
   - bypass_actors nao vazio, ou
     `current_user_can_bypass` != "never"    -> FAIL, exit 1. Bypass(a,P) = True para algum a.
+  - `gh api rulesets/{id}` falha para UM dos
+    rulesets aplicaveis (rede, 403, etc.)     -> "nao medido" para ESSE ruleset; o laco
+                                                  CONTINUA para os demais (ver precedencia abaixo).
   - resposta de rulesets/{id} que nao e
-    um objeto (oraculo malformado)          -> NOT_VERIFIED, exit 2. Nunca AttributeError/exit 1.
+    um objeto (oraculo malformado)          -> "nao medido" para esse ruleset, nunca
+                                                  AttributeError/exit 1 (mesma continuacao acima).
   - `bypass_actors` ou `current_user_can_bypass`
     AUSENTES da resposta do ruleset         -> NOT_VERIFIED, exit 2 (a menos que outro campo
                                                   medido ja prove FAIL - ver abaixo). A API so
@@ -59,12 +63,24 @@ Este probe segue a mesma doutrina para a rede e a API:
                                                   permissao: o campo nao vem, e ausencia nao e
                                                   "medido: ninguem burla". `or []` sobre um campo
                                                   nao devolvido era exatamente essa confusao.
+  - `bypass_actors` presente e `null`,
+    ou de tipo que nao e lista              -> NOT_VERIFIED, exit 2, mesma doutrina do item
+                                                  acima. Um valor nulo nao e "medido: []" - so a
+                                                  CHAVE ausente tinha guard; o VALOR nulo e o
+                                                  tipo errado (ex.: string) eram a mesma classe de
+                                                  defeito, um passo adiante: `or []` colapsava
+                                                  null em vazio, e um tipo nao-lista estourava
+                                                  TypeError nao tratado em vez de NOT_VERIFIED.
   - tudo acima satisfeito                    -> PASS, exit 0.
 
 Quando ha violacao PROVADA (bypass_actors nao vazio, current_user_can_bypass!=never,
-enforcement!=active, strict desligado) E, em outro ruleset aplicavel, um campo nao foi
-divulgado, o resultado e FAIL, nao NOT_VERIFIED: Bypass(a,P)=True ja esta demonstrado, e
-rebaixar isso para "nao medido" esconderia um problema real atras de uma lacuna de permissao.
+enforcement!=active, strict desligado, incluindo strict medido ANTES de resolver bypass) E, em
+outro ruleset aplicavel, um campo nao foi divulgado OU o proprio ruleset nao pode ser lido
+(rede, 403, resposta malformada), o resultado e FAIL, nao NOT_VERIFIED: Bypass(a,P)=True ou a
+politica ja esta demonstrado(a), e rebaixar isso para "nao medido" esconderia um problema real
+atras de uma lacuna de permissao ou de rede. Nenhum ponto do laco que resolve bypass RETORNA
+cedo por isso: toda lacuna de medicao vira entrada acumulada, e quem decide entre FAIL e
+NOT_VERIFIED e sempre o portao final, depois que o laco inteiro roda.
 
 NUNCA "PASS porque o YAML parece certo". O YAML nunca entra nesta decisao.
 
@@ -220,6 +236,21 @@ def probe(owner, repo, branch, context):
             {"rules": rules},
         )
 
+    problemas = []
+    nao_medidos = []
+
+    # strict_required_status_checks_policy ja foi medido acima, no laco sobre `rsc` - nao depende
+    # do endpoint de ruleset individual. Entra em `problemas` ANTES do laco seguinte: uma
+    # violacao ja provada aqui nao pode ser descartada so porque um ruleset aplicavel, resolvido
+    # depois, falha ou nao divulga um campo. A mesma precedencia que o portao final declara
+    # (FAIL vence NOT_VERIFIED) so vale se nada dentro do laco abaixo sair cedo demais para
+    # nunca alcancar esta linha - e ela ja rodou.
+    strict_ok = bool(strict_flags) and all(strict_flags)
+    if not strict_ok:
+        problemas.append(
+            f"strict_required_status_checks_policy nao esta ligado em toda regra aplicavel "
+            f"({strict_flags})")
+
     # --- ¬Bypass(a,P): so o endpoint de RULESET individual traz bypass_actors e
     # current_user_can_bypass. rules/branches/{branch} nao os inclui (medido: ver observacao).
     #
@@ -234,23 +265,29 @@ def probe(owner, repo, branch, context):
     # colapsava "medido: nenhum ator pode burlar" com "nao divulgado por falta de permissao" - o
     # mesmo defeito que este probe existe para corrigir, agora sobre o proprio termo
     # not Bypass(a,P). Campo ausente e NOT_VERIFIED, nunca PASS por omissao de sinal.
-    problemas = []
-    nao_medidos = []
+    #
+    # NENHUM ponto deste laco RETORNA cedo. Uma falha de rede/permissao ao ler UM ruleset, ou uma
+    # resposta malformada, vira entrada em `nao_medidos` e o laco CONTINUA para os demais - um
+    # `return` aqui descartaria `problemas` ja acumulado (o strict acima, ou o bypass de um
+    # ruleset anterior no mesmo laco), mascarando uma violacao ja provada atras de uma lacuna de
+    # medicao encontrada depois. O portao final, apos o laco, e quem decide a precedencia.
     bypass_total = []
     detalhes_rulesets = {}
     for rid in sorted(ruleset_ids):
         detalhe, err = gh_api(f"repos/{owner}/{repo}/rulesets/{rid}")
         if err:
-            return Resultado(NOT_VERIFIED,
-                              f"nao foi possivel ler o ruleset {rid} para resolver bypass: {err}")
+            nao_medidos.append(
+                f"ruleset {rid}: nao foi possivel ler para resolver bypass: {err}")
+            continue
         if not isinstance(detalhe, dict):
             # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
             # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
-            # NOT_VERIFIED - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
-            return Resultado(
-                NOT_VERIFIED,
-                f"resposta de rulesets/{rid} nao e um objeto: {type(detalhe).__name__} - "
-                f"oraculo malformado, nao ha como resolver bypass_actors nem enforcement")
+            # "nao medido" - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
+            nao_medidos.append(
+                f"ruleset {rid}: resposta de rulesets/{rid} nao e um objeto: "
+                f"{type(detalhe).__name__} - oraculo malformado, nao ha como resolver "
+                f"bypass_actors nem enforcement")
+            continue
         detalhes_rulesets[rid] = detalhe
         enforcement = detalhe.get("enforcement")
         if enforcement != "active":
@@ -263,8 +300,25 @@ def probe(owner, repo, branch, context):
             nao_medidos.append(
                 f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
                 f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+        elif detalhe["bypass_actors"] is None:
+            # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
+            # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
+            # dois casos no mesmo PASS fabricado que a correcao anterior fechou so para a chave
+            # ausente - a INSTANCIA foi corrigida, a CLASSE (valor nulo) continuava aberta.
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' e null na resposta - not Bypass(a,P) NAO foi "
+                f"medido (mesma doutrina de campo ausente).")
+        elif not isinstance(detalhe["bypass_actors"], list):
+            # Tipo inesperado (ex.: string, numero): sem este guard, `**a` sobre um elemento que
+            # nao e mapeamento (ou a propria iteracao sobre uma string) produz TypeError nao
+            # tratado - a mesma promessa de "nunca traceback" que ja valia para o OBJETO
+            # `detalhe`, agora tambem para este CAMPO dele.
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' tem tipo inesperado "
+                f"({type(detalhe['bypass_actors']).__name__}, esperava lista) - oraculo "
+                f"malformado, not Bypass(a,P) NAO foi medido.")
         else:
-            atores = detalhe["bypass_actors"] or []
+            atores = detalhe["bypass_actors"]
             if atores:
                 bypass_total.extend({"ruleset_id": rid, **a} for a in atores)
 
@@ -281,12 +335,6 @@ def probe(owner, repo, branch, context):
 
     if bypass_total:
         problemas.append(f"bypass_actors nao vazio: {bypass_total}")
-
-    strict_ok = bool(strict_flags) and all(strict_flags)
-    if not strict_ok:
-        problemas.append(
-            f"strict_required_status_checks_policy nao esta ligado em toda regra aplicavel "
-            f"({strict_flags})")
 
     if problemas:
         # FAIL vence sobre "nao medido": uma violacao ja PROVADA (bypass_actors nao vazio,

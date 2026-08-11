@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: 4a1c04678fae7394cc51f17094fe9f5ec818d481
+  subject_snapshot: 1b6644388396bf566c5b8553a8cca46bf7e63ac0
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -19,8 +19,8 @@ scope:
   runtime:
     gh_cli: 2.96.0
 evidence:
-  regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9]
-  mutants: [MV1, MV2, MV3, MV4]
+  regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15]
+  mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
@@ -69,7 +69,44 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   morre em V9 (o processo passa a sair 1 com traceback nao tratado); MV4 remove so o EFEITO da
   deteccao (o campo continua sendo detectado como ausente, mas o veredito nunca vira
   NOT_VERIFIED) e tambem morre em V4 - provando que a garantia depende de dois pontos de codigo
-  distintos (deteccao e enforcement), nao de um so.'
+  distintos (deteccao e enforcement), nao de um so.
+
+  SEGUNDO ACHADO CRITICO, corrigido no commit `1b6644388396bf566c5b8553a8cca46bf7e63ac0`: a
+  correcao anterior fechou a INSTANCIA do defeito (a CHAVE bypass_actors ausente) e deixou a
+  CLASSE aberta - o VALOR podia vir null, ou de um TIPO que nao e lista, e a precedencia
+  declarada (FAIL vence NOT_VERIFIED) nao estava implementada onde a medicao acontece em laco.
+  Tres formas, reproduzidas com o binario `gh` stubado ANTES da correcao: (1) bypass_actors:
+  null explicito - `atores = detalhe["bypass_actors"] or []` colapsava o valor nulo na mesma
+  forma de "medido: []" que a correcao anterior ja fechara so para a chave ausente - PASS
+  fabricado, exit 0; (2) bypass_actors de tipo errado (uma string) - sem guard de tipo, `**a`
+  sobre os caracteres da string produzia TypeError nao tratado, traceback em stderr, exit 1,
+  contra a promessa explicita do docstring de que resposta malformada nunca vira excecao; (3)
+  dois `return NOT_VERIFIED` DENTRO do laco de rulesets (falha de rede/permissao ao ler um
+  ruleset; resposta que nao e um objeto) descartavam `problemas` ja acumulado - bypass_actors
+  nao vazio PROVADO num ruleset, ou strict_required_status_checks_policy medido ANTES do laco,
+  eram mascarados assim que QUALQUER OUTRO ruleset aplicavel falhava ao ser lido: NOT_VERIFIED/
+  exit 2 quando o resultado correto e FAIL/exit 1. Corrigido: dois guards adicionais tratam
+  valor nulo e tipo inesperado como "nao medido" (nunca "medido: vazio", nunca excecao); os dois
+  `return` viraram acumulacao em `nao_medidos` com `continue`, e o calculo de
+  strict_required_status_checks_policy foi movido para ANTES do laco - o portao final, ja
+  existente, decide a precedencia depois que o laco inteiro roda, sem nenhum ponto de saida
+  antecipada no meio dele. `tests/unit/fronteira-viva.sh` ganhou V10 (valor nulo), V11 (tipo
+  errado, sem traceback), V12 (violacao provada + outro ruleset ilegivel por rede - FAIL, nao
+  NOT_VERIFIED), V13 (mesma forma, resposta nao-objeto no segundo ruleset) e V14 (strict=false +
+  o unico ruleset aplicavel falha - FAIL, nao NOT_VERIFIED) - 55/55 verde.
+  `tests/mutation/fronteira-viva.sh` reancorou MV1 (a ancora literal mudou de forma com os dois
+  guards novos) e MV3 (o guard de tipo de `detalhe` trocou `return` por `continue`), e ganhou
+  MV5 (reverte o `return` do erro de rede/permissao) e MV6 (reverte o `return` da resposta
+  nao-objeto) - ambos morrem em "bypass_actors nao vazio" (V12/V13) por mascarar uma violacao ja
+  provada assim que reintroduzidos - 7/7 mutantes mortos no caso certo.
+
+  A2, o achado de que a propria precedencia era ALCANCAVEL sem nenhum `return` cedo envolvido e
+  ainda assim NAO TINHA MUTANTE (ver limitations, correcao abaixo): strict=false (medido,
+  reprova) coexistindo com bypass_actors AUSENTE (nao medido) no MESMO ruleset ja saia FAIL
+  ANTES desta correcao - reproduzido com stub e confirmado. O que faltava era o mutante que
+  provasse que essa saida dependia da ORDEM dos dois `if` do portao final, e nao de coincidencia:
+  V15 fecha o caso e MV7 inverte a ordem (nao_medidos checado antes de problemas) - a suite fica
+  vermelha na assercao de V15 que confere a ausencia de NOT_VERIFIED.'
 limitations:
 - 'Endereca DIRETAMENTE a limitacao que C-017 ja declarava: "A suite `tests/unit/fronteira-externa.sh`
   e ESTATICA: le os arquivos de workflow. Ela nao observa check-runs reais - isso e o que a
@@ -121,5 +158,14 @@ limitations:
   `tests/unit/fronteira-viva.sh` combina, no MESMO ruleset aplicavel, uma violacao provada com um
   campo nao divulgado - cada caso V4-V9 isola uma condicao. Essa precedencia e, portanto,
   codigo NAO testado por mutacao: um mutante que a removesse (trocando a ordem dos dois `if`)
-  sobreviveria a esta suite.'
+  sobreviveria a esta suite.
+  CORRECAO (commit `1b6644388396bf566c5b8553a8cca46bf7e63ac0`): a lacuna acima nao era so "nao
+  testada" - a precedencia ESTAVA quebrada em dois pontos ativos do codigo (dois `return
+  NOT_VERIFIED` dentro do laco que descartavam `problemas` ja acumulado), so nao no ponto exato
+  que este paragrafo apontava (a ordem dos `if` do portao final). Ambos os defeitos foram
+  fechados: os dois `return` viraram acumulacao (MV5/MV6, mortos em V12/V13), e a lacuna de
+  mutante para a ORDEM do portao final foi fechada com V15 + MV7, usando exatamente o caso que
+  este paragrafo ja previa (strict medido + campo nao divulgado no MESMO ruleset). Este ledger
+  nao apaga o paragrafo original: ele registra, com precisao, o que ainda NAO estava coberto
+  naquele momento.'
 status: supported-in-tested-domain

@@ -48,6 +48,33 @@
 #        AttributeError e o processo saia com o traceback do Python - exit 1 (FAIL), nunca a
 #        lacuna de oraculo que de fato houve.
 #
+# V10-V15 fecham um SEGUNDO achado CRITICO (2026-08-11): a correcao de V4/V9 tratou a CHAVE
+# ausente e o OBJETO malformado, mas deixou a CLASSE aberta - VALOR nulo, TIPO errado, e a
+# precedencia declarada (FAIL vence NOT_VERIFIED) nao implementada onde a medicao acontece em
+# laco.
+#   V10 - `bypass_actors` presente e `null` -> NOT_VERIFIED, exit 2. `atores = valor or []`
+#        colapsava um valor nulo EXPLICITO na mesma forma de "medido: []" que V4 ja fechou para
+#        a chave ausente - a INSTANCIA foi corrigida, o VALOR nulo continuava aberto.
+#   V11 - `bypass_actors` de tipo que nao e lista (ex.: string) -> NOT_VERIFIED, exit 2, sem
+#        traceback. Sem o guard de tipo, `**a` sobre os caracteres da string produzia TypeError
+#        nao tratado - exit 1 por acidente do interprete, a mesma classe de falha que V9 ja
+#        fechou para o OBJETO `detalhe`, agora sobre o CAMPO `bypass_actors` dele.
+#   V12 - dois rulesets aplicaveis: um com `bypass_actors` NAO vazio (FAIL ja provado) e outro
+#        que FALHA ao ser lido (rede/permissao) -> FAIL, exit 1. Antes da correcao, o
+#        `return NOT_VERIFIED` dentro do laco descartava o FAIL ja acumulado assim que o
+#        segundo ruleset falhava - a lacuna de medicao MASCARAVA a violacao provada.
+#   V13 - mesma forma de V12, mas o segundo ruleset devolve algo que NAO e um objeto (em vez de
+#        falhar por rede) -> FAIL, exit 1. O SEGUNDO ponto do laco que retornava cedo.
+#   V14 - um UNICO ruleset aplicavel, `strict_required_status_checks_policy: false` (FAIL ja
+#        medido ANTES do laco de bypass) e esse MESMO ruleset FALHA ao ser lido -> FAIL, exit 1.
+#        `strict_flags` e medido fora do laco de bypass; a falha para RESOLVER bypass nao pode
+#        apagar uma violacao ja medida em outro termo.
+#   V15 - `strict_required_status_checks_policy: false` (medido, reprova) e `bypass_actors`
+#        AUSENTE (nao medido) no MESMO ruleset -> FAIL, exit 1. Prova que a precedencia
+#        declarada e ALCANCAVEL sem nenhum `return` cedo envolvido - e por isso precisa de
+#        mutante proprio (MV7): sem ele, trocar a ORDEM dos dois `if` finais (nao_medidos antes
+#        de problemas) sobrevive em silencio.
+#
 # NAO VERIFICA o servidor real do GitHub a cada execucao (isso e o proprio probe, exercitado
 # manualmente contra o repositorio e registrado na evidencia da claim). Esta suite mede o
 # COMPORTAMENTO DE DECISAO do probe diante de cada forma de resposta - nao a configuracao atual
@@ -82,9 +109,9 @@ case "$REQ" in
   */rules/branches/*)
     case "${STUB_MODE:-}" in
       empty) echo '[]' ;;
-      # As quatro variantes abaixo so divergem no que rulesets/{id} devolve: a resposta de
+      # As variantes abaixo so divergem no que rulesets/{id} devolve: a resposta de
       # rules/branches e a mesma "regra aplicavel, contexto verify-pr presente" de `pass`.
-      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict)
+      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado)
         cat <<'JSON'
 [
   {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
@@ -96,11 +123,28 @@ case "$REQ" in
 ]
 JSON
         ;;
-      strict-false)
+      strict-false|strict-false-inacessivel|strict-false-bypass-ausente)
         cat <<'JSON'
 [
   {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
    "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      duplo-inacessivel|duplo-nao-dict)
+        # DOIS rulesets aplicaveis (501, 502): o segundo diverge por STUB_MODE em
+        # */rulesets/502 abaixo - falha de rede (duplo-inacessivel) ou resposta nao-objeto
+        # (duplo-nao-dict). O primeiro (501) sempre tem bypass_actors JA provado.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":501,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}},
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":502,"parameters":{"strict_required_status_checks_policy":true,
    "do_not_enforce_on_create":false,
    "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
 ]
@@ -136,6 +180,46 @@ JSON
       resposta-nao-dict)
         # rulesets/{id} devolvendo uma LISTA em vez de um objeto - oraculo malformado.
         echo '[]' ;;
+      bypass-null)
+        # V10: valor NULL explicito - nao e chave ausente, e nao e "medido: []".
+        echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never","bypass_actors":null}' ;;
+      bypass-tipo-errado)
+        # V11: tipo que nao e lista - sem guard, `**a` sobre os caracteres da string produzia
+        # TypeError nao tratado.
+        echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never","bypass_actors":"Team:42"}' ;;
+      strict-false-inacessivel)
+        # V14: o UNICO ruleset aplicavel FALHA ao ser lido; strict=false ja e FAIL provado ANTES
+        # deste laco (rules/branches acima, modo strict-false-inacessivel).
+        echo '{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest","status":"403"}'
+        echo "gh: Resource not accessible by integration (HTTP 403)" >&2
+        exit 1 ;;
+      strict-false-bypass-ausente)
+        # V15: strict=false (medido, reprova) + bypass_actors AUSENTE (nao medido) no MESMO
+        # ruleset - a precedencia declarada e ALCANCAVEL sem nenhum `return` cedo envolvido.
+        echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never"}' ;;
+      duplo-inacessivel)
+        # V12: 501 com bypass_actors JA provado; 502 FALHA ao ser lido (rede/permissao).
+        case "$REQ" in
+          */rulesets/501)
+            echo '{"id":501,"enforcement":"active","current_user_can_bypass":"never",
+                   "bypass_actors":[{"actor_type":"Team","actor_id":42,"bypass_mode":"always"}]}' ;;
+          */rulesets/502)
+            echo '{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest","status":"403"}'
+            echo "gh: Resource not accessible by integration (HTTP 403)" >&2
+            exit 1 ;;
+          *) echo "fake-gh: ruleset nao stubado para duplo-inacessivel: $REQ" >&2; exit 1 ;;
+        esac ;;
+      duplo-nao-dict)
+        # V13: mesma forma de duplo-inacessivel, mas o segundo ruleset devolve algo que NAO e
+        # um objeto - o SEGUNDO ponto do laco que retornava cedo, nao o de rede.
+        case "$REQ" in
+          */rulesets/501)
+            echo '{"id":501,"enforcement":"active","current_user_can_bypass":"never",
+                   "bypass_actors":[{"actor_type":"Team","actor_id":42,"bypass_mode":"always"}]}' ;;
+          */rulesets/502)
+            echo '[]' ;;
+          *) echo "fake-gh: ruleset nao stubado para duplo-nao-dict: $REQ" >&2; exit 1 ;;
+        esac ;;
       *)
         echo '{"id":999,"enforcement":"active","bypass_actors":[],"current_user_can_bypass":"never"}' ;;
     esac
@@ -251,11 +335,81 @@ chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" &&
 chk "  nao ha traceback do Python em stderr" \
     "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
 
+echo "== V10. 'bypass_actors' e NULL na resposta -> NOT_VERIFIED (valor nulo != chave ausente) =="
+# SEGUNDO achado CRITICO (2026-08-11): a onda anterior fechou a CHAVE ausente (V4) e deixou a
+# CLASSE aberta - um valor `null` EXPLICITO ainda colapsava em "medido: []" pela mesma linha
+# `or []`, e o probe saia PASS fabricado.
+MRK="$T/chamou-ruleset-v10"; rm -f "$MRK"
+RC="$(rodar bypass-null "$MRK")"
+chk "exit code 2 (nao mais 0 - o PASS fabricado sobre valor nulo)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors' e null" "$(grep -q "'bypass_actors' e null" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO afirma 'bypass_actors=[]' sem ter medido" \
+    "$(grep -q 'bypass_actors=\[\]' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+
+echo "== V11. 'bypass_actors' tem tipo inesperado (string) -> NOT_VERIFIED, nunca traceback =="
+# Sem o guard de tipo, '**a' sobre os caracteres da string produzia TypeError NAO tratado - a
+# mesma classe de falha que V9 ja fechou para o OBJETO 'detalhe', agora sobre este CAMPO dele.
+MRK="$T/chamou-ruleset-v11"; rm -f "$MRK"
+RC="$(rodar bypass-tipo-errado "$MRK")"
+chk "exit code 2 (nao 1 por TypeError nao tratado)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors' tipo inesperado" \
+    "$(grep -q "'bypass_actors' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  nao ha traceback do Python em stderr" \
+    "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
+
+echo "== V12. violacao PROVADA num ruleset + outro ruleset ILEGIVEL (rede) -> FAIL, nunca NOT_VERIFIED =="
+# TERCEIRO achado CRITICO (2026-08-11): a precedencia declarada (FAIL vence NOT_VERIFIED) nao
+# estava implementada. Antes da correcao, o 'return NOT_VERIFIED' dentro do laco descartava o
+# FAIL ja acumulado do primeiro ruleset assim que o segundo falhava - a lacuna de medicao
+# MASCARAVA a violacao provada.
+MRK="$T/chamou-ruleset-v12"; rm -f "$MRK"
+RC="$(rodar duplo-inacessivel "$MRK")"
+chk "exit code 1 (nao 2 - a violacao provada NAO pode ser mascarada por outro ruleset ilegivel)" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors nao vazio'" \
+    "$(grep -q 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V13. violacao PROVADA num ruleset + outro ruleset NAO-OBJETO -> FAIL, nunca NOT_VERIFIED =="
+# Mesma forma de V12, mas o SEGUNDO ponto do laco que retornava cedo (o guard de tipo de
+# 'detalhe', nao o de rede).
+MRK="$T/chamou-ruleset-v13"; rm -f "$MRK"
+RC="$(rodar duplo-nao-dict "$MRK")"
+chk "exit code 1" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors nao vazio'" \
+    "$(grep -q 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V14. strict=false (FAIL ja em maos) + o UNICO ruleset aplicavel FALHA -> FAIL =="
+# strict_required_status_checks_policy e medido FORA do laco que resolve bypass; a falha ao LER
+# o unico ruleset aplicavel nao pode apagar essa violacao ja provada em outro termo.
+MRK="$T/chamou-ruleset-v14"; rm -f "$MRK"
+RC="$(rodar strict-false-inacessivel "$MRK")"
+chk "exit code 1 (nao 2)" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita strict_required_status_checks_policy" \
+    "$(grep -q 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== V15. strict=false (medido, reprova) + bypass_actors AUSENTE (nao medido) -> FAIL =="
+# A2: prova que a precedencia declarada e ALCANCAVEL sem nenhum 'return' cedo envolvido - basta
+# uma violacao ja medida (strict) coexistir com um campo nao divulgado no MESMO ruleset. Kill
+# desta suposicao exige mutante proprio (MV7): sem ele, inverter a ORDEM dos dois 'if' finais
+# sobrevive em silencio.
+MRK="$T/chamou-ruleset-v15"; rm -f "$MRK"
+RC="$(rodar strict-false-bypass-ausente "$MRK")"
+chk "exit code 1 (nao 2 - o campo nao medido nao pode rebaixar uma violacao ja provada)" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita strict_required_status_checks_policy" \
+    "$(grep -q 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata NOT_VERIFIED (a lacuna de bypass_actors nao decide aqui)" \
+    "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
-# CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8
-# - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=34
+# CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
+# V10-V15 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=55
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

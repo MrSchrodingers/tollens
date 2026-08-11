@@ -14,6 +14,13 @@
 # cada guard individualmente, para que a suite nao dependa de um unico ponto de falha coincidir
 # com um unico ponto de teste.
 #
+# MV5/MV6/MV7 fecham um SEGUNDO achado CRITICO (2026-08-11): a precedencia declarada (FAIL vence
+# NOT_VERIFIED) nao estava implementada onde a medicao acontece em laco. MV5 e MV6 revertem cada
+# um dos DOIS `return NOT_VERIFIED` que existiam dentro do laco de rulesets - um para o erro de
+# rede/permissao ao ler um ruleset, outro para a resposta que nao e um objeto - e que descartavam
+# `problemas` ja acumulado. MV7 inverte a ORDEM dos dois `if` do portao final, provando que a
+# precedencia depende dessa ordem e nao so da ausencia de `return` cedo no laco.
+#
 # TROCA POR ARQUIVO, NAO POR ARGUMENTO DE SHELL. Os trechos mutados tem aspas simples e duplas
 # aninhadas (`f"ruleset {rid}: '{cucb}'"`); escrever isso como argumento de shell (single ou
 # double-quoted) obrigaria a escapar aspas dentro de aspas - fragil e ilegivel, e exatamente a
@@ -30,7 +37,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=4
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=7
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -95,8 +102,25 @@ cat > "$TMP/mv1-de.txt" <<'EOF'
             nao_medidos.append(
                 f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
                 f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+        elif detalhe["bypass_actors"] is None:
+            # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
+            # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
+            # dois casos no mesmo PASS fabricado que a correcao anterior fechou so para a chave
+            # ausente - a INSTANCIA foi corrigida, a CLASSE (valor nulo) continuava aberta.
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' e null na resposta - not Bypass(a,P) NAO foi "
+                f"medido (mesma doutrina de campo ausente).")
+        elif not isinstance(detalhe["bypass_actors"], list):
+            # Tipo inesperado (ex.: string, numero): sem este guard, `**a` sobre um elemento que
+            # nao e mapeamento (ou a propria iteracao sobre uma string) produz TypeError nao
+            # tratado - a mesma promessa de "nunca traceback" que ja valia para o OBJETO
+            # `detalhe`, agora tambem para este CAMPO dele.
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' tem tipo inesperado "
+                f"({type(detalhe['bypass_actors']).__name__}, esperava lista) - oraculo "
+                f"malformado, not Bypass(a,P) NAO foi medido.")
         else:
-            atores = detalhe["bypass_actors"] or []
+            atores = detalhe["bypass_actors"]
             if atores:
                 bypass_total.extend({"ruleset_id": rid, **a} for a in atores)
 EOF
@@ -139,11 +163,12 @@ cat > "$TMP/mv3-de.txt" <<'EOF'
         if not isinstance(detalhe, dict):
             # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
             # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
-            # NOT_VERIFIED - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
-            return Resultado(
-                NOT_VERIFIED,
-                f"resposta de rulesets/{rid} nao e um objeto: {type(detalhe).__name__} - "
-                f"oraculo malformado, nao ha como resolver bypass_actors nem enforcement")
+            # "nao medido" - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
+            nao_medidos.append(
+                f"ruleset {rid}: resposta de rulesets/{rid} nao e um objeto: "
+                f"{type(detalhe).__name__} - oraculo malformado, nao ha como resolver "
+                f"bypass_actors nem enforcement")
+            continue
 EOF
 : > "$TMP/mv3-para.txt"
 mutante MV3 "resposta nao-dict de rulesets/{id} crasha com AttributeError, nao NOT_VERIFIED" \
@@ -167,6 +192,109 @@ EOF
 : > "$TMP/mv4-para.txt"
 mutante MV4 "deteccao sem efeito: nao_medidos preenchido mas nunca vira NOT_VERIFIED" \
   "  motivo cita 'bypass_actors' ausente" "$TMP/mv4-de.txt" "$TMP/mv4-para.txt"
+
+echo "== mutacao: a precedencia (FAIL vence NOT_VERIFIED) removida DEVE reprovar =="
+
+# MV5 - reverte o PRIMEIRO ponto do laco que retornava cedo: falha de rede/permissao ao ler um
+# ruleset volta a `return NOT_VERIFIED` imediato, descartando `problemas` ja acumulado (o strict
+# medido antes do laco, ou o bypass_actors de um ruleset anterior no MESMO laco).
+cat > "$TMP/mv5-de.txt" <<'EOF'
+        if err:
+            nao_medidos.append(
+                f"ruleset {rid}: nao foi possivel ler para resolver bypass: {err}")
+            continue
+EOF
+cat > "$TMP/mv5-para.txt" <<'EOF'
+        if err:
+            return Resultado(NOT_VERIFIED,
+                              f"nao foi possivel ler o ruleset {rid} para resolver bypass: {err}")
+EOF
+mutante MV5 "erro de rede/permissao em UM ruleset volta a mascarar violacao ja provada em outro" \
+  "  motivo cita 'bypass_actors nao vazio'" "$TMP/mv5-de.txt" "$TMP/mv5-para.txt"
+
+# MV6 - reverte o SEGUNDO ponto do laco que retornava cedo: resposta de rulesets/{id} que nao e
+# um objeto volta a `return NOT_VERIFIED` imediato em vez de registrar e CONTINUAR. Mesma classe
+# de mascaramento de MV5, ponto de codigo DIFERENTE - por isso precisa de mutante proprio.
+cat > "$TMP/mv6-de.txt" <<'EOF'
+        if not isinstance(detalhe, dict):
+            # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
+            # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
+            # "nao medido" - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
+            nao_medidos.append(
+                f"ruleset {rid}: resposta de rulesets/{rid} nao e um objeto: "
+                f"{type(detalhe).__name__} - oraculo malformado, nao ha como resolver "
+                f"bypass_actors nem enforcement")
+            continue
+EOF
+cat > "$TMP/mv6-para.txt" <<'EOF'
+        if not isinstance(detalhe, dict):
+            # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
+            # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
+            # NOT_VERIFIED - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
+            return Resultado(
+                NOT_VERIFIED,
+                f"resposta de rulesets/{rid} nao e um objeto: {type(detalhe).__name__} - "
+                f"oraculo malformado, nao ha como resolver bypass_actors nem enforcement")
+EOF
+mutante MV6 "resposta nao-objeto em UM ruleset volta a mascarar violacao ja provada em outro" \
+  "  motivo cita 'bypass_actors nao vazio'" "$TMP/mv6-de.txt" "$TMP/mv6-para.txt"
+
+# MV7 - inverte a ORDEM dos dois `if` do portao final: `nao_medidos` passa a ser checado ANTES
+# de `problemas`. Sem os dois `return` cedo (MV5/MV6 ja cobrem isso), a precedencia declarada
+# ainda depende desta ordem: um caso onde a MESMA execucao acumula os dois (ex.: strict medido
+# ANTES do laco + bypass_actors nao divulgado no unico ruleset) so sai FAIL se `problemas` for
+# checado primeiro. C-018 declarava explicitamente que esta precedencia nao tinha mutante.
+cat > "$TMP/mv7-de.txt" <<'EOF'
+    if problemas:
+        # FAIL vence sobre "nao medido": uma violacao ja PROVADA (bypass_actors nao vazio,
+        # current_user_can_bypass != never, enforcement != active, strict desligado) decide
+        # Bypass(a,P) = True de qualquer forma, mesmo que outro ruleset aplicavel nao tenha
+        # divulgado o proprio campo. Rebaixar isso a NOT_VERIFIED esconderia um problema real
+        # atras de "faltou permissao para medir" - o oposto do fail-closed que este bloco existe
+        # para impor.
+        return Resultado(
+            FAIL,
+            "Applies(P,r) e Required(P) valem, mas Bypass(a,P) ou a politica de atualizacao "
+            "falham: " + "; ".join(problemas),
+            {"rules": rules, "rulesets": detalhes_rulesets},
+        )
+
+    if nao_medidos:
+        return Resultado(
+            NOT_VERIFIED,
+            "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+            "medidos, mas not Bypass(a,P) NAO foi medido por completo - PASS exigiria medir, "
+            "nao supor: " + "; ".join(nao_medidos),
+            {"rules": rules, "rulesets": detalhes_rulesets},
+        )
+EOF
+cat > "$TMP/mv7-para.txt" <<'EOF'
+    if nao_medidos:
+        return Resultado(
+            NOT_VERIFIED,
+            "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+            "medidos, mas not Bypass(a,P) NAO foi medido por completo - PASS exigiria medir, "
+            "nao supor: " + "; ".join(nao_medidos),
+            {"rules": rules, "rulesets": detalhes_rulesets},
+        )
+
+    if problemas:
+        # FAIL vence sobre "nao medido": uma violacao ja PROVADA (bypass_actors nao vazio,
+        # current_user_can_bypass != never, enforcement != active, strict desligado) decide
+        # Bypass(a,P) = True de qualquer forma, mesmo que outro ruleset aplicavel nao tenha
+        # divulgado o proprio campo. Rebaixar isso a NOT_VERIFIED esconderia um problema real
+        # atras de "faltou permissao para medir" - o oposto do fail-closed que este bloco existe
+        # para impor.
+        return Resultado(
+            FAIL,
+            "Applies(P,r) e Required(P) valem, mas Bypass(a,P) ou a politica de atualizacao "
+            "falham: " + "; ".join(problemas),
+            {"rules": rules, "rulesets": detalhes_rulesets},
+        )
+EOF
+mutante MV7 "ordem do portao final invertida: nao_medidos passa a vencer problemas" \
+  "  NAO relata NOT_VERIFIED (a lacuna de bypass_actors nao decide aqui)" \
+  "$TMP/mv7-de.txt" "$TMP/mv7-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo
