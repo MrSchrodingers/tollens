@@ -43,7 +43,13 @@ fi
 # `inventario()` so varre esses dois diretorios.
 D6_FIX_MUT="$REPO/tests/mutation/_fixture_d6_tmp.sh"
 D6_FIX_UNIT="$REPO/tests/unit/_fixture_d6_tmp.sh"
-T="$(mktemp -d)"; trap 'rm -rf "$T"; rm -f "$D6_FIX_MUT" "$D6_FIX_UNIT"' EXIT
+# Par de fixtures do caso A1 abaixo (onda 6): DUAS invocacoes do MESMO ID de mutante em DOIS
+# arquivos de tests/mutation/ - a mesma tecnica do par acima, mas precisa de DOIS arquivos
+# simultaneos (o par acima reusa D6_FIX_MUT sozinho porque so um lado da colisao vem de fixture).
+D6_FIX_MUT_A="$REPO/tests/mutation/_fixture_d6a_tmp.sh"
+D6_FIX_MUT_B="$REPO/tests/mutation/_fixture_d6b_tmp.sh"
+T="$(mktemp -d)"
+trap 'rm -rf "$T"; rm -f "$D6_FIX_MUT" "$D6_FIX_UNIT" "$D6_FIX_MUT_A" "$D6_FIX_MUT_B"' EXIT
 # SHA COMPLETO: o schema v2 recusa prefixo. `rev-parse HEAD` ja devolve 40 hex; o fallback
 # tambem tem de ter 40, senao o fixture reprovaria por FORMA e os casos mediriam outra coisa.
 SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo 0000000000000000000000000000000000000000)"
@@ -457,9 +463,28 @@ rm -f "$D6_FIX_UNIT"
 rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
 chk "  controle: sem a duplicidade, o ledger REAL volta a validar" "$rc" 0
 
+echo "== L-D6-DUPLICADO-MUTANTE: o mesmo ID de mutante em DOIS arquivos de tests/mutation/ vira NAO VERIFICADO =="
+# Extensao pedida pela delegacao (onda 6, A1): `_contrato_extracao_ok` checava a duplicidade
+# ENTRE ARQUIVOS so no espaco de REGRESSAO (caso anterior); o espaco de MUTANTE tinha a MESMA
+# classe de ambiguidade, ja EXERCITADA por claims reais antes desta correcao (M1..M10 reusado
+# entre tests/mutation/run.sh e .../schedule.sh; MC1..MC7 entre capabilities.sh/
+# conformidade.sh/contrato.sh) - ver o inventario de renomeacao no docstring de
+# `_contrato_extracao_ok`. Mesma tecnica dos dois casos acima, agora com DOIS arquivos de
+# mutation reusando o MESMO ID de mutante.
+escreve_fixture '#!/usr/bin/env bash\nmutante ZZD1 "reusa de proposito o mesmo ID de mutante em dois arquivos" "alvo-fixture" true\n' \
+  "$D6_FIX_MUT_A"
+escreve_fixture '#!/usr/bin/env bash\nmutante ZZD1 "o MESMO ID de mutante, agora no segundo arquivo" "alvo-fixture" true\n' \
+  "$D6_FIX_MUT_B"
+rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
+chk "mutante ZZD1 declarado em DOIS arquivos de tests/mutation/ -> NAO VERIFICADO (exit 2)" "$rc" 2
+rm -f "$D6_FIX_MUT_B"
+rc="$(python3 "$V" "$REPO" "$REPO/evidence/claims" >/dev/null 2>&1; echo $?)"
+chk "  controle: com so UM arquivo declarando ZZD1, o ledger REAL volta a validar" "$rc" 0
+rm -f "$D6_FIX_MUT_A"
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=47
+EXPECTED=49
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

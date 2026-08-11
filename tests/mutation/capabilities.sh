@@ -64,12 +64,12 @@ mutante(){ # $1=nome $2=descricao $3=caso-alvo que DEVE reprovar $4..=comando
 
 echo "== mutacao: cada garantia desta correcao DEVE quebrar a regressao =="
 
-# MC1 - O MUTANTE CENTRAL pedido pela delegacao: reintroduz a truncagem da lista de bloco na
+# MD1 - O MUTANTE CENTRAL pedido pela delegacao: reintroduz a truncagem da lista de bloco na
 # primeira linha em branco, a MESMA classe de defeito do parser artesanal removido (ele fazia
 # `break` no primeiro item que nao casasse `^\s*-\s*(.+?)\s*$`; uma linha em branco nunca casa).
 # K10 planta o caso EXATO da reproducao do achado: canonico com 4 ferramentas, projecao com as
 # mesmas 4 e mais `Write`/`Edit` apos uma linha em branco - o mutante tem que voltar a escondê-las.
-mutante MC1 "o bloco de tools: nao trunca na primeira linha em branco" \
+mutante MD1 "o bloco de tools: nao trunca na primeira linha em branco" \
   "linha em branco no bloco NAO esconde itens extras -> exit 1 (era exit 0)" \
   troca '    try:
         doc = yaml.safe_load("\n".join(fm))
@@ -87,11 +87,11 @@ mutante MC1 "o bloco de tools: nao trunca na primeira linha em branco" \
         return YAML_INVALIDO
 '
 
-# MC2 - YAML invalido na fonte canonica volta a ser classificado como VIOLACAO (defeito
+# MD2 - YAML invalido na fonte canonica volta a ser classificado como VIOLACAO (defeito
 # estrutural do agente) em vez de NAO_VERIFICADO (indecidivel). E a decisao explicita desta
 # correcao: um documento que o parser de referencia recusa nao e prova de divergencia de
 # capacidade - e prova de sintaxe quebrada, categoria distinta.
-mutante MC2 "YAML invalido e indecidivel, nao violacao" \
+mutante MD2 "YAML invalido e indecidivel, nao violacao" \
   "YAML invalido na canonica -> exit 2 (indecidivel, nao violacao)" \
   troca '        if t_canon is YAML_INVALIDO:
             nao_verificados.append(
@@ -103,12 +103,12 @@ mutante MC2 "YAML invalido e indecidivel, nao violacao" \
         '        if t_canon is None or t_canon is TOOLS_AUSENTE or t_canon is YAML_INVALIDO:
 '
 
-# MC3 - falha AMBIENTAL de leitura (permissao, E/S) na fonte canonica volta a ser classificada
+# MD3 - falha AMBIENTAL de leitura (permissao, E/S) na fonte canonica volta a ser classificada
 # como VIOLACAO. E a decisao P5 do revisor: `frontmatter_lines() is None` conflava OSError
 # (causa alheia ao autor do agente) com frontmatter malformado (defeito estrutural real).
 # Classificar a primeira como a segunda e o falso positivo que ensina o operador a desligar o
 # mecanismo - por isso esta garantia precisa da mesma protecao de mutacao que as demais.
-mutante MC3 "falha ambiental de leitura e indecidivel, nao defeito estrutural" \
+mutante MD3 "falha ambiental de leitura e indecidivel, nao defeito estrutural" \
   "canonica ilegivel por permissao -> exit 2 (nao 1 - nao e defeito estrutural)" \
   troca '        if t_canon is ERRO_AMBIENTAL:
             # Falha AMBIENTAL (permissao, E/S) na fonte canonica: indecidivel, nao defeito
@@ -132,12 +132,12 @@ mutante MC3 "falha ambiental de leitura e indecidivel, nao defeito estrutural" \
         if t_canon is None or t_canon is TOOLS_AUSENTE or t_canon is ERRO_AMBIENTAL:
 '
 
-# MC4 - a forma ESCALAR separada por virgula (`tools: A, B, C`) deixa de ser reconhecida. E a
+# MD4 - a forma ESCALAR separada por virgula (`tools: A, B, C`) deixa de ser reconhecida. E a
 # forma que os 10 agentes reais deste repositorio usam hoje (ver execution/agents/*.md); perde-la
 # faz o probe sair NAO_VERIFICADO para o repositorio inteiro, em silencio de CI - a mesma classe
 # de regressao que a troca de parser existe para fechar, na direcao oposta (falso negativo em
 # vez de falso positivo).
-mutante MC4 "escalar separado por virgula continua reconhecido como tools:" \
+mutante MD4 "escalar separado por virgula continua reconhecido como tools:" \
   "exit code 0" \
   troca '    if isinstance(valor, str):
 ' \
@@ -146,38 +146,38 @@ mutante MC4 "escalar separado por virgula continua reconhecido como tools:" \
 
 # OS TRES MUTANTES ABAIXO SAO OS "MINIMOS" PEDIDOS PELA DELEGACAO (A3): protegem as decisoes
 # de SEGURANCA que este probe ja carregava ANTES desta onda e que nunca tinham cobertura de
-# mutacao (o motivo original deste arquivo existir). MC1-MC4 acima protegem a troca de parser
-# (A1); MC5-MC7 protegem o que a suite unica ja discriminava - K6, K5 e K9 - sem nunca terem
+# mutacao (o motivo original deste arquivo existir). MD1-MD4 acima protegem a troca de parser
+# (A1); MD5-MD7 protegem o que a suite unica ja discriminava - K6, K5 e K9 - sem nunca terem
 # sido provados por mutacao.
 
-# MC5 - `tools:` OMITIDO numa projecao volta a ser NAO_VERIFICADO em vez de VIOLACAO. E a
+# MD5 - `tools:` OMITIDO numa projecao volta a ser NAO_VERIFICADO em vez de VIOLACAO. E a
 # reintroducao literal do defeito D2: uma projecao sem `tools:` HERDA TODAS as ferramentas
 # (concessao MAXIMA, doc primaria do Claude Code) - isso e decidivel e diverge de qualquer
 # lista finita do canonico, nao lacuna indecidivel. K6 e o UNICO caso que discrimina esta
 # garantia; sem mutacao, nada provava que o guard decide o veredito.
-mutante MC5 "tools: omitido numa projecao e VIOLACAO, nao lacuna" \
+mutante MD5 "tools: omitido numa projecao e VIOLACAO, nao lacuna" \
   "tools: ausente numa projecao -> exit 1 (VIOLACAO, nao 2)" \
   troca '            if t_outra is TOOLS_AUSENTE:
                 violacoes.append(' \
         '            if t_outra is TOOLS_AUSENTE:
                 nao_verificados.append('
 
-# MC6 - `--repo-only` volta a AFIRMAR 3 fontes comparadas enquanto so compara 2. E a
+# MD6 - `--repo-only` volta a AFIRMAR 3 fontes comparadas enquanto so compara 2. E a
 # reproducao literal do defeito que deu origem a esta suite inteira (ver cabecalho de
 # tests/unit/capabilities.sh): a saida de `--repo-only` virava byte-identica ao modo completo
 # na alegacao de fontes, uma prova arquivavel de comparacao que nunca ocorreu. Mutar so o
 # ROTULO exibido/contado (sem tocar a comparacao real, que continua so 2 fontes) reproduz
 # exatamente essa mentira de saida.
-mutante MC6 "--repo-only declara SO as fontes que de fato comparou" \
+mutante MD6 "--repo-only declara SO as fontes que de fato comparou" \
   "  PASS declara SO 2 fontes (nao 3) - a mentira original" \
   troca 'rotulos_desta_execucao = [ROTULO_PROJECAO] if repo_only else [ROTULO_PROJECAO, ROTULO_INSTALADA]' \
         'rotulos_desta_execucao = [ROTULO_PROJECAO, ROTULO_INSTALADA]'
 
-# MC7 - flag de CLI desconhecida volta a ser aceita em silencio (o modo completo roda sem
+# MD7 - flag de CLI desconhecida volta a ser aceita em silencio (o modo completo roda sem
 # aplicar o filtro pedido). Era o comportamento de `"--repo-only" in sys.argv`: um erro de
 # digitacao (`--repoonly`) nunca era sinalizado. `parse_known_args` descarta o argumento nao
 # reconhecido em vez de recusar o pedido.
-mutante MC7 "flag desconhecida nao decide o pedido em silencio" \
+mutante MD7 "flag desconhecida nao decide o pedido em silencio" \
   "flag desconhecida -> exit 2 (nao 0 por omissao de validacao)" \
   troca 'return ap.parse_args(argv)' \
         'return ap.parse_known_args(argv)[0]'

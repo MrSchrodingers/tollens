@@ -10,9 +10,9 @@
 # de caminho e dialeto de glob restrito - e EXIGE que tests/unit/schedule.sh reprove no caso
 # especifico que aquela garantia protege.
 #
-# O MUTANTE CENTRAL e M2: sem a deteccao de escritas sobrepostas, o escalonador vira decoracao -
+# O MUTANTE CENTRAL e MS2: sem a deteccao de escritas sobrepostas, o escalonador vira decoracao -
 # aceitaria dois nos escrevendo o mesmo arquivo em paralelo, exatamente o que o mecanismo existe
-# para impedir. M5-M10 cobrem garantias acrescentadas depois da revisao independente medir tres
+# para impedir. MS5-MS10 cobrem garantias acrescentadas depois da revisao independente medir tres
 # falsos negativos e um defeito de diagnostico neste modulo (normalizacao de caminho, dialeto de
 # glob, ciclo sem fixture, cobertura de anticadeia fora da onda, arestas para no inexistente).
 set -uo pipefail
@@ -74,80 +74,80 @@ mutante(){ # $1=nome $2=descricao $3=caso-alvo (regex) que DEVE reprovar $4..=co
 
 echo "== mutacao: cada garantia removida DEVE quebrar o caso que a exercita =="
 
-# M1 - condicao (1): o nivelamento por caminho mais longo perde o incremento de nivel. Sem ele
+# MS1 - condicao (1): o nivelamento por caminho mais longo perde o incremento de nivel. Sem ele
 # todo no colapsa para o nivel 0 - duas etapas com dependencia direta (ex.: red -> implement)
 # passam a ser declaradas "na mesma onda", violando a propria definicao de precedencia.
-mutante M1 "nivelamento respeita a precedencia (aresta incrementa o nivel)" \
+mutante MS1 "nivelamento respeita a precedencia (aresta incrementa o nivel)" \
   "ondas exatas de standard-change" \
   troca 'level[m] = max(level[m], level[n] + 1)' \
         'level[m] = max(level[m], level[n])'
 
-# M2 - condicao (2), MUTANTE CENTRAL: a deteccao de escritas sobrepostas nunca dispara. Dois
+# MS2 - condicao (2), MUTANTE CENTRAL: a deteccao de escritas sobrepostas nunca dispara. Dois
 # nos escrevendo o mesmo arquivo em paralelo deixam de ser recusados - a checagem que da nome
 # a este validador (conflito de escrita mecanico, nao por raciocinio) desaparece.
-mutante M2 "escritas sobrepostas sao recusadas (Writes(a) intersecta Writes(b))" \
+mutante MS2 "escritas sobrepostas sao recusadas (Writes(a) intersecta Writes(b))" \
   "F2 escritas sobrepostas" \
   troca 'if base_a.startswith(base_b) or base_b.startswith(base_a):' \
         'if False:'
 
-# M3 - condicao (3): o limite de um lock de suite compartilhado entre nos sem precedencia e
+# MS3 - condicao (3): o limite de um lock de suite compartilhado entre nos sem precedencia e
 # desativado. Dois nos do MESMO checkout tomando tests/lib/lock.sh sem relacao `<` entre si
 # deixam de ser recusados - a suite de um colidiria com a do outro (exit 3), e o validador
 # teria certificado a colisao.
-mutante M3 "no maximo um no compartilhado toma o lock de suite entre nos sem precedencia" \
+mutante MS3 "no maximo um no compartilhado toma o lock de suite entre nos sem precedencia" \
   "F3 dois nos compartilhados disputando o lock de suite" \
   troca 'and sched[b]["holds_suite_lock"] and sched[b]["isolation"] == "shared"' \
         'and False'
 
-# M4 - read_parallelism_cap: o limite do registry deixa de ser respeitado. Um fan-out de
+# MS4 - read_parallelism_cap: o limite do registry deixa de ser respeitado. Um fan-out de
 # leitores maior do que o declarado em orchestration/registry.json deixa de ser recusado.
-mutante M4 "read_parallelism_cap do registry e respeitado" \
+mutante MS4 "read_parallelism_cap do registry e respeitado" \
   "F5 5 leitores com cap=4" \
   troca 'if len(leitores) > cap:' \
         'if len(leitores) > 99:'
 
-# M5 - normalizacao de caminho em _glob_base: sem ela, "./x" e "x" (o MESMO arquivo)
+# MS5 - normalizacao de caminho em _glob_base: sem ela, "./x" e "x" (o MESMO arquivo)
 # geram bases literais diferentes e o conflito de escrita nunca e detectado.
-mutante M5 "caminho e normalizado antes de extrair a base literal do glob" \
+mutante MS5 "caminho e normalizado antes de extrair a base literal do glob" \
   "F10 mesmo arquivo grafado como" \
   troca 'pattern = posixpath.normpath(pattern) if pattern else pattern' \
         'pattern = pattern'
 
-# M6 - dialeto de glob restrito: sem a recusa de sintaxe fora do dialeto, um padrao com
+# MS6 - dialeto de glob restrito: sem a recusa de sintaxe fora do dialeto, um padrao com
 # expansao de chaves e aceito e comparado errado (tratado como literal), voltando a
 # produzir falso negativo em vez de ser barrado na validacao.
-mutante M6 "writes fora do dialeto suportado e recusado na validacao" \
+mutante MS6 "writes fora do dialeto suportado e recusado na validacao" \
   "F11 writes com expansao de chaves" \
   troca 'ch = _dialeto_glob_invalido(padrao)' \
         'ch = None'
 
-# M7 - condicao (1) contra ciclo: remover o guard `processados != len(nodes)` faz um
+# MS7 - condicao (1) contra ciclo: remover o guard `processados != len(nodes)` faz um
 # workflow ciclico ser aceito como se tivesse escalonamento valido.
-mutante M7 "ciclo no grafo do workflow e detectado (processados != len(nodes))" \
+mutante MS7 "ciclo no grafo do workflow e detectado (processados != len(nodes))" \
   "F12 ciclo no grafo do workflow" \
   troca 'if processados != len(nodes):' \
         'if False:'
 
-# M8 - condicao (2)/(3) sobre TODA anticadeia (M4 do achado externo): sem o fecho
+# MS8 - condicao (2)/(3) sobre TODA anticadeia (M4 do achado externo): sem o fecho
 # transitivo, dois nos sem precedencia entre si mas em niveis DIFERENTES do nivelamento
 # escapam da checagem de escrita/lock.
-mutante M8 "conflito de escrita/lock cobre pares sem precedencia em QUALQUER nivel" \
+mutante MS8 "conflito de escrita/lock cobre pares sem precedencia em QUALQUER nivel" \
   "F13 anticadeia sem precedencia" \
   troca 'if b in descendentes[a] or a in descendentes[b]:' \
         'if True:'
 
-# M9 - aresta com DESTINO fora de 'nodes': sem a validacao previa, o nivelamento estoura
+# MS9 - aresta com DESTINO fora de 'nodes': sem a validacao previa, o nivelamento estoura
 # KeyError cru em vez de SCHEDULE_ERROR estruturado. Exit code sozinho nao discrimina (o
 # KeyError cru TAMBEM sai != 0) - o alvo e a mensagem estruturada, nao o exit code.
-mutante M9 "aresta com destino fora de 'nodes' produz erro estruturado, nao KeyError" \
+mutante MS9 "aresta com destino fora de 'nodes' produz erro estruturado, nao KeyError" \
   "F14 erro estruturado" \
   troca "if b not in node_set:" \
         "if False:"
 
-# M10 - aresta com ORIGEM fora de 'nodes': sem a validacao previa, o sintoma e reportado
+# MS10 - aresta com ORIGEM fora de 'nodes': sem a validacao previa, o sintoma e reportado
 # como "ciclo detectado" - diagnostico errado, nao ha ciclo no grafo real. Exit code sozinho
 # nao discrimina (o diagnostico errado TAMBEM sai != 0) - o alvo e a mensagem certa.
-mutante M10 "aresta com origem fora de 'nodes' e diagnosticada corretamente, nao como ciclo" \
+mutante MS10 "aresta com origem fora de 'nodes' e diagnosticada corretamente, nao como ciclo" \
   "F15 diagnostica aresta invalida" \
   troca "if a not in node_set:" \
         "if False:"

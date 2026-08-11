@@ -61,62 +61,62 @@ mutante(){ # $1=nome $2=descricao $3=caso-alvo que DEVE reprovar $4..=comando
 
 echo "== mutacao: cada garantia removida DEVE quebrar a conformidade de dois escopos =="
 
-# MC1 - o silencio volta a depender so do escopo de usuario. E a reintroducao LITERAL do
+# MN1 - o silencio volta a depender so do escopo de usuario. E a reintroducao LITERAL do
 # defeito medido: escopo de usuario conforme autorizava calar sobre a arvore root-owned.
-mutante MC1 "silencio exige os DOIS escopos conformes" \
+mutante MN1 "silencio exige os DOIS escopos conformes" \
   "hook NAO se cala quando so o escopo managed diverge" \
   troca '[ "$RC" -eq 0 ] && [ "$MRC" -eq 0 ] && exit 0' \
         '[ "$RC" -eq 0 ] && exit 0'
 
-# MC2 - o bloco managed some da mensagem. O hook detecta e agrega, mas o operador nunca fica
+# MN2 - o bloco managed some da mensagem. O hook detecta e agrega, mas o operador nunca fica
 # sabendo QUAL escopo divergiu: deteccao sem canal e o defeito do ADR 0021 outra vez.
-mutante MC2 "o resumo managed chega ao modelo" \
+mutante MN2 "o resumo managed chega ao modelo" \
   "  o resumo managed chega ao modelo" \
   troca 'BLOCO_MANAGED="
 $MRESUMO' \
         'BLOCO_MANAGED="
 sem-resumo'
 
-# MC3 - a guarda de existencia da arvore some, e maquina SEM fase managed passa a reportar
+# MN3 - a guarda de existencia da arvore some, e maquina SEM fase managed passa a reportar
 # drift. Falso positivo e o que faz o operador desligar o mecanismo - por isso `absent` e
 # `drift` sao estados distintos, e nao um so.
-mutante MC3 "ausencia de managed nao e drift" \
+mutante MN3 "ausencia de managed nao e drift" \
   "sem arvore managed, hook fica calado" \
   troca 'if { [ -d "$MTREE" ] || [ -f "$MSET" ]; } && [ -f "$REPO/install/apply-managed.sh" ]; then' \
         'if [ -f "$REPO/install/apply-managed.sh" ]; then'
 
-# MC4 - a guarda volta a testar SO a arvore. Reintroduz o achado critico da revisao
+# MN4 - a guarda volta a testar SO a arvore. Reintroduz o achado critico da revisao
 # independente: politica viva com arvore apagada - o pior drift possivel - passa por `absent`,
 # o estado que o codigo define como benigno e silencioso.
-mutante MC4 "a guarda e a UNIAO dos artefatos julgados" \
+mutante MN4 "a guarda e a UNIAO dos artefatos julgados" \
   "politica orfa (sem arvore) NAO passa por 'absent'" \
   troca 'if { [ -d "$MTREE" ] || [ -f "$MSET" ]; } && [ -f "$REPO/install/apply-managed.sh" ]; then' \
         'if [ -d "$MTREE" ] && [ -f "$REPO/install/apply-managed.sh" ]; then'
 
-# MC5 - recusa de verificar volta a ser coagida para `drift`. O alerta passa a AFIRMAR
+# MN5 - recusa de verificar volta a ser coagida para `drift`. O alerta passa a AFIRMAR
 # divergencia exibindo resumo verde e nenhuma evidencia: alerta sem referente.
-mutante MC5 "recusa de verificar e not_verified, nao drift" \
+mutante MN5 "recusa de verificar e not_verified, nao drift" \
   "estado e not_verified (nao drift)" \
   troca '    1) MSTATE="drift" ;;
     *) MSTATE="not_verified" ;;' \
         '    *) MSTATE="drift" ;;'
 
-# MC6 - a guarda volta a exigir bit de execucao num arquivo invocado com `bash`. Fail-open:
+# MN6 - a guarda volta a exigir bit de execucao num arquivo invocado com `bash`. Fail-open:
 # perder o bit desliga a verificacao managed inteira, em silencio.
-mutante MC6 "guarda usa -f, coerente com a chamada por bash" \
+mutante MN6 "guarda usa -f, coerente com a chamada por bash" \
   "sem bit +x, a verificacao NAO e pulada em silencio" \
   troca '[ -f "$REPO/install/apply-managed.sh" ]; then' \
         '[ -x "$REPO/install/apply-managed.sh" ]; then'
 
-# MC7 - o hook perde o argumento `--verify`. NAO e cosmetico: `apply-managed.sh` so desvia para
+# MN7 - o hook perde o argumento `--verify`. NAO e cosmetico: `apply-managed.sh` so desvia para
 # o caminho read-only em `--verify|--revert` (apply-managed.sh:40-44); sem o argumento cai no
 # DEPLOY REAL. O comparador viraria reconciliador - reescreveria a politica a cada SessionStart,
 # sairia 0, e reportaria conformidade. Ate 2026-08-10 este mutante SOBREVIVIA: 21/21 e 6/6
 # verdes, porque o stub ignorava $@. Achado do portao final.
-# Alvo escolhido por ATRIBUICAO FORTE: CM6 sobrevive ao MC1, entao a morte aqui nao esta contida
+# Alvo escolhido por ATRIBUICAO FORTE: CM6 sobrevive ao MN1, entao a morte aqui nao esta contida
 # no raio de outro mutante. Semanticamente e o sintoma proprio: com a chamada errada, uma maquina
 # 100% conforme passa a gritar (e, pior, teve a politica reescrita para chegar ate esse estado).
-mutante MC7 "o hook chama o verificador, nao o instalador" \
+mutante MN7 "o hook chama o verificador, nao o instalador" \
   "nenhum ruido quando os dois escopos conferem" \
   troca 'bash install/apply-managed.sh --verify 2>&1' \
         'bash install/apply-managed.sh 2>&1'

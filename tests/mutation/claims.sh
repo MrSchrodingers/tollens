@@ -17,7 +17,7 @@ ORIG="evidence/validate-claims.py"
 REG="tests/unit/claims.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=5
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=6
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -90,13 +90,27 @@ mutante MK4 "colisao entre os espacos de nome regressao/mutante e detectada" \
   troca '    if colisao:' \
         '    if False and colisao:'
 
-# MK5 - onda 5, D6/D7 (CRITICO/AVISO): a checagem de ID de regressao duplicado ENTRE ARQUIVOS
-# desliga - a mesma ambiguidade que L1..L18 tinham de fato entre claims.sh e literatura.sh (D7)
-# antes de o prefixo do segundo ser renomeado para 'LT'.
-mutante MK5 "ID de regressao duplicado entre arquivos e detectado" \
+# MK5 - onda 5, D6/D7 (CRITICO/AVISO): a checagem de ID duplicado ENTRE ARQUIVOS desliga - a
+# mesma ambiguidade que L1..L18 tinham de fato entre claims.sh e literatura.sh (D7) antes de o
+# prefixo do segundo ser renomeado para 'LT'. A checagem e COMPARTILHADA entre os dois espacos
+# (regressao e mutante, ver MK6 abaixo) desde a onda 6/A1; o alvo aqui e o caso de REGRESSAO
+# porque foi o primeiro a existir, mas a mesma linha protege os dois.
+mutante MK5 "ID duplicado entre arquivos e detectado (linha compartilhada regressao/mutante)" \
   "regressao G1 declarada em DOIS arquivos -> NAO VERIFICADO (exit 2)" \
-  troca '        if len(arqs) > 1:' \
-        '        if False and len(arqs) > 1:'
+  troca '            if len(arqs) > 1:' \
+        '            if False and len(arqs) > 1:'
+
+# MK6 - onda 6, A1: a checagem de duplicidade ENTRE ARQUIVOS deixa de ser CHAMADA para o espaco
+# de MUTANTE. Sem esta invocacao, `tests/mutation/run.sh`/`.../schedule.sh` (M1..M10) ou
+# `capabilities.sh`/`conformidade.sh`/`contrato.sh` (MC1..MC7) poderiam voltar a reusar um ID
+# sem que o validador notasse - a mesma ambiguidade que produziu uma falha real de integracao
+# (Z3 vs ledger) antes desta correcao. MK5 mata a CONDICAO compartilhada; MK6 mata a CHAMADA
+# especifica do lado de mutante - as duas guardas sao independentes (MK5 sozinho nao prova que
+# o espaco de mutante esta de fato conectado a checagem).
+mutante MK6 "a checagem de duplicidade e chamada tambem para o espaco de MUTANTE" \
+  "mutante ZZD1 declarado em DOIS arquivos de tests/mutation/ -> NAO VERIFICADO (exit 2)" \
+  troca '    duplicados_entre_arquivos(por_arquivo_mutante, "mutante")' \
+        '    pass  # duplicados_entre_arquivos(por_arquivo_mutante, "mutante")'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

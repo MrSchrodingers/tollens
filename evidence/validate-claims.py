@@ -171,44 +171,58 @@ def _extrai(texto, regexes, strip):
 
 
 def _contrato_extracao_ok(por_arquivo_regressao, por_arquivo_mutante):
-    """As DUAS garantias estruturais de que a resolucao por ID nao e ambigua (onda 5, D6):
+    """As DUAS garantias estruturais de que a resolucao por ID nao e ambigua (onda 5, D6;
+    espaco de mutante fechado na onda 6, A1):
 
-    1. Nenhum ID de REGRESSAO aparece em mais de um arquivo de tests/unit/. `inventario()` funde
-       tudo num set plano por design (`Evidence = Claim.Evidence` nao precisa saber DE QUE
-       ARQUIVO veio um ID) - mas um set plano tambem APAGA a duplicidade em silencio: se dois
-       arquivos declaram o mesmo ID, o set resolve para "existe" sem dizer qual dos dois
-       documentos a claim realmente cita. Medido: `tests/unit/claims.sh` e
-       `tests/unit/literatura.sh` usavam o MESMO prefixo `L` (`L1`..`L18` vs `L1`..`L22`) ate
-       esta correcao renomear o segundo para `LT` - nenhuma claim citava um ID `L*`, entao a
-       ambiguidade nunca produziu um falso-verde real, mas a garantia estava falsa mesmo assim.
-       ESCOPO DELIBERADO: so o espaco de REGRESSAO e checado aqui. O espaco de MUTANTE tem a
-       MESMA classe de duplicidade, ja hoje, entre `tests/mutation/run.sh` e `.../schedule.sh`
-       (M1..M10) e entre `capabilities.sh`/`conformidade.sh`/`contrato.sh` (MC1..MC7) - e, ao
-       contrario do caso acima, esta duplicidade E CITADA por claims REAIS (C-001..C-010, C-017,
-       C-018). Bloquear nesta correcao quebraria o ledger inteiro por um achado que exige decidir,
-       claim a claim, qual arquivo cada citacao pretendia - fora do escopo desta entrega (D6/D7).
-       Registrado como risco separado; nao verificado por este validador ainda.
+    1. Nenhum ID aparece em mais de um arquivo do MESMO espaco (regressao em tests/unit/, mutante
+       em tests/mutation/). `inventario()` funde tudo num set plano por design (`Evidence =
+       Claim.Evidence` nao precisa saber DE QUE ARQUIVO veio um ID) - mas um set plano tambem
+       APAGA a duplicidade em silencio: se dois arquivos declaram o mesmo ID, o set resolve para
+       "existe" sem dizer qual dos dois documentos a claim realmente cita. Medido no espaco de
+       REGRESSAO: `tests/unit/claims.sh` e `tests/unit/literatura.sh` usavam o MESMO prefixo `L`
+       (`L1`..`L18` vs `L1`..`L22`) ate a onda 5 renomear o segundo para `LT` - nenhuma claim
+       citava um ID `L*`, entao a ambiguidade nunca produziu um falso-verde real, mas a garantia
+       estava falsa mesmo assim.
+       O espaco de MUTANTE tinha a MESMA classe de duplicidade e NAO era checado aqui ate esta
+       correcao (onda 6, A1): `tests/mutation/run.sh` e `.../schedule.sh` reusavam `M1`..`M10`, e
+       `capabilities.sh`/`conformidade.sh`/`contrato.sh` reusavam `MC1`..`MC7` - e, ao contrario
+       do caso de `L*`, esta duplicidade ERA citada por claims reais (C-001..C-010, resolvidas
+       contra `run.sh` e `contrato.sh` respectivamente - warrant e conteudo do mutante casam
+       palavra por palavra so com esses dois arquivos). Ficou registrado aqui como risco
+       separado, adiado por estar fora do escopo daquela entrega. `run.sh` e `contrato.sh` sao os
+       TITULARES (nenhuma claim resolvida contra eles precisou mudar); os recem-chegados foram
+       renomeados: `schedule.sh` para `MS1`..`MS10`, `capabilities.sh` para `MD1`..`MD7`,
+       `conformidade.sh` para `MN1`..`MN7` (`MG` colidia com o prefixo de REGRESSAO ja usado por
+       `tests/unit/managed.sh`, MG1..MG18 - achado desta propria correcao, pela checagem do item
+       2 abaixo). C-017 e C-018 apareciam numa varredura textual pelos prefixos `M`/`MC` antes
+       desta correcao, mas nao citavam nenhum ID do espaco ambiguo - seus `evidence.mutants` sao
+       `MF1`..`MF4` e `MV1`..`MV16`, de arquivos sem colisao; nenhuma claim precisou ser editada
+       por causa deles.
     2. Os dois espacos de nome (regressao, mutante) sao disjuntos - ver comentario de RE_EVID_ID.
        Uma intersecao nao-vazia e a MESMA classe de defeito do item 1 (resolucao ambigua), so que
        entre espacos em vez de dentro de um so; foi exatamente essa intersecao que os dois
        mutantes fantasmas (K10, L6) produziam antes da correcao de RE_MUT acima. Este lado E
-       checado incondicionalmente: independe da duplicidade interna do espaco de mutante (item 1),
+       checado incondicionalmente: independe da duplicidade interna de cada espaco (item 1),
        porque uniao de conjuntos nao amplifica colisao entre espacos DIFERENTES.
 
     Devolve a lista de problemas encontrados; vazia significa contrato integro.
     """
     problemas = []
 
-    dono_regressao = {}
-    for nome, ids in por_arquivo_regressao.items():
-        for i in ids:
-            dono_regressao.setdefault(i, set()).add(nome)
-    for i in sorted(dono_regressao):
-        arqs = dono_regressao[i]
-        if len(arqs) > 1:
-            problemas.append(
-                f"regressao '{i}' declarada em mais de um arquivo: {sorted(arqs)} - "
-                f"resolucao ambigua (o inventario funde tudo num set plano)")
+    def duplicados_entre_arquivos(por_arquivo, rotulo):
+        dono = {}
+        for nome, ids in por_arquivo.items():
+            for i in ids:
+                dono.setdefault(i, set()).add(nome)
+        for i in sorted(dono):
+            arqs = dono[i]
+            if len(arqs) > 1:
+                problemas.append(
+                    f"{rotulo} '{i}' declarada em mais de um arquivo: {sorted(arqs)} - "
+                    f"resolucao ambigua (o inventario funde tudo num set plano)")
+
+    duplicados_entre_arquivos(por_arquivo_regressao, "regressao")
+    duplicados_entre_arquivos(por_arquivo_mutante, "mutante")
 
     regressoes = set().union(*por_arquivo_regressao.values()) if por_arquivo_regressao else set()
     mutantes = set().union(*por_arquivo_mutante.values()) if por_arquivo_mutante else set()
