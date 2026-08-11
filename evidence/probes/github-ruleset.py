@@ -477,8 +477,50 @@ def probe(owner, repo, branch, context):
         # que ja nao era um defeito antes desta correcao. O CAMPO 'context' de cada item da lista
         # passa pela mesma validacao de schema que qualquer outro campo decisivo (ver acima).
 
+    # strict_required_status_checks_policy ja foi medido acima, no laco sobre `rsc` - nao depende
+    # de nenhum endpoint resolvido depois (nem da uniao `contextos`, nem do de ruleset individual).
+    # Entra em `problemas` AQUI, imediatamente apos o laco que o mede - ANTES de QUALQUER `return`
+    # desta funcao que ainda nao rodou. Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P):
+    # se `problemas` ja e nao-vazio neste ponto, not Bypass(a,P) ja e False, e entao Gate = False
+    # de qualquer forma - INDEPENDENTE do que Required(P) resolva a ser (o bloco `context not in
+    # contextos` abaixo) e independente de nenhuma regra aplicavel ter `ruleset_id` resolvivel (o
+    # bloco `not ruleset_ids` logo em seguida). Corrigido (wave6): ANTES desta correcao, os dois
+    # blocos abaixo tinham `return NOT_VERIFIED`/`FAIL` que rodavam ANTES desta agregacao - uma
+    # violacao de `strict` ja medida numa regra do laco acima era descartada sempre que Required(P)
+    # ficava indeterminado por outra regra ilegivel, ou sempre que nenhuma regra aplicavel
+    # declarava `ruleset_id` valido. `strict_required_status_checks_policy=false` era LIDO e
+    # MEDIDO, e depois jogado fora atras de "nao verificado" - reproduzido nesta sessao com um
+    # unico ruleset aplicavel: `strict:false` presente + `ruleset_id` ausente saia
+    # `estado: NOT_VERIFIED exit=2`, quando o proprio `strict` ja provava `estado: FAIL exit=1`.
+    # `strict_medidos` so contem valores GENUINAMENTE lidos (o `elif` acima ja filtrou ausencia/
+    # nulo/tipo errado para `nao_medidos`) - uma lista vazia aqui significa "nenhuma regra
+    # aplicavel tinha o campo legivel", nunca "todas desligadas", e por isso NAO produz uma
+    # entrada em `problemas` por si so.
+    if strict_medidos and not all(strict_medidos):
+        problemas.append(
+            f"strict_required_status_checks_policy nao esta ligado em toda regra aplicavel "
+            f"legivel ({strict_medidos})")
+
     if context not in contextos:
         if nao_medidos:
+            if problemas:
+                # Mesma precedencia do portao final (`if problemas` mais abaixo, apos o laco de
+                # rulesets): uma violacao ja PROVADA (aqui, so `strict_required_status_checks_policy`
+                # pode ter sido medida antes deste ponto - bypass/enforcement dependem do laco de
+                # rulesets, que ainda nao rodou) decide Gate(P,a,r) = False sem depender de
+                # Required(P) ficar determinado. As duas hipoteses para a regra ilegivel levam ao
+                # mesmo resultado: se ela NAO exigia `context`, Required(P) = False ja decide FAIL
+                # sozinho; se ela EXIGIA `context`, Required(P) = True e o strict ja violado decide
+                # not Bypass(a,P) = False, FAIL de novo. NOT_VERIFIED aqui descreveria uma incerteza
+                # que nao existe.
+                return Resultado(
+                    FAIL,
+                    f"Applies(P,r) vale e uma violacao ja medida decide Bypass(a,P) ou a politica "
+                    f"de atualizacao, independente de Required(P) para '{context}' ficar "
+                    f"indeterminado (regra required_status_checks aplicavel ilegivel: "
+                    + "; ".join(nao_medidos) + "): " + "; ".join(problemas),
+                    {"rules": rules},
+                )
             # Sem isto, uma regra aplicavel ILEGIVEL (C1/A1 acima) que PODERIA ter exigido
             # `context` faria este ramo declarar `Required(P) = False` por omissao - a mesma
             # coercao de ausencia em conclusao que A2 fecha para bypass/enforcement, agora para
@@ -500,6 +542,21 @@ def probe(owner, repo, branch, context):
         )
 
     if not ruleset_ids:
+        if problemas:
+            # Mesma precedencia: nenhuma regra aplicavel declarou 'ruleset_id' valido, logo
+            # bypass_actors/enforcement nunca poderiam ser resolvidos - mas isso e irrelevante
+            # quando `problemas` ja provou not Bypass(a,P) por outro caminho (aqui, strict). O
+            # DEFEITO desta rodada era exatamente este `return NOT_VERIFIED` rodando ANTES da
+            # agregacao de `strict_medidos` (ver comentario acima); com a agregacao movida para
+            # antes deste ponto, o `if problemas` decide primeiro, como em qualquer outro lugar
+            # deste arquivo em que FAIL vence NOT_VERIFIED.
+            return Resultado(
+                FAIL,
+                "Applies(P,r) e Required(P) valem, e uma violacao ja medida decide Bypass(a,P) ou "
+                "a politica de atualizacao, independente de nenhuma regra aplicavel ter declarado "
+                "'ruleset_id' valido para resolver bypass_actors/enforcement: " + "; ".join(problemas),
+                {"rules": rules},
+            )
         return Resultado(
             NOT_VERIFIED,
             "nenhuma regra required_status_checks aplicavel declarou 'ruleset_id' valido - "
@@ -507,20 +564,6 @@ def probe(owner, repo, branch, context):
             + ("; " + "; ".join(nao_medidos) if nao_medidos else ""),
             {"rules": rules},
         )
-
-    # strict_required_status_checks_policy ja foi medido acima, no laco sobre `rsc` - nao depende
-    # do endpoint de ruleset individual. Entra em `problemas` ANTES do laco seguinte: uma
-    # violacao ja provada aqui nao pode ser descartada so porque um ruleset aplicavel, resolvido
-    # depois, falha ou nao divulga um campo. A mesma precedencia que o portao final declara
-    # (FAIL vence NOT_VERIFIED) so vale se nada dentro do laco abaixo sair cedo demais para
-    # nunca alcancar esta linha - e ela ja rodou. `strict_medidos` so contem valores GENUINAMENTE
-    # lidos (o `elif` acima ja filtrou ausencia/nulo/tipo errado para `nao_medidos`) - uma lista
-    # vazia aqui significa "nenhuma regra aplicavel tinha o campo legivel", nunca "todas
-    # desligadas", e por isso NAO produz uma entrada em `problemas` por si so.
-    if strict_medidos and not all(strict_medidos):
-        problemas.append(
-            f"strict_required_status_checks_policy nao esta ligado em toda regra aplicavel "
-            f"legivel ({strict_medidos})")
 
     # --- ¬Bypass(a,P): so o endpoint de RULESET individual traz bypass_actors e
     # current_user_can_bypass. rules/branches/{branch} nao os inclui (medido: ver observacao).

@@ -43,6 +43,22 @@
 # silencio qualquer elemento com `type` ausente/nulo/tipo errado, e para a linha seguinte, que
 # crashava com `TypeError` quando `type` ausente coexistia com um `type` presente no mesmo laco.
 #
+# MV17-MV18 fecham a SEXTA onda (2026-08-11, defeito achado pelo portao final da onda 5): um
+# `return NOT_VERIFIED`/`FAIL` DENTRO da propria funcao `probe`, mas ANTES da agregacao de
+# `strict_medidos` em `problemas`, descartava uma violacao de `strict_required_status_checks_policy`
+# JA MEDIDA - a mesma classe de defeito que MV5/MV6 fecharam para o laco de rulesets, agora um
+# passo mais cedo. MV17 reverte o bloco `if not ruleset_ids:` para a forma sem o `if problemas`
+# (o `return NOT_VERIFIED` volta a rodar incondicionalmente). MV18 reverte o bloco `if context not
+# in contextos: if nao_medidos:` da mesma forma. Kill em V32/V33, respectivamente - pontos de
+# codigo DIFERENTES, exigem mutantes proprios pela mesma razao que MV5/MV6 exigiram.
+#
+# MV19 fecha o DEFEITO OPOSTO no mesmo bloco de MV17, achado ao validar por mutacao NESTA sessao:
+# o guard `if problemas` precisa GATEAR de fato no valor de `problemas`, nao so ter sido inserido
+# em algum lugar do bloco. Um mutante que forca `if not ruleset_ids:` a retornar FAIL
+# incondicionalmente (`if True:` no lugar de `if problemas:`) sobrevivia aos 127 casos V1-V33 -
+# nenhum deles alcanca este bloco com `ruleset_ids` vazio E `problemas` genuinamente vazio (sem
+# violacao medida). V34 fecha essa lacuna; kill designado aqui.
+#
 # TROCA POR ARQUIVO, NAO POR ARGUMENTO DE SHELL. Os trechos mutados tem aspas simples e duplas
 # aninhadas (`f"ruleset {rid}: '{cucb}'"`); escrever isso como argumento de shell (single ou
 # double-quoted) obrigaria a escapar aspas dentro de aspas - fragil e ilegivel, e exatamente a
@@ -59,7 +75,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=16
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=19
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -641,6 +657,92 @@ cat > "$TMP/mv16-para.txt" <<'EOF'
 EOF
 mutante MV16 "'type' ausente/nulo/nao-dict volta a ser descartado em silencio; type misto crasha" \
   "  nao ha traceback do Python em stderr (rsc-vazio-tipo-misto)" "$TMP/mv16-de.txt" "$TMP/mv16-para.txt"
+
+echo "== mutacao: a SEXTA onda (2026-08-11) - precedencia mascarada ANTES do laco de rulesets =="
+
+# MV17 - reverte o bloco `if not ruleset_ids:` para a forma SEM o `if problemas` que a onda 6
+# introduziu: o `return NOT_VERIFIED` volta a rodar incondicionalmente, descartando uma violacao
+# de `strict_required_status_checks_policy` ja medida no laco sobre `rsc`, ANTES deste ponto - o
+# DEFEITO VIVO exato que a onda 6 corrige. Kill em V32.
+cat > "$TMP/mv17-de.txt" <<'EOF'
+    if not ruleset_ids:
+        if problemas:
+            # Mesma precedencia: nenhuma regra aplicavel declarou 'ruleset_id' valido, logo
+            # bypass_actors/enforcement nunca poderiam ser resolvidos - mas isso e irrelevante
+            # quando `problemas` ja provou not Bypass(a,P) por outro caminho (aqui, strict). O
+            # DEFEITO desta rodada era exatamente este `return NOT_VERIFIED` rodando ANTES da
+            # agregacao de `strict_medidos` (ver comentario acima); com a agregacao movida para
+            # antes deste ponto, o `if problemas` decide primeiro, como em qualquer outro lugar
+            # deste arquivo em que FAIL vence NOT_VERIFIED.
+            return Resultado(
+                FAIL,
+                "Applies(P,r) e Required(P) valem, e uma violacao ja medida decide Bypass(a,P) ou "
+                "a politica de atualizacao, independente de nenhuma regra aplicavel ter declarado "
+                "'ruleset_id' valido para resolver bypass_actors/enforcement: " + "; ".join(problemas),
+                {"rules": rules},
+            )
+        return Resultado(
+EOF
+cat > "$TMP/mv17-para.txt" <<'EOF'
+    if not ruleset_ids:
+        return Resultado(
+EOF
+mutante MV17 "'ruleset_id' irresolvivel volta a mascarar strict ja medido - NOT_VERIFIED fabricado" \
+  "  NAO relata NOT_VERIFIED (ruleset_id ausente nao rebaixa violacao ja provada)" \
+  "$TMP/mv17-de.txt" "$TMP/mv17-para.txt"
+
+# MV18 - mesma forma, PONTO DE CODIGO DIFERENTE: reverte o bloco `if context not in contextos: if
+# nao_medidos:` para SEM o `if problemas`, descartando a mesma classe de violacao ja medida quando
+# Required(P) fica indeterminado por uma regra ilegivel, em vez de ruleset_id irresolvivel. Kill
+# em V33 - precisa de mutante proprio pela mesma razao que MV5/MV6 precisaram: um unico mutante em
+# um dos dois pontos nao prova que o OUTRO tambem foi corrigido.
+cat > "$TMP/mv18-de.txt" <<'EOF'
+    if context not in contextos:
+        if nao_medidos:
+            if problemas:
+                # Mesma precedencia do portao final (`if problemas` mais abaixo, apos o laco de
+                # rulesets): uma violacao ja PROVADA (aqui, so `strict_required_status_checks_policy`
+                # pode ter sido medida antes deste ponto - bypass/enforcement dependem do laco de
+                # rulesets, que ainda nao rodou) decide Gate(P,a,r) = False sem depender de
+                # Required(P) ficar determinado. As duas hipoteses para a regra ilegivel levam ao
+                # mesmo resultado: se ela NAO exigia `context`, Required(P) = False ja decide FAIL
+                # sozinho; se ela EXIGIA `context`, Required(P) = True e o strict ja violado decide
+                # not Bypass(a,P) = False, FAIL de novo. NOT_VERIFIED aqui descreveria uma incerteza
+                # que nao existe.
+                return Resultado(
+                    FAIL,
+                    f"Applies(P,r) vale e uma violacao ja medida decide Bypass(a,P) ou a politica "
+                    f"de atualizacao, independente de Required(P) para '{context}' ficar "
+                    f"indeterminado (regra required_status_checks aplicavel ilegivel: "
+                    + "; ".join(nao_medidos) + "): " + "; ".join(problemas),
+                    {"rules": rules},
+                )
+            # Sem isto, uma regra aplicavel ILEGIVEL (C1/A1 acima) que PODERIA ter exigido
+EOF
+cat > "$TMP/mv18-para.txt" <<'EOF'
+    if context not in contextos:
+        if nao_medidos:
+            # Sem isto, uma regra aplicavel ILEGIVEL (C1/A1 acima) que PODERIA ter exigido
+EOF
+mutante MV18 "Required(P) indeterminado volta a mascarar strict ja medido - NOT_VERIFIED fabricado" \
+  "  NAO relata NOT_VERIFIED (regra ilegivel nao rebaixa violacao ja provada)" \
+  "$TMP/mv18-de.txt" "$TMP/mv18-para.txt"
+
+# MV19 - o DEFEITO OPOSTO de MV17, no MESMO bloco: o guard `if problemas` vira `if True:` - o
+# bloco `if not ruleset_ids:` passa a retornar FAIL SEMPRE, mesmo sem nenhuma violacao medida.
+# Achado ao validar por mutacao NESTA sessao: sobrevivia aos 127 casos V1-V33 ate V34 ser
+# adicionado. Kill em V34.
+cat > "$TMP/mv19-de.txt" <<'EOF'
+    if not ruleset_ids:
+        if problemas:
+EOF
+cat > "$TMP/mv19-para.txt" <<'EOF'
+    if not ruleset_ids:
+        if True:  # MUTANTE: 'ruleset_id' irresolvivel vira FAIL fabricado mesmo sem violacao
+EOF
+mutante MV19 "'ruleset_id' irresolvivel vira FAIL fabricado mesmo SEM violacao medida" \
+  "  NAO relata estado FAIL (sem violacao medida, nao pode fabricar FAIL)" \
+  "$TMP/mv19-de.txt" "$TMP/mv19-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

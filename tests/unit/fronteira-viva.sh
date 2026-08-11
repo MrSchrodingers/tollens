@@ -86,6 +86,27 @@
 # linha seguinte desse filtro estourava; V31 prova que o caminho FAIL legitimo (sem ambiguidade)
 # sobrevive a refatoracao.
 #
+# V32-V33 fecham a SEXTA onda (2026-08-11): um `return` DENTRO da propria funcao `probe`, mas
+# ANTES da agregacao de `strict_medidos` em `problemas`, descartava uma violacao de
+# `strict_required_status_checks_policy` JA MEDIDA - a mesma classe de defeito que V12-V15
+# fecharam para o laco de rulesets, agora um passo mais cedo, ANTES desse laco sequer comecar.
+#   V32 - 'ruleset_id' AUSENTE da UNICA regra aplicavel + strict=false NA MESMA regra -> FAIL,
+#        exit 1. Reproduzido nesta sessao: `estado: NOT_VERIFIED exit=2` antes da correcao, com
+#        `strict_required_status_checks_policy` ja lido e medido como `false` na mesma regra cujo
+#        `ruleset_id` ausente disparava o `return NOT_VERIFIED` antigo.
+#   V33 - MESMA violacao de strict, mas descartada pelo OUTRO `return` precoce: Required(P) fica
+#        indeterminado porque uma SEGUNDA regra aplicavel e ilegivel (`parameters` malformado) e
+#        poderia ter exigido o contexto - antes da correcao isso saia NOT_VERIFIED mesmo com o
+#        strict da primeira regra ja provando a violacao. As duas hipoteses sobre a regra ilegivel
+#        (exigia o contexto ou nao) levam ao mesmo FAIL, entao NOT_VERIFIED descreveria uma
+#        incerteza que nao existe.
+#   V34 - NAO-REGRESSAO do fix de V32: MESMA forma ('ruleset_id' ausente da unica regra
+#        aplicavel), mas SEM violacao alguma medida (strict=true) -> continua NOT_VERIFIED. Prova
+#        que o novo guard `if problemas` do bloco `if not ruleset_ids:` gateia de fato no valor de
+#        `problemas`, em vez de inverter o defeito para o lado oposto (FAIL fabricado sem nenhuma
+#        violacao medida) - achado durante esta mesma sessao ao validar por mutacao: um mutante
+#        que forca esse bloco a retornar FAIL incondicionalmente sobrevivia aos 127 casos V1-V33.
+#
 # NAO VERIFICA o servidor real do GitHub a cada execucao (isso e o proprio probe, exercitado
 # manualmente contra o repositorio e registrado na evidencia da claim). Esta suite mede o
 # COMPORTAMENTO DE DECISAO do probe diante de cada forma de resposta - nao a configuracao atual
@@ -139,6 +160,55 @@ JSON
 [
   {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
    "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      strict-false-ruleset-id-ausente)
+        # (wave6, V32) o DEFEITO REPRODUZIDO: a UNICA regra aplicavel nao declara 'ruleset_id',
+        # mas 'strict_required_status_checks_policy' JA foi lido e medido como 'false' NA MESMA
+        # regra - o `ruleset_id` ausente e o `strict` medido convivem no MESMO objeto. Antes da
+        # correcao, `if not ruleset_ids: return NOT_VERIFIED` rodava ANTES da agregacao de
+        # `strict_medidos` em `problemas` e descartava a violacao ja provada.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      strict-false-required-indeterminado)
+        # (wave6, V33) MESMA violacao de strict, descartada pelo OUTRO `return` precoce: a
+        # primeira regra (ruleset 501) tem strict=false JA MEDIDO mas exige 'outro-check', nao o
+        # contexto pedido; a segunda regra (ruleset 502) e ILEGIVEL ('parameters' e uma string) e
+        # PODERIA ter exigido o contexto pedido - Required(P) fica indeterminado. Antes da
+        # correcao, `if context not in contextos: if nao_medidos: return NOT_VERIFIED` rodava
+        # ANTES da agregacao de `strict_medidos`, descartando a violacao da primeira regra.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":501,"parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"outro-check","integration_id":15368}]}},
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo2",
+   "ruleset_id":502,"parameters":"nao-e-um-objeto"}
+]
+JSON
+        ;;
+      ruleset-id-ausente-sem-violacao)
+        # (wave6, V34) NAO-REGRESSAO: mesma forma de strict-false-ruleset-id-ausente (V32), mas
+        # SEM nenhuma violacao medida (strict=true) - prova que o guard `if problemas` do bloco
+        # `if not ruleset_ids:` REALMENTE gateia no valor de `problemas`, e nao apenas inverteu o
+        # `return` antigo para sempre-FAIL. Sem este caso, um mutante que forca esse bloco a
+        # retornar FAIL incondicionalmente (ignorando `problemas` vazio) sobrevive: mudo aqui
+        # mesmo, a mensagem de saida seria APENAS a `motivo` mudando, sem NENHUM caso reprovar.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "parameters":{"strict_required_status_checks_policy":true,
    "do_not_enforce_on_create":false,
    "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
 ]
@@ -845,11 +915,56 @@ chk "  motivo e Required(P) = False (medido, nao suposto)" \
 chk "  NAO chama o endpoint de ruleset (rsc vazio, nada a resolver)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
 
+echo "== V32. (wave6) 'ruleset_id' AUSENTE + strict=false JA MEDIDO NA MESMA regra -> FAIL, nunca NOT_VERIFIED =="
+# DEFEITO VIVO reproduzido nesta sessao: 'if not ruleset_ids: return NOT_VERIFIED' rodava ANTES
+# da agregacao de 'strict_medidos' em 'problemas' - uma violacao JA MEDIDA (strict=false) era
+# descartada e rebaixada a NOT_VERIFIED so porque nenhuma regra aplicavel tinha 'ruleset_id'
+# resolvivel. `estado: NOT_VERIFIED exit=2` antes da correcao; `estado: FAIL exit=1` depois.
+MRK="$T/chamou-ruleset-v32"; rm -f "$MRK"
+RC="$(rodar strict-false-ruleset-id-ausente "$MRK")"
+chk "exit code 1 (nao 2 - violacao ja medida nao pode ser descartada por ruleset_id ausente)" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita strict_required_status_checks_policy (v32)" \
+    "$(grep -q 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata NOT_VERIFIED (ruleset_id ausente nao rebaixa violacao ja provada)" \
+    "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
+chk "  NAO chama o endpoint de ruleset (ruleset_id nunca foi resolvido)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V33. (wave6) Required(P) indeterminado (regra ilegivel) + strict=false JA MEDIDO -> FAIL =="
+# MESMA violacao de strict, descartada pelo OUTRO 'return' precoce: 'if context not in contextos:
+# if nao_medidos: return NOT_VERIFIED' tambem rodava ANTES da agregacao de 'strict_medidos'. As
+# duas hipoteses sobre a regra ilegivel (exigia o contexto pedido ou nao) levam ao mesmo FAIL.
+MRK="$T/chamou-ruleset-v33"; rm -f "$MRK"
+RC="$(rodar strict-false-required-indeterminado "$MRK")"
+chk "exit code 1 (nao 2 - violacao ja medida nao pode ser descartada por Required(P) indeterminado)" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita strict_required_status_checks_policy (v33)" \
+    "$(grep -q 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata NOT_VERIFIED (regra ilegivel nao rebaixa violacao ja provada)" \
+    "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
+chk "  NAO chama o endpoint de ruleset (retorno antes do laco que resolve bypass)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
+echo "== V34. (wave6, NAO-REGRESSAO) 'ruleset_id' AUSENTE, SEM violacao (strict=true) -> continua NOT_VERIFIED =="
+# Prova que o guard 'if problemas' introduzido por V32 REALMENTE gateia no valor de 'problemas' -
+# nao apenas inverteu o defeito antigo (NOT_VERIFIED fabricado) para o oposto (FAIL fabricado sem
+# nenhuma violacao medida). Achado ao validar por mutacao: um mutante que forca este bloco a
+# retornar FAIL incondicionalmente sobrevivia aos 127 casos V1-V33 ate este caso ser adicionado.
+MRK="$T/chamou-ruleset-v34"; rm -f "$MRK"
+RC="$(rodar ruleset-id-ausente-sem-violacao "$MRK")"
+chk "exit code 2 (sem violacao medida, ausencia de ruleset_id continua NOT_VERIFIED)" "$RC" 2
+chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado FAIL (sem violacao medida, nao pode fabricar FAIL)" \
+    "$(grep -q '^estado: FAIL$' "$T/out" && echo vazou || echo contido)" "contido"
+chk "  motivo cita 'ruleset_id' valido ausente" \
+    "$(grep -q "'ruleset_id' valido" "$T/out" && echo sim || echo nao)" "sim"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V31 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=117
+# V10-V34 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=131
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
