@@ -4,11 +4,11 @@
 # Regra de metodo 2 (ADR 0020): garantia de seguranca so vale se, ao remove-la, o teste
 # REPROVA. Os dois mutantes abaixo sao os dois modos OBVIOS de o mecanismo virar decoracao,
 # citados na propria delegacao desta mudanca:
-#   MC1 - o piso vai a ZERO (todo alvo passa, qualquer que seja a cobertura real).
-#   MC2 - `--check` DEIXA DE COMPARAR com o piso (a violacao e detectada e impressa, mas nunca
+#   MCB1 - o piso vai a ZERO (todo alvo passa, qualquer que seja a cobertura real).
+#   MCB2 - `--check` DEIXA DE COMPARAR com o piso (a violacao e detectada e impressa, mas nunca
 #         vira reprovacao - o passo de CI ficaria sempre verde).
 # tests/unit/cobertura.sh (REG) e quem precisa morder cada um: ele ja teve motivo pra existir
-# (a mesma suite discrimina o mutante de CONTEUDO em orchestration/schedule.py - ver C3/C4
+# (a mesma suite discrimina o mutante de CONTEUDO em orchestration/schedule.py - ver CB3/CB4
 # daquele arquivo); aqui o alvo sob mutacao e o MECANISMO, nao o conteudo medido por ele.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -63,18 +63,18 @@ mutante(){ # $1=nome $2=descricao $3=caso-alvo $4..=comando
 
 echo "== mutacao: cada garantia removida DEVE fazer tests/unit/cobertura.sh reprovar =="
 
-# MC1 - o piso vai a zero: todo `float(piso)` lido do arquivo de alvos e descartado em favor de
+# MCB1 - o piso vai a zero: todo `float(piso)` lido do arquivo de alvos e descartado em favor de
 # 0.0. Com piso=0.0, `medido >= piso` e sempre verdadeiro para qualquer percentual medido -
 # --check nunca mais reprova nada, qualquer que seja a regressao de cobertura.
-mutante MC1 "o piso e MEDIDO/comparado - nao pode ir a zero por baixo do CLI" \
+mutante MCB1 "o piso e MEDIDO/comparado - nao pode ir a zero por baixo do CLI" \
   "piso antigo agora reprova apos remover o caso que o sustentava" \
   troca 'alvos.append((caminho, float(piso)))' \
         'alvos.append((caminho, 0.0))'
 
-# MC2 - `--check` deixa de comparar com o piso: a violacao ainda e IMPRESSA (abaixo continua
+# MCB2 - `--check` deixa de comparar com o piso: a violacao ainda e IMPRESSA (abaixo continua
 # populado), mas o exit code nunca reflete isso - o passo de CI ficaria sempre verde, tornando
 # o piso decoracao (o mesmo defeito, na FERRAMENTA, que motivou esta ferramenta sobre o probe).
-mutante MC2 "'--check' reprova (exit 1) quando ha alvo abaixo do piso" \
+mutante MCB2 "'--check' reprova (exit 1) quando ha alvo abaixo do piso" \
   "piso acima do medido reprova mesmo sem mutacao" \
   troca '    if check:
         sys.exit(1)' \

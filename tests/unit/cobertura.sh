@@ -65,14 +65,14 @@ BASE="$(medido)"
 [ -n "$BASE" ]; chk "baseline produziu um numero" $? 0
 
 echo
-echo "== C1. piso == medido (limite inclusive): --check PASSA =="
+echo "== CB1. piso == medido (limite inclusive): --check PASSA =="
 COBERTURA_ALVOS="orchestration/schedule.py:$BASE" \
 COBERTURA_SUITES="tests/unit/schedule.sh" \
   bash "$SCRATCH/evidence/cobertura.sh" --check >/dev/null 2>&1
 chk "piso igual ao medido nao reprova" $? 0
 
 echo
-echo "== C2. piso 0.1 ACIMA do medido, sem tocar nada: --check REPROVA (sanity de direcao) =="
+echo "== CB2. piso 0.1 ACIMA do medido, sem tocar nada: --check REPROVA (sanity de direcao) =="
 ACIMA="$(python3 -c "print(round($BASE + 0.1, 1))")"
 COBERTURA_ALVOS="orchestration/schedule.py:$ACIMA" \
 COBERTURA_SUITES="tests/unit/schedule.sh" \
@@ -105,7 +105,7 @@ PY
 chk "bloco F12 removido da copia" $? 0
 
 echo
-echo "== C3. cobertura MEDIDA cai na copia mutada =="
+echo "== CB3. cobertura MEDIDA cai na copia mutada =="
 # controle: a copia mutada ainda precisa se autovalidar (PASS=27/27) - senao o proximo --check
 # reprovaria por SUITE QUEBRADA (NOT_VERIFIED, exit 2), nao pelo piso, e o caso deixaria de ser
 # atribuivel ao mecanismo de cobertura.
@@ -117,35 +117,35 @@ BASE2="$(medido)"
 chk "medido caiu apos remover F12 (antes=$BASE depois=$BASE2)" $? 0
 
 echo
-echo "== C4. MESMO piso que passava em C1 agora REPROVA (o discriminante) =="
+echo "== CB4. MESMO piso que passava em CB1 agora REPROVA (o discriminante) =="
 COBERTURA_ALVOS="orchestration/schedule.py:$BASE" \
 COBERTURA_SUITES="tests/unit/schedule.sh" \
   bash "$SCRATCH/evidence/cobertura.sh" --check >"$SCRATCH/check-c4.log" 2>&1
-RC_C4=$?
-[ "$RC_C4" -eq 1 ]; chk "piso antigo agora reprova apos remover o caso que o sustentava" $? 0
+RC_CB4=$?
+[ "$RC_CB4" -eq 1 ]; chk "piso antigo agora reprova apos remover o caso que o sustentava" $? 0
 
 echo
-echo "== C5. a reprovacao NOMEIA o arquivo abaixo do piso =="
+echo "== CB5. a reprovacao NOMEIA o arquivo abaixo do piso =="
 grep -qF "orchestration/schedule.py" "$SCRATCH/check-c4.log"
 chk "saida nomeia orchestration/schedule.py como abaixo do piso" $? 0
 
 echo
-echo "== C6. SEM --check (modo relatorio), a mesma copia mutada NAO reprova =="
+echo "== CB6. SEM --check (modo relatorio), a mesma copia mutada NAO reprova =="
 COBERTURA_ALVOS="orchestration/schedule.py:$BASE" \
 COBERTURA_SUITES="tests/unit/schedule.sh" \
   bash "$SCRATCH/evidence/cobertura.sh" >/dev/null 2>&1
 chk "modo relatorio (sem --check) nunca reprova, mesmo abaixo do piso" $? 0
 
 echo
-echo "== C7. 'coverage' ausente do PATH: NAO_VERIFICADO (exit 2), nunca PASS nem FAIL silencioso =="
+echo "== CB7. 'coverage' ausente do PATH: NAO_VERIFICADO (exit 2), nunca PASS nem FAIL silencioso =="
 COVDIR="$(dirname "$(command -v coverage)")"
 SEMCOV="$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -vF "$COVDIR" | paste -sd: -)"
 PATH="$SEMCOV" COBERTURA_SUITES="tests/unit/schedule.sh" \
   bash "$SCRATCH/evidence/cobertura.sh" >"$SCRATCH/c7.log" 2>&1
-RC_C7=$?
-[ "$RC_C7" -eq 2 ]; chk "coverage ausente produz exit 2 (got=$RC_C7)" $? 0
+RC_CB7=$?
+[ "$RC_CB7" -eq 2 ]; chk "coverage ausente produz exit 2 (got=$RC_CB7)" $? 0
 grep -qF "NAO VERIFICADO" "$SCRATCH/c7.log"
-chk "  C7 rotula a lacuna como NAO VERIFICADO, nao como reprovacao" $? 0
+chk "  CB7 rotula a lacuna como NAO VERIFICADO, nao como reprovacao" $? 0
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
