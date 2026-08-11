@@ -16,10 +16,15 @@ provenance: preprint
 study_quality:
   benchmark: "tau2-bench e AppWorld (fonte: texto completo)."
   n: >-
-    tau2-bench: 5 juizes LLM combinados com 5 estrategias de deteccao (fonte: texto completo).
-    AppWorld avaliado separadamente, contagem de instancias nao verificada nesta camada.
+    9.876 trajetorias de tau2-bench, de 8 familias de modelo; 1.879 trajetorias de AppWorld,
+    de 4 familias de modelo, com ground truth independente de texto (fonte: abstract,
+    https://arxiv.org/abs/2606.09863, conferido nesta sessao).
   models: >-
-    [nao verificado] - identidade especifica dos 5 juizes LLM nao confirmada nesta leitura.
+    O abstract identifica a origem das trajetorias avaliadas como 8 familias de modelo
+    (tau2-bench) e 4 familias de modelo (AppWorld), sem nomear as familias (fonte: abstract).
+    A avaliacao de falso sucesso usa 5 juizes LLM com 5 estrategias de prompt (fonte:
+    abstract); a identidade especifica desses 5 juizes nao esta no abstract - [nao verificado]
+    nesta camada.
   scaffold: >-
     Os dois benchmarks (fonte - study_quality.benchmark acima) sao de agente
     conversacional/single-dual-control e de execucao de tarefas em app; nenhum dos dois e
@@ -52,7 +57,7 @@ inference_strength: SUPPORTED
 inference_rationale: >-
   O estudo mede diretamente o fenomeno que motiva a regra dura deste repositorio (nao declarar
   "pronto" sem execucao) em populacao de agente LLM real, com desenho de multiplos juizes e
-  multiplas estrategias (fonte - study_quality.n acima). A discrepancia de scaffold (nenhum
+  multiplas estrategias (fonte - study_quality.models acima). A discrepancia de scaffold (nenhum
   dos benchmarks do estudo e Claude Code/Codex) impede DIRECT, mas a proximidade de mecanismo -
   autoavaliacao de sucesso por um agente LLM sem sinal externo - e alta o bastante para
   SUPPORTED: o estudo sustenta a decisao de desenho (usar exit code como sinal externo em vez

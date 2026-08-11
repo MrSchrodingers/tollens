@@ -347,9 +347,51 @@ D="$T/l20"; mkdir -p "$D"
 printf 'literature_id: [nao fecha\n' > "$D/arxiv-0000.00000.yaml"
 chk "YAML quebrado -> reprova (nao exit 0, nao crash)" "$(val "$D")" 1
 
+echo "== L21. CONTRADICAO INTERNA: citacao retratada numa secao reaparece verbatim noutra =="
+# ESCOPO DECLARADO (ver evidence/validate-literature.py, docstring, secao de LIMITES): este
+# caso cobre so reaparicao LITERAL da string retratada. Nao existe, neste validador, deteccao
+# de PARAFRASE (a mesma alegacao reescrita com outras palavras) - isso exigiria compreensao de
+# linguagem que uma varredura de string nao tem como fazer honestamente. O mutante abaixo e
+# construido para o que o mecanismo REALMENTE cobre: a mesma citacao entre aspas, retratada num
+# campo ("... NAO existe no texto ...") e repetida verbatim, sem retratacao, noutro campo.
+D="$T/l21"; mkdir -p "$D"
+python3 - "$D/arxiv-0000.00000.yaml" <<PY
+import sys, yaml
+sys.path.insert(0, "$T")
+from base import doc
+d = doc()
+d["study_quality"]["scaffold"] = (
+    'A frase "does not evaluate alternative agent frameworks" NAO existe no texto completo - '
+    'era citacao inventada (fonte: verificado nesta sessao).'
+)
+d["limitations"] = [
+    'O artigo declara "does not evaluate alternative agent frameworks" como limite central.'
+]
+yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
+PY
+OUT21="$(python3 "$V" "$REPO" "$D" 2>&1)"; RC21=$?
+chk "citacao retratada reaparece verbatim em limitations -> reprova" "$RC21" 1
+printf '%s' "$OUT21" | grep -qF "contradicao interna"
+chk "  a violacao e NOMEADA como contradicao interna (nao generica)" $? 0
+
+echo "== L22. controle de L21: a MESMA retratacao, SEM a citacao reaparecer alhures, passa =="
+D="$T/l22"; mkdir -p "$D"
+python3 - "$D/arxiv-0000.00000.yaml" <<PY
+import sys, yaml
+sys.path.insert(0, "$T")
+from base import doc
+d = doc()
+d["study_quality"]["scaffold"] = (
+    'A frase "does not evaluate alternative agent frameworks" NAO existe no texto completo - '
+    'era citacao inventada (fonte: verificado nesta sessao).'
+)
+yaml.safe_dump(d, open(sys.argv[1], "w"), allow_unicode=True, sort_keys=False)
+PY
+chk "  retratacao isolada, sem reaparicao verbatim, passa (controle de L21)" "$(val "$D")" 0
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=28
+EXPECTED=31
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

@@ -4,8 +4,12 @@
 # primaria - o validador nao le o artigo. Ver docstring de validate-literature.py.
 literature_id: arxiv-2601.10338
 citation: >-
-  Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.
-  arXiv:2601.10338, pre-print de 2026.
+  Liu, Y.; Wang, W.; Feng, R.; Zhang, Y.; Xu, G.; Deng, G.; Li, Y.; Zhang, L. Agent Skills in
+  the Wild: An Empirical Study of Security Vulnerabilities at Scale. arXiv:2601.10338,
+  pre-print de 2026. Lista de autores conferida em https://arxiv.org/abs/2601.10338 nesta
+  sessao (8 autores, ordem real: Yi Liu, Weizhe Wang, Ruitao Feng, Yao Zhang, Guangquan Xu,
+  Gelei Deng, Yuekang Li, Leo Zhang) - a versao anterior desta entrada omitia autoria por
+  completo, assimetria com arxiv-2602.06547 nesta mesma camada.
 identifier: arXiv:2601.10338
 url: https://arxiv.org/abs/2601.10338
 cited_in:
@@ -23,8 +27,15 @@ study_quality:
     entrada ("31132 skills coletadas") trocava coleta por analise - sao duas contagens distintas
     do proprio artigo.
   models: >-
-    [nao verificado] - SkillScan e um detector estatico/comportamental, nao um LLM avaliado
-    como sujeito do estudo; a arquitetura interna do detector nao foi reconferida.
+    SkillScan e "a multi-stage detection framework integrating static analysis with
+    LLM-based semantic classification" (citacao verbatim, fonte: abstract,
+    https://arxiv.org/abs/2601.10338, conferido nesta sessao) - analise estatica combinada
+    com classificacao semantica via LLM, NAO verificacao comportamental dinamica. A
+    verificacao comportamental (execucao em sandbox) pertence ao estudo irmao desta camada,
+    arxiv-2602.06547, cujo abstract descreve "a combination of static pattern matching and
+    dynamic behavioral verification" (fonte: abstract de 2602.06547) - os dois estudos usam
+    metodos distintos e nao devem ser descritos com o mesmo vocabulario. Identidade do LLM
+    usado na classificacao semantica: [nao verificado] nesta camada.
   scaffold: nao aplicavel - o objeto medido e a skill em si, nao um agente executando-a em um scaffold.
   oracle: "deteccao automatica via SkillScan, com precisao e recall reportados (ver findings)."
   baseline: >-
@@ -44,7 +55,8 @@ applicability:
     (orchestration/skill-policy.json, estados quarantine/candidate/promoted/deprecated/rejected).
   scaffold_similarity: >-
     Nao aplicavel - o estudo nao avalia um agente executando as skills em um scaffold
-    especifico; mede a skill como artefato estatico/comportamental.
+    especifico; mede a skill como artefato estatico, com classificacao semantica via LLM
+    (fonte - study_quality.models acima), nao verificacao comportamental.
   oracle_similarity: >-
     Baixa - o oraculo do estudo (deteccao de padrao de vulnerabilidade) nao e verificacao
     executavel de requisito, que e o oraculo que este repositorio usa para eficacia de skill.
@@ -104,5 +116,7 @@ limitations:
   skills - ressalva que o proprio estudo declara e que esta camada preserva.
 - Nao mede skills deste repositorio (execution/skills/) nem o mecanismo especifico de
   quarentena/promocao aqui adotado; mede a classe geral de artefato.
-- Detector estatico/comportamental pode nao capturar vulnerabilidade que depende de contexto de
-  execucao nao reproduzido pelo SkillScan.
+- SkillScan combina analise estatica com classificacao semantica via LLM (fonte -
+  study_quality.models acima), sem verificacao comportamental dinamica; pode nao capturar
+  vulnerabilidade que so se manifesta em tempo de execucao - o estudo irmao arxiv-2602.06547
+  cobre esse tipo de deteccao para o subconjunto de candidatos que sinaliza.

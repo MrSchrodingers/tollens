@@ -75,9 +75,33 @@ O QUE O VALIDADOR IMPOE
      de fora da varredura (b): sao METADADOS de endereco (onde o paper esta, onde ele e citado
      no repositorio), nao afirmacoes empiricas sobre o que o paper mediu.
   4. Nome do arquivo == `literature_id` + `.yaml`, mesma disciplina de `evidence/claims`.
+  5. Contradicao interna ESTRITA: se uma string do documento contem um marcador de retratacao
+     (`nao existe no`/`nao existe na`, `citacao ... inventada`, `invent*`, `fabricad*`) junto de
+     um trecho entre aspas retas (`"..."`, 8+ caracteres), esse MESMO trecho, palavra por
+     palavra, nao pode reaparecer em NENHUM outro campo do documento sem o mesmo tipo de
+     marcador por perto. Ver a secao de LIMITES abaixo: isto so cobre reaparicao VERBATIM, nao
+     paráfrase - a distincao importa e esta documentada, nao e um detalhe de implementacao.
 
 O QUE ESTE VALIDADOR NAO FAZ - limites declarados
 ---------------------------------------------------
+  - REGRA 5 (contradicao interna) SO detecta reaparicao VERBATIM da citacao retratada. NAO
+    detecta uma afirmacao retratada que reaparece como PARAFRASE em outro campo - que foi o
+    defeito real corrigido em arxiv-2603.15401.yaml nesta mesma onda: a citacao inventada em
+    ingles ("does not evaluate alternative agent frameworks") foi retratada em `scaffold`, mas
+    a MESMA alegacao, reescrita em portugues ("declara explicitamente nao avaliar outros
+    frameworks"), sobreviveu como fato em `applicability.scaffold_similarity` e em
+    `limitations` - sem repetir a string retratada, portanto invisivel a um comparador de
+    substring. Detectar isso exigiria reconhecer que duas sentencas com palavras DIFERENTES
+    afirmam a MESMA proposicao (entailment/parafrase), o que este programa - varredura de
+    string e vocabulario fechado, sem compreensao de linguagem - nao pode fazer honestamente.
+    Uma aproximacao por sobreposicao de palavras-chave foi avaliada e descartada: o termo
+    partilhado entre a citacao retratada e a parafrase e "frameworks", que tambem aparece em
+    diversas outras frases legitimas e nao-contraditorias deste mesmo documento (ex.:
+    `study_quality.scaffold`, corretamente reescrita apos a correcao) - qualquer regra ligada a
+    esse termo teria ALTO falso-positivo, calibrado a um unico caso passado, nao um detector
+    geral. Regra 5 fica, deliberadamente, restrita ao subconjunto que PODE ser verificado sem
+    ambiguidade: string identica reaparecendo sem a marca de retratacao. A defesa real contra o
+    caso de parafrase continua sendo leitura humana da fonte primaria, nao este validador.
   - Nao contata a rede, nao baixa o PDF, nao confere se o numero, o titulo, os autores ou uma
     citacao verbatim batem com o artigo. VERDE AQUI E CONFORMIDADE DE FORMA (campos presentes,
     vocabulario fechado, todo numero com um marcador de fonte declarado), NUNCA FIDELIDADE DE
@@ -154,6 +178,16 @@ RE_DIGIT = re.compile(r"\d")
 # conferido. Case-insensitive: nao ha ganho em discriminar maiusculas aqui.
 RE_MARCADOR_FONTE = re.compile(r"fonte|verificad", re.IGNORECASE)
 
+# REGRA 5 (contradicao interna, verbatim apenas - ver docstring, secao de LIMITES, para o que
+# isto NAO cobre). RE_RETRATACAO reconhece o vocabulario ja usado neste repositorio para marcar
+# uma afirmacao retratada (ver arxiv-2602.06547.yaml e arxiv-2603.15401.yaml apos a correcao
+# desta onda). RE_ASPAS extrai trechos entre aspas retas de 8+ caracteres - abaixo disso o risco
+# de casar um fragmento generico (nome de metrica, sigla) sobe sem ganho de deteccao real.
+RE_RETRATACAO = re.compile(
+    r"nao existe (no|na)|citac(a|ã)o.{0,40}inventada|era citac(a|ã)o inventada|"
+    r"\binvent\w*|\bfabricad\w*", re.IGNORECASE)
+RE_ASPAS = re.compile(r'"([^"]{8,300})"')
+
 
 def _varre_fonte(valor, caminho, violacoes):
     """Percorre recursivamente o documento (exceto o que o chamador ja excluiu) e reprova toda
@@ -169,6 +203,50 @@ def _varre_fonte(valor, caminho, violacoes):
             violacoes.append(
                 f"{caminho}: contem numero sem marcador de fonte declarada "
                 f"('fonte'/'verificad' ausente do proprio texto): {valor!r}")
+
+
+def _coleta_folhas(valor, caminho, folhas):
+    """Coleta todo par (caminho, texto) de string do documento, achatando dict/list. Usado pela
+    REGRA 5 (contradicao interna) - diferente de _varre_fonte, aqui NAO ha exclusao de campo
+    bibliografico: uma citacao ou titulo fabricado (campo `citation`) e exatamente o tipo de
+    string que pode reaparecer, verbatim, em outro campo como se fosse fato nao-retratado."""
+    if isinstance(valor, dict):
+        for k, v in valor.items():
+            _coleta_folhas(v, f"{caminho}.{k}" if caminho else str(k), folhas)
+    elif isinstance(valor, list):
+        for i, v in enumerate(valor):
+            _coleta_folhas(v, f"{caminho}[{i}]", folhas)
+    elif isinstance(valor, str):
+        folhas.append((caminho, valor))
+
+
+def _varre_contradicao(doc):
+    """REGRA 5: uma citacao entre aspas marcada como RETRATADA (fonte - RE_RETRATACAO) nao pode
+    reaparecer, palavra por palavra, em outro campo do documento sem a mesma marca por perto.
+    Escopo estrito e documentado: cobre so reaparicao VERBATIM, nao parafrase - ver docstring do
+    modulo, secao 'O QUE ESTE VALIDADOR NAO FAZ', para o porque um comparador de parafrase nao
+    seria honesto aqui."""
+    violacoes = []
+    folhas = []
+    _coleta_folhas(doc, "", folhas)
+    for caminho, texto in folhas:
+        if not RE_RETRATACAO.search(texto):
+            continue
+        for m in RE_ASPAS.finditer(texto):
+            citacao = re.sub(r"\s+", " ", m.group(1).strip()).lower()
+            if len(citacao) < 8:
+                continue
+            for outro_caminho, outro_texto in folhas:
+                if outro_caminho == caminho:
+                    continue
+                outro_norm = re.sub(r"\s+", " ", outro_texto).lower()
+                if citacao in outro_norm and not RE_RETRATACAO.search(outro_texto):
+                    violacoes.append(
+                        f"{caminho} retrata a citacao {m.group(1).strip()!r}, mas ela reaparece "
+                        f"verbatim em {outro_caminho} sem marca de retratacao por perto - "
+                        f"contradicao interna: afirmacao retratada numa secao, repetida como "
+                        f"fato noutra")
+    return violacoes
 
 
 def _valida_findings(findings, arquivo):
@@ -259,6 +337,13 @@ def valida(doc, arquivo, vistos):
     violacoes_fonte = []
     _varre_fonte(resto, "", violacoes_fonte)
     for v in violacoes_fonte:
+        erro(v)
+
+    # REGRA 5: contradicao interna verbatim (ver docstring do modulo e _varre_contradicao para
+    # o escopo exato - so cobre reaparicao literal, nao parafrase). Roda sobre o DOCUMENTO
+    # inteiro, incluindo campos bibliograficos: uma citacao ou titulo fabricado em `citation` e
+    # exatamente o tipo de string que pode reaparecer, sem retratacao, em outro campo.
+    for v in _varre_contradicao(doc):
         erro(v)
 
     return e

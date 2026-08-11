@@ -25,7 +25,7 @@ ORIG="evidence/validate-literature.py"
 REG="tests/unit/literatura.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=9
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=10
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -154,6 +154,18 @@ mutante ML9 "numero solto fora de findings exige marcador 'fonte'/'verificad'" \
   "'47 por cento' solto, sem marcador -> reprova" \
   troca 'RE_MARCADOR_FONTE = re.compile(r"fonte|verificad", re.IGNORECASE)' \
         'RE_MARCADOR_FONTE = re.compile(r".*")'
+
+# ML10 - REGRA 5 (contradicao interna verbatim, adicionada nesta onda) desliga - uma citacao
+# retratada num campo poderia reaparecer verbatim, sem retratacao, noutro campo do MESMO
+# documento sem que a camada de literatura reprovasse. Escopo do que este mutante prova: so a
+# reaparicao LITERAL (ver limites declarados na docstring de validate-literature.py) - a
+# variante de parafrase nao tem guarda mecanica, por design, e por isso nao tem mutante aqui.
+mutante ML10 "citacao retratada nao pode reaparecer verbatim sem marca (contradicao interna)" \
+  "citacao retratada reaparece verbatim em limitations -> reprova" \
+  troca 'for v in _varre_contradicao(doc):
+        erro(v)' \
+        'for v in []:
+        erro(v)'
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

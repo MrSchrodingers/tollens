@@ -974,7 +974,7 @@ Mutation testing provides a disciplined way to test whether a suite distinguishe
 16. Jia, Y.; Harman, M. **An Analysis and Survey of the Development of Mutation Testing.** IEEE Transactions on Software Engineering 37(5), 2011.  
     https://doi.org/10.1109/TSE.2010.62
 
-17. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338, 2026 preprint.  
+17. Liu, Y. et al. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338, 2026 preprint.  
     https://arxiv.org/abs/2601.10338
 
 18. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547, 2026 preprint.  
