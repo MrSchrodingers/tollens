@@ -41,11 +41,12 @@ Para cada `execution/agents/<nome>.md` (a fonte canonica):
      de fontes efetivamente comparadas (2, nao 3) e diz explicitamente que a perna instalada
      ficou de fora; nunca reporta "identico nas 3 fontes" tendo comparado so 2.
   4. Os conjuntos comparados nesta execucao precisam ser IDENTICOS. Arquivo ausente numa das
-     dependencias, ou frontmatter que nao fecha, e NAO_VERIFICADO (nao se pode concluir
-     conformidade nem divergencia). Conjunto diferente e VIOLACAO - inclusive quando a diferenca
-     e uma chave `tools:` OMITIDA numa projecao: pela doc primaria do Claude Code, omitir
-     `tools:` faz o subagente herdar TODAS as ferramentas disponiveis (a concessao MAXIMA), o que
-     e decidivel e diverge de qualquer lista finita do canonico - nao e lacuna, e VIOLACAO.
+     dependencias, frontmatter que nao fecha, YAML invalido dentro dele, ou falha ambiental de
+     leitura (permissao, E/S), e NAO_VERIFICADO (nao se pode concluir conformidade nem
+     divergencia). Conjunto diferente e VIOLACAO - inclusive quando a diferenca e uma chave
+     `tools:` OMITIDA numa projecao: pela doc primaria do Claude Code, omitir `tools:` faz o
+     subagente herdar TODAS as ferramentas disponiveis (a concessao MAXIMA), o que e decidivel e
+     diverge de qualquer lista finita do canonico - nao e lacuna, e VIOLACAO.
 
 `orchestration/render.py --check` ja confere que as tres arvores existem e que os workflows sao
 validos; ele NAO confere que `tools:` case entre elas (registry.json nem armazena a lista de
@@ -64,11 +65,21 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import sys
 from pathlib import Path
 
 EXIT_OK, EXIT_VIOLACAO, EXIT_NAO_VERIFICADO = 0, 1, 2
+
+try:
+    import yaml
+except ImportError:
+    # Sem parser YAML de referencia nao ha como decidir `tools:` - "nao reprovou" seria
+    # indistinguivel de "nao foi verificado". Mesma convencao de evidence/validate-claims.py e
+    # evidence/validate-literature.py, que ja dependem de pyyaml.
+    sys.stderr.write(
+        "NAO VERIFICADO: pyyaml ausente. `tools:` do frontmatter nao pode ser comparado "
+        "neste ambiente. Instale a versao pinada (ver .github/workflows/verify-pr.yml).\n")
+    sys.exit(EXIT_NAO_VERIFICADO)
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 ROOT = Path(os.environ.get("EVIDENCE_GATE_ROOT", DEFAULT_ROOT)).resolve()
@@ -78,18 +89,14 @@ ROTULO_PROJECAO = "projecao do repo (.claude/agents)"
 ROTULO_INSTALADA = "instalada (CLAUDE_HOME/agents)"
 ROTULO_CANONICA = "canonica (execution/agents)"
 
-RE_TOOLS = re.compile(r"^tools:\s*(.+)$")  # forma INLINE: `tools: A, B, C` numa unica linha.
-RE_TOOLS_CHAVE_BLOCO = re.compile(r"^tools:\s*$")  # a mesma chave sem valor na linha - abre,
-                                                     # potencialmente, uma lista YAML de BLOCO.
-RE_ITEM_BLOCO = re.compile(r"^\s*-\s*(.+?)\s*$")  # item `  - Nome` de uma lista de bloco.
-
 
 class _ChaveToolsAusente:
-    """Sentinela devolvida por `tools_declarados`: o frontmatter FECHOU e foi lido por inteiro,
-    e mesmo assim nenhuma lista `tools:` foi encontrada (nem inline, nem em bloco) - chave
-    omitida, ou presente e vazia. Isto e DIFERENTE de `None` (arquivo ausente ou frontmatter que
-    nao fecha, onde nada pode ser concluido): aqui o documento foi lido ate o fim e a ausencia da
-    chave e ela mesma o dado. Pela tabela de frontmatter da doc primaria do Claude Code
+    """Sentinela devolvida por `tools_declarados`: o frontmatter FECHOU, foi lido por inteiro e
+    reconhecido como YAML valido, e mesmo assim nenhuma lista `tools:` foi encontrada - chave
+    omitida, ou presente e vazia (`tools:` sem valor, `tools: ""`, `tools: []`). Isto e DIFERENTE
+    de `None`/`ERRO_AMBIENTAL`/`YAML_INVALIDO` (onde nada pode ser concluido sobre o conteudo):
+    aqui o documento foi lido e entendido ate o fim, e a ausencia da chave e ela mesma o dado.
+    Pela tabela de frontmatter da doc primaria do Claude Code
     (https://code.claude.com/docs/en/sub-agents, campo `tools`: "Inherits every tool available to
     subagents if omitted"), omitir `tools:` faz o subagente HERDAR TODAS as ferramentas - a
     concessao MAXIMA, o oposto de uma lacuna indecidivel."""
@@ -98,13 +105,41 @@ class _ChaveToolsAusente:
 TOOLS_AUSENTE = _ChaveToolsAusente()
 
 
-def frontmatter_lines(caminho: Path) -> list[str] | None:
-    """Linhas ENTRE os dois `---` do frontmatter YAML. None = arquivo ausente ou sem
-    frontmatter fechado (indecidivel, nao ausencia de divergencia)."""
+class _ErroAmbiental:
+    """Sentinela: a LEITURA do arquivo falhou por causa ALHEIA ao conteudo do frontmatter -
+    permissao negada, erro de E/S, ou a fonte sumiu entre o `glob` e a leitura (corrida rara).
+    Distinto de frontmatter malformado (`None`) e de YAML invalido (`YAML_INVALIDO`): nos dois
+    outros casos o documento FOI lido; aqui ele nao pode nem ser aberto. Classificar uma falha de
+    ambiente como defeito estrutural do agente e o falso positivo que ensina o operador a
+    desligar o mecanismo - por isso este caso sempre resulta em NAO_VERIFICADO, nunca VIOLACAO,
+    inclusive quando a fonte afetada e a canonica."""
+
+
+ERRO_AMBIENTAL = _ErroAmbiental()
+
+
+class _YamlInvalido:
+    """Sentinela: o bloco entre os dois `---` foi lido por inteiro, mas `yaml.safe_load` recusa
+    o conteudo (`yaml.YAMLError`) ou o produz num formato que nao e um mapeamento (frontmatter
+    nao e uma lista solta nem um escalar). Indecidivel pela mesma razao que frontmatter que nao
+    fecha: nao se pode concluir conformidade nem divergencia de um documento que o parser de
+    referencia recusa. Por decisao explicita desta correcao, NAO e VIOLACAO - e um defeito de
+    SINTAXE do documento, nao de capability (o que este probe existe para medir)."""
+
+
+YAML_INVALIDO = _YamlInvalido()
+
+
+def frontmatter_lines(caminho: Path) -> list[str] | _ErroAmbiental | None:
+    """Linhas ENTRE os dois `---` do frontmatter YAML.
+    ERRO_AMBIENTAL = a leitura do arquivo falhou (permissao, E/S, arquivo sumiu) - a causa e do
+                     ambiente, nao do conteudo do agente.
+    None           = arquivo lido, mas sem frontmatter fechado (nao abre com `---`, ou abre e
+                     nunca fecha) - indecidivel, nao ausencia de divergencia."""
     try:
         linhas = caminho.read_text(encoding="utf-8").splitlines()
     except OSError:
-        return None
+        return ERRO_AMBIENTAL
     if not linhas or linhas[0].strip() != "---":
         return None
     for i, linha in enumerate(linhas[1:], start=1):
@@ -113,39 +148,53 @@ def frontmatter_lines(caminho: Path) -> list[str] | None:
     return None
 
 
-def tools_declarados(caminho: Path) -> frozenset[str] | _ChaveToolsAusente | None:
-    """Conjunto de ferramentas em `tools:`, em qualquer uma das DUAS formas que o frontmatter
-    YAML aceita para uma chave de lista: inline (`tools: A, B`) ou bloco (`tools:` seguido de
-    `  - A` / `  - B` nas linhas seguintes). Um parser que so reconhecesse a forma inline
-    tornaria uma lista de bloco indistinguivel de uma chave omitida - o MESMO erro de
-    classificacao que `TOOLS_AUSENTE` existe para corrigir, so que reintroduzido pela LEITURA em
-    vez da decisao.
+def tools_declarados(
+    caminho: Path,
+) -> frozenset[str] | _ChaveToolsAusente | _ErroAmbiental | _YamlInvalido | None:
+    """Conjunto de ferramentas em `tools:`, lido via `yaml.safe_load` sobre o bloco de
+    frontmatter - nao um parser artesanal. YAML define DUAS formas de SEQUENCIA (nao "duas
+    formas de chave de lista"): bloco (`tools:` seguido de `  - A` / `  - B` nas linhas
+    seguintes, com linha em branco e comentario ignorados como em qualquer YAML) e fluxo
+    (`tools: [A, B]`). A forma usada pelos 10 agentes reais deste repositorio - `tools: A, B` -
+    e um ESCALAR separado por virgula, nao uma sequencia YAML; e aceita explicitamente aqui.
 
     Retorno:
-      None            = indecidivel: arquivo ausente ou frontmatter que nao fecha.
-      TOOLS_AUSENTE   = frontmatter fechado e lido por inteiro, mas nenhuma lista `tools:` foi
-                        encontrada - ver a doutrina no docstring de `_ChaveToolsAusente`.
+      None            = indecidivel: frontmatter que nao abre ou nao fecha.
+      ERRO_AMBIENTAL  = indecidivel: a leitura do arquivo falhou (causa alheia ao conteudo).
+      YAML_INVALIDO   = indecidivel: frontmatter fechado, mas o YAML dentro dele nao parseia ou
+                        nao e um mapeamento.
+      TOOLS_AUSENTE   = decidivel: frontmatter valido, mas nenhuma `tools:` foi encontrada - ver
+                        a doutrina no docstring de `_ChaveToolsAusente`.
       frozenset[str]  = a lista declarada, com pelo menos um nome de ferramenta.
     """
     fm = frontmatter_lines(caminho)
+    if fm is ERRO_AMBIENTAL:
+        return ERRO_AMBIENTAL
     if fm is None:
         return None
-    for i, linha in enumerate(fm):
-        m = RE_TOOLS.match(linha)
-        if m:
-            valores = frozenset(t.strip() for t in m.group(1).split(",") if t.strip())
-            return valores if valores else TOOLS_AUSENTE
-        if RE_TOOLS_CHAVE_BLOCO.match(linha):
-            itens = []
-            for seguinte in fm[i + 1:]:
-                m_item = RE_ITEM_BLOCO.match(seguinte)
-                if not m_item:
-                    break
-                item = m_item.group(1).strip()
-                if item:
-                    itens.append(item)
-            return frozenset(itens) if itens else TOOLS_AUSENTE
-    return TOOLS_AUSENTE
+    try:
+        doc = yaml.safe_load("\n".join(fm))
+    except yaml.YAMLError:
+        return YAML_INVALIDO
+    if not isinstance(doc, dict):
+        # Frontmatter fechou, mas o conteudo nao e um mapeamento YAML (ex.: lista solta,
+        # escalar) - a mesma indecidibilidade de YAML invalido: nao ha `tools:` para ler de algo
+        # que nao tem chaves.
+        return YAML_INVALIDO
+    valor = doc.get("tools")
+    if valor is None:
+        # Chave omitida, OU presente sem valor (`tools:` sozinho, `tools: null`) - as duas formas
+        # que a doc primaria trata como omissao.
+        return TOOLS_AUSENTE
+    if isinstance(valor, str):
+        itens = frozenset(t.strip() for t in valor.split(",") if t.strip())
+    elif isinstance(valor, list):
+        itens = frozenset(str(t).strip() for t in valor if str(t).strip())
+    else:
+        # Tipo inesperado (numero, booleano, mapeamento aninhado) - nao e uma forma reconhecida
+        # de lista de ferramentas; indecidivel, nao violacao por adivinhacao de forma.
+        return YAML_INVALIDO
+    return itens if itens else TOOLS_AUSENTE
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -211,6 +260,18 @@ def main() -> int:
     for canon_path in canon_files:
         nome = canon_path.stem
         t_canon = tools_declarados(canon_path)
+        if t_canon is ERRO_AMBIENTAL:
+            # Falha AMBIENTAL (permissao, E/S) na fonte canonica: indecidivel, nao defeito
+            # estrutural - ver docstring de `_ErroAmbiental`.
+            nao_verificados.append(
+                f"{nome}: fonte canonica {canon_path} nao pode ser lida (falha ambiental de "
+                f"permissao ou E/S) - indecidivel, nao defeito estrutural")
+            continue
+        if t_canon is YAML_INVALIDO:
+            nao_verificados.append(
+                f"{nome}: fonte canonica {canon_path} tem frontmatter fechado mas o YAML dentro "
+                f"dele nao parseia - indecidivel, nao violacao")
+            continue
         if t_canon is None or t_canon is TOOLS_AUSENTE:
             motivo = ("frontmatter ausente ou que nao fecha" if t_canon is None
                       else "`tools:` omitido na fonte canonica")
@@ -229,8 +290,16 @@ def main() -> int:
                 divergiu = True
                 continue
             t_outra = tools_declarados(caminho)
-            if t_outra is None:
-                nao_verificados.append(f"{nome}: {rotulo} existe mas o frontmatter nao fecha "
+            if t_outra is ERRO_AMBIENTAL:
+                nao_verificados.append(
+                    f"{nome}: {rotulo} existe mas nao pode ser lido (falha ambiental de "
+                    f"permissao ou E/S) em {caminho} - indecidivel")
+                divergiu = True
+                continue
+            if t_outra is None or t_outra is YAML_INVALIDO:
+                motivo = ("o frontmatter nao fecha" if t_outra is None
+                          else "o YAML do frontmatter nao parseia")
+                nao_verificados.append(f"{nome}: {rotulo} existe mas {motivo} "
                                         f"em {caminho} - indecidivel")
                 divergiu = True
                 continue
