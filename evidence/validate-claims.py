@@ -20,24 +20,86 @@ CONTRATO DE EXTRACAO (o que conta como evidencia existente)
 ----------------------------------------------------------
   regressao : `echo "== <ID>. ..."` em tests/unit/*.sh
   mutante   : `mutante <ID> ...` no INICIO da linha (a chamada real da funcao `mutante()` do
-              arnes de mutacao), em tests/mutation/*.sh
+              arnes de mutacao) em tests/mutation/*.sh; OU, so em tests/mutation/install.sh (o
+              UNICO arquivo que nao usa aquele arnes), o cabecalho `echo "== <ID>. ..."` - e
+              SO quando o bloco que segue contem uma ANCORA DE APLICACAO (ver 'MUTANTES
+              FANTASMAS, TERCEIRA FORMA' abaixo). Um cabecalho sozinho e MENCAO, nao INVOCACAO.
 
 Os dois espacos sao lidos de diretorios DISTINTOS de proposito: sem isso, um comentario
 qualquer contendo "G12" num runner de mutacao passaria a valer como mutante, e a resolucao
 deixaria de discriminar.
 
-MUTANTES FANTASMAS - defeito MEDIDO em 2026-08-11 (onda 5, D6). A versao anterior aceitava
-TAMBEM `# <ID>[-: ]...` - qualquer linha de COMENTARIO comecando por um ID - como prova de
-mutante. Isso aceitava MENCAO como se fosse INVOCACAO: um comentario como
+MUTANTES FANTASMAS, PRIMEIRA E SEGUNDA FORMA - defeito MEDIDO em 2026-08-11 (onda 5, D6). A
+versao anterior aceitava TAMBEM `# <ID>[-: ]...` - qualquer linha de COMENTARIO comecando por
+um ID - como prova de mutante. Isso aceitava MENCAO como se fosse INVOCACAO: um comentario como
 "# K10 planta o caso EXATO..." (explicando outro caso, sem nunca chamar `mutante K10`) inflava
 o inventario com um ID que a suite de mutacao nunca executa. Medido: inventariado=56,
 invocado de fato=54, dois fantasmas (K10, L6) - e os dois sao IDs de REGRESSAO reais em
 tests/unit/, entao a mesma "prova" tambem colidia com o espaco que este contrato declara
 disjunto ha duas linhas. Uma claim podia citar `mutants: [K10, L6]` e passar: exercicio de
 exploracao medido, com controle (`ZZ9`, que nao aparece em lugar nenhum, era rejeitado). O
-CONTRATO agora exige a INVOCACAO de verdade (`mutante <ID> ...`, a chamada da funcao de mesmo
-nome que cada arnes de tests/mutation/*.sh define) - mencionar um ID num comentario nao basta,
-e nunca deveria ter bastado.
+CONTRATO passou a exigir a INVOCACAO de verdade: `mutante <ID> ...` (a chamada da funcao de
+mesmo nome que cada arnes de tests/mutation/*.sh define), OU o cabecalho `echo "== <ID>. ..."`
+que tests/mutation/install.sh usa como convencao propria (nao aquele arnes) - mencionar um ID
+num comentario solto nao basta, e nunca deveria ter bastado.
+
+MUTANTES FANTASMAS, TERCEIRA FORMA - defeito MEDIDO em 2026-08-11 (onda 6b), pelo portao final.
+A correcao acima tratou o cabecalho `echo "== <ID>. ..."` como INVOCACAO por si so - a
+justificativa era que "o mutante e aplicado e morto logo abaixo do echo, nao apenas mencionado",
+uma afirmacao sobre o CONTEUDO ATUAL de install.sh, nao uma invariante que a regex impunha.
+Contraexemplo MEDIDO: plantar em install.sh, DENTRO de um bloco `if false; then ... fi` (nunca
+executado, nenhuma mutacao aplicada, nenhum oraculo invocado), a linha
+
+    echo "== ZQ7. mutante que nunca existiu =="
+
+Reancorada uma claim nesse commit citando `mutants: [ZQ7]`, o validador saia 0 - "ledger
+valido". O mesmo defeito de classe do K10/L6 acima, agora pela forma RE_CASO em vez da forma
+comentario: um cabecalho e SEMPRE so um cabecalho, nunca prova de aplicacao.
+
+CORRECAO: o cabecalho SO conta se o bloco que o segue (do cabecalho ate o proximo cabecalho ou
+o fim do arquivo) contem as DUAS evidencias textuais de aplicacao real que `_extrai_caso_ancorado`
+exige:
+  1. uma mutacao aplicada: uma linha com `sed -i` ou `python3 -` (as duas tecnicas que este
+     repositorio usa para editar um arquivo no lugar);
+  2. um oraculo invocado sobre o resultado: uma linha que roda `bash "$VAR"` (o script de
+     regressao referenciado por uma variavel, capturando a saida).
+Um cabecalho sem as duas e MENCAO, nao INVOCACAO. MI1..MI5 (os mutantes reais de install.sh)
+satisfazem as duas: cada bloco aplica um `sed -i`/`python3 -` e invoca `bash "$REG"`/
+`"$REG_TX"`/`"$REG_TRUST"` logo abaixo - inclusive no snapshot anterior a esta correcao (a
+ancora sempre existiu no CONTEUDO; so nunca fora EXIGIDA pela regra). Por isso esta correcao nao
+precisou reescrever install.sh nem reancorar C-007 (que cita MI1 nesse snapshot anterior):
+nenhum outro arquivo de tests/mutation/*.sh usa o cabecalho `echo "==` - conferido com
+`grep -rn '^[[:space:]]*echo "== [A-Z]' tests/mutation/*.sh`, que so retorna linhas de
+install.sh - entao a correcao e puramente aditiva sobre a UNICA forma que a explora.
+
+LIMITE DECLARADO - a QUARTA FORMA que esta correcao NAO fecha: a ancora acima e, como as duas
+anteriores, uma checagem TEXTUAL - ela confirma que o bloco CONTEM as linhas certas, nunca que o
+shell as EXECUTA. Um bloco FORJADO com cabecalho + uma linha `sed -i` + uma linha `bash "$REG"`
+FICTICIAS, tudo dentro do MESMO `if false; then ... fi` (ou apos um `exit`/`return`
+incondicional, ou num `case` que nunca casa), satisfaz o anchor sem que nada rode de verdade. A
+MESMA lacuna vale para `mutante <ID> ...`: uma chamada de funcao dentro de codigo morto tambem
+casa com RE_MUT, porque a extracao e puramente textual - le o arquivo, nunca o executa. Fechar
+isto exigiria EXECUTAR o script de mutacao e conferir que o ID imprime PASS no seu proprio
+oraculo, o que este validador deliberadamente nao faz (ele nem contata a rede para o
+`conclusion` de uma execucao de CI ja citada - ver 'O QUE ESTE VALIDADOR NAO FAZ' abaixo).
+Executar shell arbitrario de um `subject_snapshot` potencialmente hostil so para validar uma
+alegacao seria uma superficie nova, nao uma correcao pontual - fora do escopo desta correcao. A
+classe fica ABERTA nesse sentido especifico; o que fecha e a INSTANCIA medida (cabecalho vazio,
+sem nenhuma linha de aplicacao abaixo).
+
+RESIDUO DE AMBIGUIDADE EM SNAPSHOT HISTORICO - defeito MEDIDO em 2026-08-11 (onda 6b).
+`_contrato_extracao_ok` (abaixo) roda sobre o inventario do WORKTREE. A resolucao de CADA claim,
+porem, roda contra o inventario do SEU `scope.subject_snapshot` (`inventario_no_commit`). Uma
+claim ancorada num commit ANTERIOR a uma desambiguacao de IDs (por exemplo 36d8304, que separou
+M1..M10 de MS1..MS10) ainda resolveria contra um inventario ambiguo NAQUELE commit, sem que a
+checagem de contrato - que so olha o worktree - visse nada de errado. Medido: em
+904b027f0d3f1f9347b14078c17b99bd76818dd4 (pai de 36d8304), `M1` estava declarado tanto em
+tests/mutation/run.sh quanto em .../schedule.sh; o worktree de hoje ja nao tem essa ambiguidade,
+mas uma claim citando `mutants: [M1]` com `subject_snapshot` naquele commit resolveria mesmo
+assim - para os DOIS arquivos ao mesmo tempo, sem discriminar qual. `valida()` agora confere,
+para cada ID que a claim CITA (nao o snapshot inteiro - proporcional ao que a claim realmente
+usa), se ele e ambiguo no inventario POR ARQUIVO daquele mesmo snapshot; se for, a claim reprova
+com a mensagem indicando os arquivos em conflito.
 
 SCHEMA v2 - POR QUE O ENDERECO DA EVIDENCIA PASSOU A SER O CONTEUDO
 ------------------------------------------------------------------
@@ -143,20 +205,28 @@ RE_CASO = re.compile(r"""^echo\s+['"]==\s+([A-Z]{1,3}[0-9]{1,3}[a-z]?)\.""")
 # como mutante) - dois fantasmas medidos. `RE_MUT` cobre a chamada da funcao `mutante()` do
 # arnes compartilhado (a maioria dos arquivos de tests/mutation/); `RE_CASO` (o MESMO padrao
 # usado para regressao) cobre `tests/mutation/install.sh`, que nao usa aquele arnes e numera seus
-# mutantes com o cabecalho `echo "== <ID>. ..."` - convencao DIFERENTE, mas igualmente uma
-# INVOCACAO real (o mutante e aplicado e morto logo abaixo do echo, nao apenas mencionado): exigir
-# so `RE_MUT` faria MI1..MI5 desaparecerem do inventario, e a claim C-007 (que cita MI1, um
-# mutante real) passaria a reprovar por um falso NEGATIVO simetrico ao problema que esta correcao
-# fecha. As duas formas sao ANCORADAS (chamada de funcao / cabecalho `echo "==`), nunca
-# comentario solto - nenhuma delas reabre a classe de fantasma.
+# mutantes com o cabecalho `echo "== <ID>. ..."`. ESTE PADRAO SOZINHO NAO BASTA MAIS (terceira
+# forma de fantasma, onda 6b): um cabecalho e SO um cabecalho ate que o bloco abaixo dele prove
+# aplicacao - ver `_extrai_caso_ancorado`. `RE_MUT`, ao contrario, JA e uma invocacao completa (a
+# chamada da funcao), entao continua contando sozinho, linha a linha.
 RE_MUT = re.compile(r"^mutante\s+([A-Z]{1,3}[0-9]{1,3})\b\s")
-REGEXES_MUTANTE = (RE_MUT, RE_CASO)
+
+# ANCORA DE APLICACAO exigida do bloco que segue um cabecalho `echo "== <ID>. ..."` em
+# tests/mutation/*.sh - ver "MUTANTES FANTASMAS, TERCEIRA FORMA" no docstring do modulo. As duas
+# tecnicas que ESTE repositorio usa para mutar um arquivo NO LUGAR (conferido em todo
+# tests/mutation/*.sh: `sed -i` nos arneses que usam sed; `python3 -` com heredoc nos que
+# reescrevem por script) e a invocacao de um oraculo por variavel (`bash "$REG"`,
+# `bash "$REG_TX"`, `bash "$REG_TRUST"` em install.sh). Um bloco sem as duas nunca aplicou nada
+# nem conferiu nada - e MENCAO, nao INVOCACAO.
+RE_MUTACAO_APLICADA = re.compile(r"\bsed\s+-i\b|\bpython3\s+-\s")
+RE_ORACULO_INVOCADO = re.compile(r'\bbash\s+"?\$[A-Za-z_][A-Za-z0-9_]*"?')
 
 
 def _extrai(texto, regexes, strip):
     """`regexes`: um `re.Pattern` unico, ou uma tupla de padroes tentados em ordem (a primeira
-    que casar decide) - usado para aceitar as DUAS formas de invocacao de mutante (ver
-    REGEXES_MUTANTE) sem duplicar o loop de extracao."""
+    que casar decide). Usado hoje so para REGRESSAO (`RE_CASO` sozinho) - o espaco de MUTANTE
+    tem uma segunda forma que precisa de contexto de BLOCO, nao so de linha, e por isso vive em
+    `_extrai_mutantes`."""
     if not isinstance(regexes, tuple):
         regexes = (regexes,)
     achados = set()
@@ -167,6 +237,47 @@ def _extrai(texto, regexes, strip):
             if m:
                 achados.add(m.group(1))
                 break
+    return achados
+
+
+def _extrai_caso_ancorado(texto):
+    """IDs do cabecalho `echo "== <ID>. ..."` em tests/mutation/*.sh, mas SO quando o BLOCO que
+    segue - do cabecalho ate o proximo cabecalho ou o fim do arquivo - contem uma ANCORA DE
+    APLICACAO: `RE_MUTACAO_APLICADA` (uma mutacao foi de fato escrita no disco) E
+    `RE_ORACULO_INVOCADO` (um oraculo foi invocado sobre o resultado). As DUAS, nao qualquer uma:
+    um bloco com so `sed -i` e nenhum oraculo aplicou uma edicao sem nunca conferir o efeito, e
+    um bloco com so `bash "$REG"` e nenhuma mutacao pode estar so reexecutando a suite base.
+
+    Por que bloco e nao linha: a informacao de "isto foi aplicado E conferido" nunca cabe numa
+    unica linha neste repositorio (a mutacao e o oraculo sao comandos separados). Por que so
+    ate o PROXIMO cabecalho: sem o limite, o bloco do cabecalho fantasma citaria por engano a
+    aplicacao do PROXIMO mutante real do mesmo arquivo, que nada tem a ver com ele.
+
+    LIMITE DECLARADO (a quarta forma - ver docstring do modulo): isto e uma checagem TEXTUAL, nao
+    uma execucao. Um bloco FORJADO com as tres linhas (cabecalho, mutacao, oraculo) fabricadas
+    dentro de codigo morto (`if false; then ... fi`) satisfaz este anchor sem que nada rode. Essa
+    lacuna nao e fechada aqui - fecha-la exigiria executar o script, o que este validador
+    deliberadamente nao faz.
+    """
+    linhas = texto.splitlines()
+    marcas = [i for i, linha in enumerate(linhas) if RE_CASO.match(linha.strip())]
+    achados = set()
+    for pos, i in enumerate(marcas):
+        m = RE_CASO.match(linhas[i].strip())
+        fim = marcas[pos + 1] if pos + 1 < len(marcas) else len(linhas)
+        bloco = "\n".join(linhas[i + 1:fim])
+        if RE_MUTACAO_APLICADA.search(bloco) and RE_ORACULO_INVOCADO.search(bloco):
+            achados.add(m.group(1))
+    return achados
+
+
+def _extrai_mutantes(texto):
+    """Uniao das DUAS formas validas de invocacao de mutante num arquivo de tests/mutation/*.sh:
+    a chamada `mutante <ID> ...` (RE_MUT, valida por si so - ja e a invocacao completa) e o
+    cabecalho `echo "== <ID>. ..."` de tests/mutation/install.sh (valido SO com ancora de
+    aplicacao no bloco - ver `_extrai_caso_ancorado`)."""
+    achados = {m.group(1) for m in (RE_MUT.match(linha.strip()) for linha in texto.splitlines()) if m}
+    achados |= _extrai_caso_ancorado(texto)
     return achados
 
 
@@ -246,15 +357,15 @@ def inventario(raiz):
     """
     regressoes, mutantes = set(), set()
     por_arquivo = {"regression": {}, "mutant": {}}
-    for sub, chave, rgx, strip in (("unit", "regression", RE_CASO, False),
-                                   ("mutation", "mutant", REGEXES_MUTANTE, True)):
+    for sub, chave, extrai in (("unit", "regression", lambda t: _extrai(t, RE_CASO, False)),
+                               ("mutation", "mutant", _extrai_mutantes)):
         d = os.path.join(raiz, "tests", sub)
         if not os.path.isdir(d):
             continue
         for nome in sorted(os.listdir(d)):
             if nome.endswith(".sh"):
                 with open(os.path.join(d, nome), encoding="utf-8", errors="replace") as fh:
-                    achados = _extrai(fh.read(), rgx, strip)
+                    achados = extrai(fh.read())
                 por_arquivo[chave][nome] = achados
                 if chave == "regression":
                     regressoes |= achados
@@ -277,6 +388,12 @@ def inventario_no_commit(raiz, commit):
     Uma alegacao cujo lastro nao existe no snapshot que ela propria nomeia nao esta ancorada:
     esta datada errado, que e a forma silenciosa de nao estar ancorada.
 
+    Devolve `(regressoes, mutantes, por_arquivo)` - a MESMA forma de `inventario()`, agora por
+    ARQUIVO daquele snapshot (onda 6b): `_contrato_extracao_ok` so confere ambiguidade ENTRE
+    ARQUIVOS no worktree; `por_arquivo` aqui e o que permite a `valida()` conferir a MESMA
+    ambiguidade no snapshot de CADA claim, para os IDs que ela cita - ver "RESIDUO DE
+    AMBIGUIDADE EM SNAPSHOT HISTORICO" no docstring do modulo.
+
     Devolve None quando o snapshot nao pode ser lido (git ausente): nao afirmar nem negar.
     """
     if commit in _CACHE_SNAP:
@@ -289,6 +406,7 @@ def inventario_no_commit(raiz, commit):
             _CACHE_SNAP[commit] = None
             return None
         regressoes, mutantes = set(), set()
+        por_arquivo = {"regression": {}, "mutant": {}}
         for caminho in r.stdout.splitlines():
             if not caminho.endswith(".sh"):
                 continue
@@ -296,11 +414,16 @@ def inventario_no_commit(raiz, commit):
                                capture_output=True, text=True, timeout=30)
             if g.returncode != 0:
                 continue
+            nome = os.path.basename(caminho)
             if caminho.startswith("tests/unit/"):
-                regressoes |= _extrai(g.stdout, RE_CASO, False)
+                achados = _extrai(g.stdout, RE_CASO, False)
+                por_arquivo["regression"][nome] = achados
+                regressoes |= achados
             else:
-                mutantes |= _extrai(g.stdout, REGEXES_MUTANTE, True)
-        _CACHE_SNAP[commit] = (regressoes, mutantes)
+                achados = _extrai_mutantes(g.stdout)
+                por_arquivo["mutant"][nome] = achados
+                mutantes |= achados
+        _CACHE_SNAP[commit] = (regressoes, mutantes, por_arquivo)
         return _CACHE_SNAP[commit]
     except (OSError, subprocess.SubprocessError):
         _CACHE_SNAP[commit] = None
@@ -559,6 +682,11 @@ def valida(doc, arquivo, regressoes, mutantes, raiz, vistos):
 
     escopo = doc.get("scope") or {}
     snap = None
+    # `por_arquivo_snap` (onda 6b): a granularidade POR ARQUIVO do inventario do snapshot desta
+    # claim - permanece None quando o snapshot nao pode ser lido (git/oraculo indisponivel), e so
+    # e usado ABAIXO para checar ambiguidade nos IDs que a claim CITA (nao o snapshot inteiro).
+    # Ver "RESIDUO DE AMBIGUIDADE EM SNAPSHOT HISTORICO" no docstring do modulo.
+    por_arquivo_snap = None
     # `subject_snapshot` (v2) e o commit do ARTEFATO AVALIADO. O nome anterior, `commit`, nao
     # dizia commit DE QUE, e a ambiguidade era substantiva: a evidencia de uma alegacao pode ser
     # registrada depois do artefato que ela avalia, e o campo unico forcava os dois a coincidir.
@@ -581,7 +709,7 @@ def valida(doc, arquivo, regressoes, mutantes, raiz, vistos):
                     erro("nao foi possivel ler o snapshot de scope.subject_snapshot - "
                          "evidencia NAO VERIFICADA contra ele")
                 else:
-                    regressoes, mutantes = snap
+                    regressoes, mutantes, por_arquivo_snap = snap
             elif ok is None:
                 # ASSIMETRIA CORRIGIDA: `pyyaml` ausente ja saia 2 (NAO VERIFICADO), mas `git`
                 # ausente devolvia None e o programa seguia imprimindo "ledger valido". Duas
@@ -612,8 +740,8 @@ def valida(doc, arquivo, regressoes, mutantes, raiz, vistos):
         return e
 
     refs = 0
-    for chave, universo, rotulo in (("regression", regressoes, "regressao"),
-                                    ("mutants", mutantes, "mutante")):
+    for chave, universo, espaco, rotulo in (("regression", regressoes, "regression", "regressao"),
+                                            ("mutants", mutantes, "mutant", "mutante")):
         vals = ev.get(chave) or []
         if isinstance(vals, str):
             erro(f"evidence.{chave} deve ser lista, nao string")
@@ -627,6 +755,17 @@ def valida(doc, arquivo, regressoes, mutantes, raiz, vistos):
                 # A REGRA CENTRAL. Sem ela o ledger seria prosa com aparencia de rastro.
                 erro(f"evidence.{chave} cita {rotulo} INEXISTENTE: '{v}' "
                      f"(nao encontrado em tests/)")
+            elif por_arquivo_snap is not None:
+                # RESIDUO DE AMBIGUIDADE EM SNAPSHOT HISTORICO (onda 6b) - ver docstring do
+                # modulo. `_contrato_extracao_ok` so confere o WORKTREE; aqui confere-se o
+                # inventario POR ARQUIVO do snapshot desta claim, mas SO para o ID que ela CITA
+                # (proporcional ao uso real, nao um relatorio de toda ambiguidade do snapshot).
+                arqs = {nome for nome, ids in por_arquivo_snap.get(espaco, {}).items() if v in ids}
+                if len(arqs) > 1:
+                    erro(f"evidence.{chave} cita {rotulo} '{v}', que e AMBIGUO no snapshot "
+                         f"{sujeito[:12]}...: declarado em mais de um arquivo la "
+                         f"{sorted(arqs)} - a resolucao naquele snapshot nao discrimina, mesmo "
+                         f"que o worktree de hoje ja nao tenha essa ambiguidade")
 
     obs = ev.get("observation")
     if obs is not None:
