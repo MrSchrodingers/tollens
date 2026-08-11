@@ -37,10 +37,15 @@ Para cada `execution/agents/<nome>.md` (a fonte canonica):
      truncado e campos extras como `permissionMode`, mas que declara `tools:` de novo).
   3. O mesmo campo e extraido de `<CLAUDE_HOME>/agents/<nome>.md` (a copia instalada que o
      runtime de fato carrega; `CLAUDE_HOME` segue a mesma convencao de `install/verify.sh`,
-     default `$HOME/.claude`).
-  4. Os tres conjuntos precisam ser IDENTICOS. Arquivo ausente numa das dependencias e
-     NAO_VERIFICADO (nao se pode concluir conformidade nem divergencia); conjunto diferente e
-     VIOLACAO.
+     default `$HOME/.claude`). Com `--repo-only`, este passo NAO RODA - a saida declara o numero
+     de fontes efetivamente comparadas (2, nao 3) e diz explicitamente que a perna instalada
+     ficou de fora; nunca reporta "identico nas 3 fontes" tendo comparado so 2.
+  4. Os conjuntos comparados nesta execucao precisam ser IDENTICOS. Arquivo ausente numa das
+     dependencias, ou frontmatter que nao fecha, e NAO_VERIFICADO (nao se pode concluir
+     conformidade nem divergencia). Conjunto diferente e VIOLACAO - inclusive quando a diferenca
+     e uma chave `tools:` OMITIDA numa projecao: pela doc primaria do Claude Code, omitir
+     `tools:` faz o subagente herdar TODAS as ferramentas disponiveis (a concessao MAXIMA), o que
+     e decidivel e diverge de qualquer lista finita do canonico - nao e lacuna, e VIOLACAO.
 
 `orchestration/render.py --check` ja confere que as tres arvores existem e que os workflows sao
 validos; ele NAO confere que `tools:` case entre elas (registry.json nem armazena a lista de
@@ -57,6 +62,7 @@ LIMITE DECLARADO
 """
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import sys
@@ -68,7 +74,28 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 ROOT = Path(os.environ.get("EVIDENCE_GATE_ROOT", DEFAULT_ROOT)).resolve()
 CLAUDE_HOME = Path(os.environ.get("CLAUDE_HOME", Path.home() / ".claude")).resolve()
 
-RE_TOOLS = re.compile(r"^tools:\s*(.+)$")
+ROTULO_PROJECAO = "projecao do repo (.claude/agents)"
+ROTULO_INSTALADA = "instalada (CLAUDE_HOME/agents)"
+ROTULO_CANONICA = "canonica (execution/agents)"
+
+RE_TOOLS = re.compile(r"^tools:\s*(.+)$")  # forma INLINE: `tools: A, B, C` numa unica linha.
+RE_TOOLS_CHAVE_BLOCO = re.compile(r"^tools:\s*$")  # a mesma chave sem valor na linha - abre,
+                                                     # potencialmente, uma lista YAML de BLOCO.
+RE_ITEM_BLOCO = re.compile(r"^\s*-\s*(.+?)\s*$")  # item `  - Nome` de uma lista de bloco.
+
+
+class _ChaveToolsAusente:
+    """Sentinela devolvida por `tools_declarados`: o frontmatter FECHOU e foi lido por inteiro,
+    e mesmo assim nenhuma lista `tools:` foi encontrada (nem inline, nem em bloco) - chave
+    omitida, ou presente e vazia. Isto e DIFERENTE de `None` (arquivo ausente ou frontmatter que
+    nao fecha, onde nada pode ser concluido): aqui o documento foi lido ate o fim e a ausencia da
+    chave e ela mesma o dado. Pela tabela de frontmatter da doc primaria do Claude Code
+    (https://code.claude.com/docs/en/sub-agents, campo `tools`: "Inherits every tool available to
+    subagents if omitted"), omitir `tools:` faz o subagente HERDAR TODAS as ferramentas - a
+    concessao MAXIMA, o oposto de uma lacuna indecidivel."""
+
+
+TOOLS_AUSENTE = _ChaveToolsAusente()
 
 
 def frontmatter_lines(caminho: Path) -> list[str] | None:
@@ -86,21 +113,63 @@ def frontmatter_lines(caminho: Path) -> list[str] | None:
     return None
 
 
-def tools_declarados(caminho: Path) -> frozenset[str] | None:
-    """Conjunto de ferramentas em `tools:`. None = indecidivel (arquivo ausente, sem
-    frontmatter, ou frontmatter sem a chave `tools:`)."""
+def tools_declarados(caminho: Path) -> frozenset[str] | _ChaveToolsAusente | None:
+    """Conjunto de ferramentas em `tools:`, em qualquer uma das DUAS formas que o frontmatter
+    YAML aceita para uma chave de lista: inline (`tools: A, B`) ou bloco (`tools:` seguido de
+    `  - A` / `  - B` nas linhas seguintes). Um parser que so reconhecesse a forma inline
+    tornaria uma lista de bloco indistinguivel de uma chave omitida - o MESMO erro de
+    classificacao que `TOOLS_AUSENTE` existe para corrigir, so que reintroduzido pela LEITURA em
+    vez da decisao.
+
+    Retorno:
+      None            = indecidivel: arquivo ausente ou frontmatter que nao fecha.
+      TOOLS_AUSENTE   = frontmatter fechado e lido por inteiro, mas nenhuma lista `tools:` foi
+                        encontrada - ver a doutrina no docstring de `_ChaveToolsAusente`.
+      frozenset[str]  = a lista declarada, com pelo menos um nome de ferramenta.
+    """
     fm = frontmatter_lines(caminho)
     if fm is None:
         return None
-    for linha in fm:
+    for i, linha in enumerate(fm):
         m = RE_TOOLS.match(linha)
         if m:
             valores = frozenset(t.strip() for t in m.group(1).split(",") if t.strip())
-            return valores if valores else None
-    return None
+            return valores if valores else TOOLS_AUSENTE
+        if RE_TOOLS_CHAVE_BLOCO.match(linha):
+            itens = []
+            for seguinte in fm[i + 1:]:
+                m_item = RE_ITEM_BLOCO.match(seguinte)
+                if not m_item:
+                    break
+                item = m_item.group(1).strip()
+                if item:
+                    itens.append(item)
+            return frozenset(itens) if itens else TOOLS_AUSENTE
+    return TOOLS_AUSENTE
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Argumentos de linha de comando. `argparse` recusa qualquer flag desconhecida com exit 2
+    (SystemExit) e mensagem em stderr - o mesmo codigo de EXIT_NAO_VERIFICADO deste script, o que
+    e a leitura correta: um invocador que passa algo que este programa nao reconhece nao pode ter
+    seu pedido decidido, entao "nao verificado" (e nao "modo completo por omissao silenciosa") e
+    a unica resposta honesta. Antes, `"--repo-only" in sys.argv` aceitava QUALQUER outro token sem
+    reclamar - `--repoonly` (erro de digitacao) rodava o modo completo calado, sem avisar que o
+    filtro pedido nunca foi aplicado."""
+    ap = argparse.ArgumentParser(
+        description="Compara `tools:` do frontmatter entre a fonte canonica, a projecao do "
+                    "repo e (fora de --repo-only) a copia instalada em CLAUDE_HOME.")
+    ap.add_argument(
+        "--repo-only", action="store_true",
+        help="compara so execution/agents x .claude/agents; NAO verifica CLAUDE_HOME/agents "
+             "(uso: CI, onde a perna instalada nao existe no runner)")
+    return ap.parse_args(argv)
 
 
 def main() -> int:
+    args = parse_args(sys.argv[1:])
+    repo_only = args.repo_only
+
     # `--repo-only` COMPARA SO AS DUAS ARVORES INTERNAS AO REPOSITORIO.
     #
     # Existe para a CI. Num runner limpo `CLAUDE_HOME/agents` nao existe, e a perna instalada
@@ -108,13 +177,14 @@ def main() -> int:
     # vermelho permanente por ausencia esperada, o que ensina a ignorar o passo.
     #
     # O que ele NAO faz: afrouxar. A comparacao `execution/agents` x `.claude/agents` continua
-    # exit 1 em divergencia e exit 2 se qualquer das duas arvores faltar. A perna descartada e
-    # DECLARADA aqui e na saida, nao silenciada - e continua valendo na execucao local, que e
-    # onde `CLAUDE_HOME` existe.
+    # exit 1 em divergencia e exit 2 se qualquer das duas arvores faltar. A perna descartada NAO
+    # E VERIFICADA neste modo - nem PASS nem FAIL sao emitidos para ela - e isso e declarado
+    # tanto no numero de fontes de cada linha PASS quanto num aviso explicito abaixo, nao so em
+    # comentario: uma saida que dissesse "identico nas 3 fontes" comparando so 2 seria uma prova
+    # arquivada de uma comparacao que nunca ocorreu.
     #
     # Valor colateral: `orchestration/render.py --check` so verifica que a projecao EXISTE.
     # Esta comparacao de conteudo fecha parte dessa lacuna semantica para o campo `tools:`.
-    repo_only = "--repo-only" in sys.argv
     canon_dir = ROOT / "execution" / "agents"
     repo_proj_dir = ROOT / ".claude" / "agents"
     home_dir = CLAUDE_HOME / "agents"
@@ -126,6 +196,14 @@ def main() -> int:
             f"o contrato de extracao nao tem o que comparar.\n")
         return EXIT_NAO_VERIFICADO
 
+    rotulos_desta_execucao = [ROTULO_PROJECAO] if repo_only else [ROTULO_PROJECAO, ROTULO_INSTALADA]
+    n_fontes = 1 + len(rotulos_desta_execucao)  # canonica + as demais deste modo
+
+    if repo_only:
+        print(f"--repo-only: comparando {n_fontes} fontes ({ROTULO_CANONICA}, {ROTULO_PROJECAO}). "
+              f"A perna instalada ({home_dir}) NAO e verificada nesta execucao - PASS abaixo "
+              f"nao decide conformidade com o runtime realmente instalado.\n")
+
     violacoes: list[str] = []
     nao_verificados: list[str] = []
     ok = 0
@@ -133,14 +211,16 @@ def main() -> int:
     for canon_path in canon_files:
         nome = canon_path.stem
         t_canon = tools_declarados(canon_path)
-        if t_canon is None:
+        if t_canon is None or t_canon is TOOLS_AUSENTE:
+            motivo = ("frontmatter ausente ou que nao fecha" if t_canon is None
+                      else "`tools:` omitido na fonte canonica")
             violacoes.append(f"{nome}: fonte canonica {canon_path} sem `tools:` legivel "
-                              f"- isto e defeito estrutural, nao ausencia de dado")
+                              f"({motivo}) - isto e defeito estrutural, nao ausencia de dado")
             continue
 
-        fontes = {"projecao do repo (.claude/agents)": repo_proj_dir / f"{nome}.md"}
+        fontes = {ROTULO_PROJECAO: repo_proj_dir / f"{nome}.md"}
         if not repo_only:
-            fontes["instalada (CLAUDE_HOME/agents)"] = home_dir / f"{nome}.md"
+            fontes[ROTULO_INSTALADA] = home_dir / f"{nome}.md"
 
         divergiu = False
         for rotulo, caminho in fontes.items():
@@ -150,8 +230,16 @@ def main() -> int:
                 continue
             t_outra = tools_declarados(caminho)
             if t_outra is None:
-                nao_verificados.append(f"{nome}: {rotulo} existe mas `tools:` nao pode ser "
-                                        f"lido em {caminho}")
+                nao_verificados.append(f"{nome}: {rotulo} existe mas o frontmatter nao fecha "
+                                        f"em {caminho} - indecidivel")
+                divergiu = True
+                continue
+            if t_outra is TOOLS_AUSENTE:
+                violacoes.append(
+                    f"{nome}: {rotulo} nao declara `tools:` em {caminho} - por omissao o "
+                    f"subagente HERDA TODAS as ferramentas disponiveis (concessao MAXIMA, "
+                    f"doc primaria do Claude Code), o OPOSTO de conformidade com o canonico "
+                    f"({', '.join(sorted(t_canon))})")
                 divergiu = True
                 continue
             if t_outra != t_canon:
@@ -168,24 +256,31 @@ def main() -> int:
 
         if not divergiu:
             ok += 1
-            print(f"PASS {nome}: tools: identico nas 3 fontes ({', '.join(sorted(t_canon))})")
+            print(f"PASS {nome}: tools: identico nas {n_fontes} fontes comparadas "
+                  f"({ROTULO_CANONICA}, {', '.join(rotulos_desta_execucao)}) "
+                  f"({', '.join(sorted(t_canon))})")
 
     total = len(canon_files)
+    modo = " [--repo-only: perna instalada NAO verificada]" if repo_only else ""
     print(f"\nagentes canonicos: {total} | conformes: {ok} | "
-          f"divergentes: {len(violacoes)} | nao verificados: {len(nao_verificados)}")
+          f"divergentes: {len(violacoes)} | nao verificados: {len(nao_verificados)}{modo}")
 
     if violacoes:
-        print("\nVIOLACOES (tools: declarado diverge entre fontes):")
+        print("\nVIOLACOES (tools: declarado diverge entre fontes, ou concede mais do que o "
+              "canonico declara):")
         for v in violacoes:
             print(f"  - {v}")
     if nao_verificados:
-        print("\nNAO VERIFICADO (fonte ausente ou ilegivel - nao decide conformidade):")
+        print("\nNAO VERIFICADO (fonte ausente ou frontmatter ilegivel - nao decide conformidade):")
         for v in nao_verificados:
             print(f"  - {v}")
 
     print("\nISTO FECHA APENAS A METADE DECLARADA. ObservedCapabilities (o que o runtime "
           "realmente concede em execucao) NAO foi medido aqui - ver "
           "evidence/runtime-probes/capabilities.md.")
+    if repo_only:
+        print(f"--repo-only tambem NAO fechou a metade declarada inteira: {ROTULO_INSTALADA} "
+              f"ficou fora desta execucao por desenho (ver acima).")
 
     if violacoes:
         return EXIT_VIOLACAO
