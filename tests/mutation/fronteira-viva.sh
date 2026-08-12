@@ -83,7 +83,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=29
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=30
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -269,23 +269,26 @@ mutante MV3 "resposta nao-dict de rulesets/{id} crasha com TypeError, nao NOT_VE
 cat > "$TMP/mv4-de.txt" <<'EOF'
     if nao_medidos:
         if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
-            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
-            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
-            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
-            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
-            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
-            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
-            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
-            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
-            # o residuo que sobra.
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
             return Resultado(
                 PASS_PARCIAL,
                 f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
-                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
                 f"('current_user_can_bypass'='never' em todos os rulesets de origem "
-                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
-                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
-                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
                 + "; ".join(medicao_parcial),
                 {"rules": rules, "rulesets": detalhes_rulesets},
             )
@@ -369,23 +372,26 @@ cat > "$TMP/mv7-de.txt" <<'EOF'
 
     if nao_medidos:
         if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
-            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
-            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
-            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
-            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
-            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
-            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
-            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
-            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
-            # o residuo que sobra.
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
             return Resultado(
                 PASS_PARCIAL,
                 f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
-                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
                 f"('current_user_can_bypass'='never' em todos os rulesets de origem "
-                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
-                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
-                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
                 + "; ".join(medicao_parcial),
                 {"rules": rules, "rulesets": detalhes_rulesets},
             )
@@ -400,23 +406,26 @@ EOF
 cat > "$TMP/mv7-para.txt" <<'EOF'
     if nao_medidos:
         if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
-            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
-            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
-            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
-            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
-            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
-            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
-            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
-            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
-            # o residuo que sobra.
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
             return Resultado(
                 PASS_PARCIAL,
                 f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
-                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
                 f"('current_user_can_bypass'='never' em todos os rulesets de origem "
-                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
-                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
-                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
                 + "; ".join(medicao_parcial),
                 {"rules": rules, "rulesets": detalhes_rulesets},
             )
@@ -1110,7 +1119,11 @@ mutante MV28 "invariante de subconjunto quebrado - medicao_parcial sem entrada c
 # com bypass_actors/current_user_can_bypass (ex.: 'enforcement' ausente, V19), coexiste em
 # `nao_medidos`. Reproduz o defeito OPOSTO de MV27: nao "lacuna vira PASS fabricado por omissao",
 # e sim "lacuna GERAL vira PASS_PARCIAL fabricado por presenca de ALGUM traco tolerado" -
-# precisamente o que a comparacao de tamanho existe para proibir.
+# precisamente o que a comparacao de tamanho existe para proibir. ALVO reancorado em wave9: desde
+# que EXIT[PASS_PARCIAL] passou a ser 2 (o MESMO de NOT_VERIFIED - ver "O NONO DEGRAU"), o exit
+# code de V19 deixou de discriminar o defeito (PASS_PARCIAL fabricado e NOT_VERIFIED genuino saem
+# exit 2 nos dois casos); o `estado` continua distinguindo os dois, entao o alvo passa a ser a
+# ausencia do rotulo NOT_VERIFIED em V19.
 cat > "$TMP/mv29-de.txt" <<'EOF'
         if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
 EOF
@@ -1118,8 +1131,27 @@ cat > "$TMP/mv29-para.txt" <<'EOF'
         if medicao_parcial:
 EOF
 mutante MV29 "guard final enfraquecido - qualquer traco de medicao parcial vira PASS_PARCIAL mesmo com outra lacuna coexistindo" \
-  "exit code 2 (nao 1 - a ausencia nao e mais coagida em violacao)" \
+  "relata estado NOT_VERIFIED" \
   "$TMP/mv29-de.txt" "$TMP/mv29-para.txt"
+
+echo "== mutacao: O NONO DEGRAU (wave9) - PASS_PARCIAL nao pode ser exit 0 =="
+
+# MV30 - O MUTANTE CENTRAL desta onda: reverte `EXIT[PASS_PARCIAL]` para 0, a decisao exata que
+# uma revisao independente refutou (medido com o mesmo stub, mesmo ruleset: visao ADMIN, com
+# 'bypass_actors' visivel contendo um ator, sai FAIL exit 1; visao CI/leitura, MESMO ruleset,
+# campo omitido, saia PASS_PARCIAL exit 0 - a direcao invertida: reduzir o privilegio do
+# observador aumentava a aprovacao sobre a MESMA realidade). Kill em V4: o `estado` PASS_PARCIAL
+# permanece (nao e MV27/MV28, que atacam o CARVE-OUT em si), so o EXIT CODE volta a ser
+# distinguivel de NOT_VERIFIED.
+cat > "$TMP/mv30-de.txt" <<'EOF'
+EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 2}
+EOF
+cat > "$TMP/mv30-para.txt" <<'EOF'
+EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 0}
+EOF
+mutante MV30 "PASS_PARCIAL volta a valer exit 0 - medicao parcial declarada volta a ser aprovacao" \
+  "exit code 2 (wave9: medicao parcial declarada NAO e aprovacao - exists a.Bypass(a,P) nao medido)" \
+  "$TMP/mv30-de.txt" "$TMP/mv30-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo
