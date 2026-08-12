@@ -249,9 +249,46 @@ chk "  plano sem step produtivo REPROVA (pack vazio com exit 0)" \
 chk "  extensao ja roteada por outro adaptador REPROVA" \
     "$(neg colisao 'd["extensions"].append(".pdf")')" "reprova"
 
+echo "== D11. o caminho sancionado para imagem TERMINA - nao e ciclo =="
+# DEFEITO MEDIDO em 2026-08-12, na onda 10. O read-budget consultava o registro de adaptadores
+# ANTES de avaliar o tamanho, entao negava imagem por EXTENSAO, nunca por tamanho. A receita que
+# ele mesmo imprime manda reduzir com ffmpeg e ler o resultado - e o resultado reduzido tambem e
+# imagem, tambem caia no registro, e tambem era negado. Medido: 640914 bytes contra teto de 2 MB,
+# exit 2. O plano `reduce-image` do adaptador de midia termina em "agora leia", e a leitura era
+# impossivel: um portao cuja saida ele mesmo bloqueia.
+#
+# Este grupo mede o CICLO, nao o campo. Sem ele, alguem reintroduz a consulta ao registro antes
+# do teto e nenhuma assercao de D8-D10 acusa - todas continuariam verdes.
+HK="$PWD/execution/hooks/read-budget.sh"
+orc(){ printf '{"tool_name":"Read","tool_input":{"file_path":"%s"}}' "$1" \
+       | bash "$HK" >/dev/null 2>"$T/orc.err"; echo $?; }
+# 1 px PNG valido, ~70 bytes: dentro de qualquer teto, e com extensao coberta pelo adaptador.
+printf '\x89PNG\r\n\x1a\n' > "$T/mini.png"
+python3 - "$T/mini.png" <<'PY'
+import struct, sys, zlib
+def ch(t, d):
+    return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+open(sys.argv[1], "wb").write(
+    b"\x89PNG\r\n\x1a\n"
+    + ch(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+    + ch(b"IDAT", zlib.compress(b"\x00\xff\xff\xff"))
+    + ch(b"IEND", b""))
+PY
+chk "imagem DENTRO do teto passa (o ciclo tinha saida)" "$(orc "$T/mini.png")" "0"
+chk "  e sem mensagem de orcamento no stderr" \
+    "$([ -s "$T/orc.err" ] && echo "poluido" || echo limpo)" "limpo"
+head -c 2200000 /dev/urandom > "$T/gorda.png"
+chk "  imagem ACIMA do teto continua barrada" "$(orc "$T/gorda.png")" "2"
+chk "    e a mensagem oferece os planos do adaptador" \
+    "$(grep -q "Planos disponiveis para 'media'" "$T/orc.err" && echo sim || echo nao)" "sim"
+# CONTROLE DE DIRECAO: um hook que passasse tudo satisfaria as duas primeiras assercoes. Um
+# formato sem caminho direto barato tem de continuar barrado, dentro do teto ou nao.
+cp "$T/mini.png" "$T/mini.xlsx"
+chk "  formato sem leitura direta segue barrado mesmo minusculo" "$(orc "$T/mini.xlsx")" "2"
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=38
+EXPECTED=43
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED (ferramenta ausente ou caso removido)"; exit 1
 fi

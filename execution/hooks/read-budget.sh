@@ -30,6 +30,26 @@ EXT="$(printf '%s' "${F##*.}" | tr 'A-Z' 'a-z')"
 has() { command -v "$1" >/dev/null 2>&1; }
 deny() { printf '%s\n' "$*" >&2; exit 2; }
 
+# TETO DE IMAGEM, AVALIADO ANTES DO REGISTRO. Sem isto o hook tem um CICLO SEM SAIDA, medido em
+# 2026-08-12: o registro e consultado antes do `case`, entao TODA imagem e negada por extensao,
+# nunca por tamanho. A receita que o proprio hook imprime manda reduzir com ffmpeg e ler o
+# resultado - mas o resultado reduzido tambem e imagem, tambem cai no registro, e tambem e
+# negado. Medido: o header desta marca reduzido a 640914 bytes, contra um teto de 2 MB, recebia
+# exit 2 com a mesma mensagem. O caminho sancionado nunca terminava, e as linhas do caso
+# `png|jpg|...` abaixo eram inalcancaveis para toda extensao coberta pelo adaptador de midia.
+#
+# ESCOPO DELIBERADO - so imagem. PDF e CSV tambem tem caso de "dentro do orcamento" abaixo que o
+# registro torna inalcancavel, e ali isso NAO e defeito: para esses formatos o adaptador entrega
+# evidence pack ancorado, que e estritamente melhor que despejar o arquivo, e nenhuma receita do
+# hook depende de reler o proprio artefato. A imagem e o unico caso em que a receita do hook
+# EXIGE que a leitura direta seja possivel, porque o plano `reduce-image` do adaptador de midia
+# termina em "agora leia". Um portao cuja saida ele mesmo bloqueia nao e portao, e armadilha.
+LIMITE_IMAGEM_BYTES=2097152
+case "$EXT" in
+  png|jpg|jpeg|webp|gif|bmp)
+    [ "$SZ" -le "$LIMITE_IMAGEM_BYTES" ] && exit 0 ;;
+esac
+
 # REGISTRY ANTES DO CASE EMBUTIDO. Enquanto este hook mantinha `case "$EXT"` proprio, os
 # adaptadores de documento eram especificacao versionada que nenhum executor consumia - o
 # defeito que o ADR 0022 declarou e que a Fase D1 fecha. Havendo adaptador para a extensao,
@@ -110,10 +130,13 @@ ou o usuario fornecer a transcricao. Informe essa limitacao em vez de contorna-l
 O AUDIO do video tem a mesma limitacao do caso anterior: nao ha transcritor local." ;;
 
   png|jpg|jpeg|webp|gif|bmp)
-    [ "$SZ" -le 2097152 ] && exit 0
+    # O teto ja foi avaliado no inicio do arquivo; chegar aqui significa imagem ACIMA dele para
+    # a qual nenhum adaptador declarou a extensao (hoje: .bmp). Havendo adaptador, o registro
+    # ja negou com a lista de planos, que e mensagem melhor que esta.
     deny "ORCAMENTO DE LEITURA: imagem de $(( SZ/1024/1024 )) MB. Reduza antes - resolucao alem
 do necessario vira custo de token sem ganho de informacao:
-  ffmpeg -i '$F' -vf scale=1568:-1 /tmp/menor.png" ;;
+  ffmpeg -i '$F' -vf scale=1568:-1 /tmp/menor.png
+Depois leia o arquivo reduzido: dentro do teto de $(( LIMITE_IMAGEM_BYTES/1024/1024 )) MB, Read passa." ;;
 
   zip|tar|gz|tgz|bz2|xz|7z|jar|whl|so|bin|exe|o|a|pyc|wasm)
     deny "ORCAMENTO DE LEITURA: arquivo binario/compactado ($EXT). Liste o conteudo, nao o leia:

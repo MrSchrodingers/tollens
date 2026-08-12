@@ -11,7 +11,7 @@ hook	execution/hooks/graphify-scout-mode.sh	hooks/graphify-scout-mode.sh	76b8954
 hook	execution/hooks/lentes.sh	hooks/lentes.sh	155f78b9a5f38090af56ff9967cfb2766ef56052266330abfad1fb7f3e395fcf
 hook	execution/hooks/output-budget.sh	hooks/output-budget.sh	62a321cc6b504d2f2520a7ff8db045cb765671eb530dc5827fba206e8b0c3fcb
 hook	execution/hooks/poka-yoke-lint.sh	hooks/poka-yoke-lint.sh	1fc83e6b1c085de08588722c3b05cbd97bd4045ac5c6fefb445d520ffb636981
-hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	fe3aed896fe89817c880e2d56c021275aae346cf1f1628ac2dcb741cd88772ad
+hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	be6ed3268fcb7ebb85c3f21230d762fb64bc5bee3c7357a8da20076d451b3503
 hook	evidence/hooks/subagent-contract.sh	hooks/subagent-contract.sh	adcbddb4b1fdee0f684da7a876e2413cae9271ba315b74599b931c62f5daad68
 hook	evidence/hooks/subagent-probe.sh	hooks/subagent-probe.sh	9dd4623a90042f2beada89177e4619b78bed5582154bd6c8878cb54d82c3567a
 hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	486427303de84d23e5e0e8da06151ad1c7107bb3841a721144a61cd7c96dd3c2
