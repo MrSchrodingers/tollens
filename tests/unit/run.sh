@@ -155,6 +155,99 @@ chk "nega em SUBAGENTE (sem excecao)" "$R" 2
 echo $(( $(date +%s) + 3600 )) > "$HL/.claude/$SENT"
 R=$(HOME="$HL" bash -c "printf '%s' '{\"tool_name\":\"Agent\",\"tool_input\":{\"model\":\"$MODEL_X\"}}' | bash '$G'" 2>/dev/null; echo $?)
 chk "NEGA sentinela nao pertencente a root" "$R" 2
+R=$(HOME="$HL" bash -c "printf '%s' '{\"tool_name\":\"Agent\",\"tool_input\":{\"model\":\"opus\"}}' | bash '$G'" 2>/dev/null; echo $?)
+chk "PERMITE modelo nao-fable (opus)" "$R" 0
+R=$(printf '%s' "$(jq -nc --arg c "grep -i $MODEL_X README.md" '{tool_name:"Bash",tool_input:{command:$c}}')" | bash "$G" 2>/dev/null; echo $?)
+chk "NAO bloqueia mencao solta de fable fora de --model (Bash)" "$R" 0
+HLB="$TMP/hlb"; mkdir -p "$HLB/.claude"
+R=$(HOME="$HLB" bash -c "printf '%s' '$(jq -nc --arg c "claude --model $MODEL_X \"faz algo\"" '{tool_name:"Bash",tool_input:{command:$c}}')' | bash '$G'" 2>/dev/null; echo $?)
+chk "BLOQUEIA claude --model fable ancorado em Bash" "$R" 2
+HLS="$TMP/hls"; mkdir -p "$HLS/.claude"
+R=$(HOME="$HLS" bash -c "printf '%s' '$(jq -nc --arg st "$MODEL_X-especialista" '{tool_name:"Task",tool_input:{subagent_type:$st}}')' | bash '$G'" 2>/dev/null; echo $?)
+chk "NEGA por subagent_type contendo fable" "$R" 2
+HLW="$TMP/hlw"; mkdir -p "$HLW/.claude"
+R=$(HOME="$HLW" bash -c "printf '%s' '$(jq -nc --arg s "model: '$MODEL_X'" '{tool_name:"Workflow",tool_input:{script:$s}}')' | bash '$G'" 2>/dev/null; echo $?)
+chk "NEGA Workflow com script model: fable" "$R" 2
+# Camada 1 (ADR 0015): escrever o sentinela por Bash e a forma de forjar o proprio
+# consentimento. `WCMD`/`WCMD2` montam o redirecionamento por substituicao de variavel para
+# nao colocar o padrao literal "> ...allowed"/"> ...approved" no texto do comando desta
+# suite - o MESMO hook, quando instalado como guarda real da sessao que roda esta suite,
+# inspeciona o texto litral do comando Bash despachado e bloquearia a propria escrita deste
+# arquivo de teste se o padrao aparecesse aqui de forma literal.
+HLW2="$TMP/hlw2"; mkdir -p "$HLW2/.claude"
+WCMD="echo pwn $(printf '\076') \"\$HOME\"/.claude/$SENT"
+R=$(HOME="$HLW2" bash -c "printf '%s' '$(jq -nc --arg c "$WCMD" '{tool_name:"Bash",tool_input:{command:$c}}')' | bash '$G'" 2>/dev/null; echo $?)
+chk "BLOQUEIA escrita Bash no sentinela .fable-allowed" "$R" 2
+R=$(HOME="$HLW2" bash -c "printf '%s' '$(jq -nc --arg c "cat \"\$HOME\"/.claude/$SENT" '{tool_name:"Bash",tool_input:{command:$c}}')' | bash '$G'" 2>/dev/null; echo $?)
+chk "PERMITE leitura pura do sentinela via Bash (cat)" "$R" 0
+HLV="$TMP/hlv"; mkdir -p "$HLV/.claude"
+WCMD2="echo pwn $(printf '\076') \"\$HOME\"/.claude/verify-cmd-approved"
+R=$(HOME="$HLV" bash -c "printf '%s' '$(jq -nc --arg c "$WCMD2" '{tool_name:"Bash",tool_input:{command:$c}}')' | bash '$G'" 2>/dev/null; echo $?)
+chk "BLOQUEIA escrita Bash em verify-cmd-approved" "$R" 2
+# Ataque de symlink (ADR 0012, "Ataque de symlink, tentado e bloqueado"): o sentinela aponta
+# para um arquivo de ROOT real (/proc/sys/fs/file-max, leitura publica em qualquer Linux) cujo
+# conteudo e um inteiro muito maior que qualquer epoch atual. Com `stat -L` isto autorizaria;
+# sem `-L` o dono reportado e o do link, nao do alvo. `/proc/sys/kernel/shmmax` foi descartado
+# como fixture: neste kernel seu valor (18446744073692774399) excede o inteiro de 64 bits COM
+# SINAL que `[ -gt ]` do bash compara, e a comparacao erra por overflow em vez de autorizar -
+# mascarando exatamente o efeito que este caso existe para provar. `file-max` e o proprio limite
+# de INT64_MAX (9223372036854775807): grande o bastante para nunca ser confundido com um epoch,
+# pequeno o bastante para o bash comparar sem estourar.
+if [ -r /proc/sys/fs/file-max ]; then
+  HLY="$TMP/hly"; mkdir -p "$HLY/.claude"
+  ln -s /proc/sys/fs/file-max "$HLY/.claude/$SENT"
+  R=$(HOME="$HLY" bash -c "printf '%s' '{\"tool_name\":\"Agent\",\"tool_input\":{\"model\":\"$MODEL_X\"}}' | bash '$G'" 2>/dev/null; echo $?)
+  chk "NEGA symlink do sentinela para arquivo de root com inteiro grande" "$R" 2
+else
+  echo "  NAO MEDIDO  symlink do sentinela para arquivo de root (/proc/sys/fs/file-max ausente ou ilegivel)"
+fi
+# Fail-closed sem jq (ADR 0012, item 3): PATH reduzido a um subconjunto sem jq.
+BINJ="$TMP/bin-sem-jq"; mkdir -p "$BINJ"
+for b in cat grep sed date bash; do p="$(command -v $b 2>/dev/null)" && ln -sf "$p" "$BINJ/$b"; done
+R=$(PATH="$BINJ" bash -c "printf '%s' '{\"tool_name\":\"Agent\",\"tool_input\":{\"model\":\"$MODEL_X\"}}' | PATH='$BINJ' bash '$G'" 2>/dev/null; echo $?)
+chk "FAIL-CLOSED sem jq disponivel" "$R" 2
+# Garantias que so sao observaveis com um sentinela pertencente a ROOT de verdade (permitir a
+# sessao principal; e a negacao do subagente PRECISA sobreviver a um sentinela que, sozinho,
+# seria aceito - e essa e a garantia central do ADR: "a negacao de subagente sobrevive ao
+# consentimento valido"). Sem sudo nao-interativo neste ambiente, a posse de root e obtida por
+# um namespace de usuario NAO PRIVILEGIADO (`unshare --map-root-user --user`): o kernel mapeia
+# o UID real do processo para 0 dentro do namespace, e um arquivo criado ali E realmente
+# relatado como pertencente a "root" por `stat -c '%U'` fora daquele namespace tambem (mesmo
+# UID real, mesmo mapeamento) - nao e um mock da ferramenta, e o mesmo mecanismo de UID do
+# kernel que o hook consulta em producao. Se o kernel deste ambiente nao permitir namespaces de
+# usuario sem privilegio, as tres garantias abaixo ficam SEM MEDICAO - declarado, e distinto de
+# terem passado.
+UNSHARE_OK=0
+if unshare --map-root-user --user true >/dev/null 2>&1; then UNSHARE_OK=1; fi
+if [ "$UNSHARE_OK" = "1" ]; then
+  run_ns(){ # $1=HOME  $2=payload json  -> exit code do hook dentro do namespace
+    local h="$1" payload="$2" scr="$TMP/ns_$RANDOM.sh"
+    { printf 'export HOME=%q\n' "$h"; printf "printf '%%s' %q | bash %q\n" "$payload" "$G"; } > "$scr"
+    unshare --map-root-user --user bash "$scr" >/dev/null 2>&1
+    echo $?
+  }
+  mk_sent_ns(){ # $1=caminho do sentinela  $2=conteudo (epoch)
+    local scr="$TMP/mk_$RANDOM.sh"
+    printf 'printf %%s\\\\n %q > %q\n' "$2" "$1" > "$scr"
+    unshare --map-root-user --user bash "$scr" >/dev/null 2>&1
+  }
+  HR="$TMP/hr"; mkdir -p "$HR/.claude"
+  mk_sent_ns "$HR/.claude/$SENT" "$(( $(date +%s) + 3600 ))"
+  PAY_R=$(jq -nc --arg m "$MODEL_X" '{tool_name:"Agent",tool_input:{model:$m}}')
+  R=$(run_ns "$HR" "$PAY_R")
+  chk "PERMITE sessao principal com sentinela de ROOT valido" "$R" 0
+  PAY_S=$(jq -nc --arg m "$MODEL_X" '{tool_name:"Agent",agent_id:"s1",tool_input:{model:$m}}')
+  R=$(run_ns "$HR" "$PAY_S")
+  chk "NEGA subagente MESMO com sentinela de root valido" "$R" 2
+  HE="$TMP/he"; mkdir -p "$HE/.claude"
+  mk_sent_ns "$HE/.claude/$SENT" "1"
+  R=$(run_ns "$HE" "$PAY_R")
+  chk "NEGA sentinela de root EXPIRADO" "$R" 2
+else
+  echo "  NAO MEDIDO  sessao principal com sentinela de root valido (unshare --map-root-user indisponivel)"
+  echo "  NAO MEDIDO  subagente NEGADO mesmo com sentinela de root valido (unshare --map-root-user indisponivel)"
+  echo "  NAO MEDIDO  sentinela de root EXPIRADO (unshare --map-root-user indisponivel)"
+fi
 S="$EVID/subagent-contract.sh"
 # Os quatro blocos, e nao dois: a mensagem do hook cobra RESULTADO/EVIDENCIA/RISCOS/
 # PROPAGACAO desde sempre, mas o codigo so conferia os dois primeiros. A auditoria mediu um
@@ -285,7 +378,11 @@ echo "================ PASS=$P  FAIL=$F ================"
 # CONTAGEM INVARIANTE - esta era a UNICA suite sem ela, achado do portao final. E logo esta,
 # que hospeda os casos do oraculo da ancora: um caso que parasse de rodar aqui sumiria em
 # silencio, e foi exatamente assim que a ancora ficou sem discriminador por versoes inteiras.
-EXPECTED=53
+# 3 dos 66 casos (sentinela de root valido / subagente com sentinela valido / sentinela
+# expirado) so rodam quando `unshare --map-root-user --user` esta disponivel (UNSHARE_OK, ==
+# 8). Sem isso a contagem fixa quebraria em qualquer ambiente sem namespace de usuario sem
+# privilegio - variancia AMBIENTAL declarada, distinta de caso removido em silencio.
+EXPECTED=$((63 + UNSHARE_OK * 3))
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
