@@ -26,7 +26,13 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
-          python3 -m pip install --quiet 'ruff==0.15.5' 'pandas==2.2.3' 'openpyxl==3.1.5' 'pymupdf==1.27.1' 'packaging==25.0' 'pyyaml==6.0.2' 'coverage==7.13.4'
+          # PIP COM HASH DO FECHO TRANSITIVO. Antes desta linha havia sete pacotes com `==`
+          # inline: isso pinava a versao de TOPO e deixava numpy, python-dateutil, pytz, six,
+          # tzdata e et-xmlfile livres e sem hash nenhum. `==` responde 'qual versao', nunca
+          # 'qual artefato'. `--require-hashes` exige hash para TODO pacote do fecho e recusa
+          # qualquer arquivo cujo sha256 nao case. Ver install/requirements-ci.txt para como o
+          # arquivo foi gerado e validado, e install/regen-requirements.sh para regerar.
+          python3 -m pip install --quiet --require-hashes -r install/requirements-ci.txt
           # EXCECAO DECLARADA - apt NAO pinado: `ubuntu-24.04` fixa a familia da imagem, nao
           # o snapshot do repositorio apt. Fixar versoes apt contra um runner hospedado quebraria
           # quando a imagem girasse. Isto compra auditabilidade, NAO hermeticidade; as versoes
