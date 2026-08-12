@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: e3a28c63c89455c6f245cbd26d02e1b9441863a4
+  subject_snapshot: f54740c6b4fe8aed934508a5cd4b404873295fd5
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -21,13 +21,15 @@ scope:
 evidence:
   regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15,
                V16, V17, V18, V19, V20, V21, V22, V23, V24, V25, V26, V27, V28,
-               V29, V30, V31, V32, V33, V34, V35, V36, V37, V38, V39]
+               V29, V30, V31, V32, V33, V34, V35, V36, V37, V38, V39, V40, V41,
+               V42, V43, V44]
   mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7, MV8, MV9, MV10, MV11, MV12, MV13,
-            MV14, MV15, MV16, MV17, MV18, MV19, MV20]
+            MV14, MV15, MV16, MV17, MV18, MV19, MV20, MV21, MV22, MV23, MV24,
+            MV25, MV26, MV27, MV28, MV29, MV30]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
-    blob_sha: 2ada94e9b28411b7e75c7f735707cd8009b905c3
+    blob_sha: 45ca059b5a702fcb3285f0fa90a5dab40feaf574
     line_start: 27
     line_end: 44
 warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-externa.sh` declara
@@ -382,5 +384,53 @@ limitations:
   ressalva ja registrada no comentario do codigo). O leitor desta claim ANTES desta correcao teria
   concluido o OPOSTO do que o codigo faz hoje; o `subject_snapshot` desta claim foi reancorado
   junto com esta retratacao (ver `scope.subject_snapshot`) exatamente para que essa contradicao
-  nao persista.'
+  nao persista.
+
+
+  ADENDO (wave9, commit `f54740c6b4fe8aed934508a5cd4b404873295fd5`): esta reancoragem tambem
+  fecha uma DIVIDA DE CITACAO anterior - as ondas 7 e 8 (V40-V43, MV21-MV29) ja existiam no
+  codigo, mas nunca foram citadas em `evidence.regression`/`evidence.mutants` desta claim; a
+  ultima reancoragem (commit `0104f83`) precedeu a introducao delas. `evidence.regression` e
+  `evidence.mutants` agora citam ate V44/MV30, o conjunto completo presente neste
+  `subject_snapshot`.
+
+  O ACHADO desta onda: uma revisao independente sobre o commit que introduziu O OITAVO DEGRAU
+  mostrou que `current_user_can_bypass`=never e `bypass_actors` respondem perguntas DIFERENTES.
+  `current_user_can_bypass` mede Bypass(token,P) - ESTE ator (o GITHUB_TOKEN que executa o
+  probe) contorna a regra? `bypass_actors` mede exists a. Bypass(a,P) - existe ALGUM ator que
+  contorna a regra? - o quantificador que a formula publicada usa, e que a propria lista de
+  condicoes do docstring do probe ja definia: "bypass_actors nao vazio, ou
+  current_user_can_bypass != never -> FAIL... Bypass(a,P) = True para algum a". A onda 8 tratava
+  a medicao do primeiro termo como SUFICIENTE para o segundo quando `bypass_actors` nao estava
+  disponivel (PASS_PARCIAL, exit 0). Medido com o MESMO stub e o MESMO ruleset, variando so a
+  VISAO do token: visao ADMIN (`bypass_actors` visivel, contendo um ator `OrganizationAdmin`)
+  sai FAIL, exit 1; visao CI/leitura (o MESMO ruleset, campo omitido pela API por falta de
+  acesso de escrita) saia PASS_PARCIAL, exit 0. A DIRECAO estava invertida: reduzir o privilegio
+  do observador AUMENTAVA a aprovacao sobre a MESMA realidade. Contra a API viva (github/docs,
+  ruleset 19633356, token sem acesso de escrita ao ruleset): o probe anterior a onda 8 saia
+  NOT_VERIFIED exit 2; o probe da onda 8 saia PASS_PARCIAL exit 0 - para o MESMO ruleset, sem
+  nenhuma mudanca na configuracao real. Sob o perfil de token que o CI usa (GITHUB_TOKEN,
+  contents:read), o ramo "bypass_actors nao vazio" - a violacao mais grave que este probe existe
+  para pegar - ficava INALCANCAVEL: bypass concedido a `OrganizationAdmin`, a um time ou a uma
+  deploy key saia `PASS_PARCIAL exit=0` para sempre.
+
+  CORRIGIDO: `EXIT[PASS_PARCIAL]` volta a 2, o MESMO de NOT_VERIFIED. O `estado` PASS_PARCIAL
+  PERMANECE distinto de PASS e de NOT_VERIFIED puros - a distincao continua informativa
+  (`motivo` nomeia exatamente qual medicao foi feita, Bypass(token,P)=never, e qual ficou de
+  fora, a lista de outros atores) - so o exit code deixa de tratar essa medicao parcial como
+  aprovacao. `tests/unit/fronteira-viva.sh` ganhou V44: mesmo ruleset de V4, visao ADMIN com
+  `bypass_actors` visivel contendo um ator continua FAIL exit 1 - o CONTROLE que a revisao
+  construiu, provando que ver MENOS nunca aprova MAIS sobre a MESMA realidade.
+  `tests/mutation/fronteira-viva.sh` ganhou MV30, que reverte `EXIT[PASS_PARCIAL]` para 0 e
+  morre em V4.
+
+  LIMITE PERMANENTE E CONHECIDO, acrescentado por esta correcao: sob um token sem acesso de
+  escrita ao ruleset (o perfil de um `GITHUB_TOKEN` de Actions com `contents: read`, o mesmo que
+  a limitacao de execucao agendada abaixo recomenda), `bypass_actors` NAO E OBSERVAVEL por este
+  probe - a API do GitHub nunca devolve essa lista a esse perfil. O termo existencial
+  exists a. Bypass(a,P) NAO E MEDIDO nesse caso, e o probe declara NAO VERIFICADO (exit 2),
+  nunca PASS - mesmo quando `current_user_can_bypass`=never confirma que o proprio ator
+  autenticado nao contorna a regra. Fechar esta lacuna exige rodar o probe com um token que
+  tenha acesso de escrita ao ruleset (nao o GITHUB_TOKEN de execucao agendada); nenhuma
+  heuristica sobre o campo parcial visivel substitui essa medicao.'
 status: supported-in-tested-domain

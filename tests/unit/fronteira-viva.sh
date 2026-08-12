@@ -172,7 +172,7 @@ case "$REQ" in
       empty) echo '[]' ;;
       # As variantes abaixo so divergem no que rulesets/{id} devolve: a resposta de
       # rules/branches e a mesma "regra aplicavel, contexto verify-pr presente" de `pass`.
-      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado|enforcement-nao-active|cucb-nao-never|bypass-ausente-cucb-ausente)
+      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado|enforcement-nao-active|cucb-nao-never|bypass-ausente-cucb-ausente|bypass-visivel-admin)
         cat <<'JSON'
 [
   {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
@@ -593,6 +593,15 @@ JSON
         # GERAL, nao a medicao parcial tolerada. 'enforcement' fica presente e limpo para isolar
         # o predicado (nenhuma outra lacuna alem das duas de bypass).
         echo '{"id":999,"enforcement":"active"}' ;;
+      bypass-visivel-admin)
+        # (wave9, V44, CONTROLE de V4) MESMO ruleset 999 de 'bypass-ausente': mesma resposta de
+        # rules/branches, mesmo 'current_user_can_bypass'='never'. A UNICA diferenca e a VISAO do
+        # token: aqui 'bypass_actors' e VISIVEL (perfil com escrita no ruleset) e contem um ator
+        # OrganizationAdmin com bypass concedido - exists a. Bypass(a,P) agora e OBSERVAVEL e VALE.
+        # Reduzir a visao do observador (bypass-ausente, mesmo ruleset, campo omitido) NUNCA pode
+        # tornar o veredito MAIS permissivo do que esta visao mais ampla da MESMA realidade.
+        echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never",
+               "bypass_actors":[{"actor_type":"OrganizationAdmin","actor_id":1,"bypass_mode":"always"}]}' ;;
       bypass-nao-vazio)
         echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never",
                "bypass_actors":[{"actor_type":"Team","actor_id":42,"bypass_mode":"always"}]}' ;;
@@ -732,22 +741,27 @@ RC2=$(PATH="$NOBIN" "$PYBIN" "$PROBE" --owner stub --repo repo --branch main --c
 chk "  'gh' ausente do PATH tambem e NOT_VERIFIED (mesma doutrina, outra causa)" "$RC2" 2
 chk "  e nomeia a dependencia ausente" "$(grep -q "'gh'" "$T/out2" && echo sim || echo nao)" "sim"
 
-echo "== V4. (wave8, redefinido) 'bypass_actors' AUSENTE + 'current_user_can_bypass'='never' =="
-echo "==     -> PASS_PARCIAL, exit 0 (MEDICAO PARCIAL DECLARADA, nao lacuna geral) =="
+echo "== V4. (wave8 -> exit revertido em wave9) 'bypass_actors' AUSENTE + 'current_user_can_bypass'='never' =="
+echo "==     -> PASS_PARCIAL, exit 2 (estado informativo permanece; exit volta a NAO VERIFICADO) =="
 # ATE wave7, este caso saia NOT_VERIFIED exit 2 - o defeito que a onda 4 fechou (achado CRITICO:
 # 'or []' sobre um campo NAO DEVOLVIDO por falta de acesso de escrita ao ruleset virava "medido:
-# []" e o probe saia PASS fabricado; reproduzido contra o servidor real em github/docs). Mas
-# medido nesta sessao (wave8) contra a API VIVA, com o MESMO perfil de token que o CI usa
-# (GITHUB_TOKEN, contents:read) e um ruleset PERFEITAMENTE configurado: o probe saia NOT_VERIFIED
-# exit 2 SEMPRE, porque a API nunca devolve 'bypass_actors' a esse perfil - o passo de CI que
-# instala este probe nao podia jamais ficar verde. 'current_user_can_bypass'='never' (devolvido
-# PARA O ATOR AUTENTICADO, sem exigir escrita) e uma medicao REAL e SUFICIENTE para o proprio
-# ator do probe - MEDICAO PARCIAL DECLARADA, nao a mesma lacuna de "nada medido" (ver docstring
-# do probe, "O OITAVO DEGRAU"). V42 abaixo e o CONTROLE: a mesma ausencia de bypass_actors SEM
-# cucb='never' continua NOT_VERIFIED.
+# []" e o probe saia PASS fabricado; reproduzido contra o servidor real em github/docs). Na wave8,
+# medido contra a API VIVA com o MESMO perfil de token que o CI usa (GITHUB_TOKEN, contents:read)
+# e um ruleset PERFEITAMENTE configurado, o probe saia NOT_VERIFIED exit 2 SEMPRE - a onda 8
+# trocou para PASS_PARCIAL exit 0, argumentando que 'current_user_can_bypass'='never' ja media
+# not Bypass(a,P) por completo para o ator autenticado. Uma revisao independente (wave9) mostrou
+# que 'current_user_can_bypass' mede Bypass(token,P) - ESTE ator contorna? -, nao
+# exists a. Bypass(a,P) - existe ALGUM ator que contorna?, o quantificador que a formula publicada
+# usa (ver docstring do probe, linhas ~47-48, e "O NONO DEGRAU"). V44 abaixo e o CONTROLE que a
+# revisao construiu: o MESMO ruleset, com 'bypass_actors' VISIVEL e contendo um OrganizationAdmin,
+# sai FAIL exit 1 - reduzir a visao do observador (este caso) NUNCA pode tornar o veredito mais
+# permissivo do que a visao mais ampla da MESMA realidade. exit volta a 2; o `estado` PASS_PARCIAL
+# permanece distinto de PASS e de NOT_VERIFIED puros - a distincao continua informativa. V42
+# abaixo e o CONTROLE preexistente: a mesma ausencia de bypass_actors SEM cucb='never' continua
+# NOT_VERIFIED.
 MRK="$T/chamou-ruleset-v4"; rm -f "$MRK"
 RC="$(rodar bypass-ausente "$MRK")"
-chk "exit code 0 (nao mais 2 - medicao parcial declarada, nao lacuna geral, wave8)" "$RC" 0
+chk "exit code 2 (wave9: medicao parcial declarada NAO e aprovacao - exists a.Bypass(a,P) nao medido)" "$RC" 2
 chk "relata estado PASS_PARCIAL (nunca PASS puro, nunca NOT_VERIFIED)" \
     "$(grep -q '^estado: PASS_PARCIAL$' "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO relata estado PASS puro (a limitacao tem de ficar nomeada, nao escondida)" \
@@ -760,8 +774,8 @@ chk "  motivo cita MEDICAO PARCIAL DECLARADA (a limitacao nao pode ficar so no e
     "$(grep -q 'MEDICAO PARCIAL DECLARADA' "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'bypass_actors=[]' sem ter medido" \
     "$(grep -q 'bypass_actors=\[\]' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
-chk "  stderr nomeia a limitacao (canal que o operador le, nunca so exit 0 silencioso)" \
-    "$(grep -q 'PASS COM MEDICAO PARCIAL' "$T/err" && echo sim || echo nao)" "sim"
+chk "  stderr nomeia a limitacao (canal que o operador le, nunca so exit 2 silencioso)" \
+    "$(grep -q 'NAO VERIFICADO COM MEDICAO PARCIAL' "$T/err" && echo sim || echo nao)" "sim"
 
 echo "== V5. 'bypass_actors' NAO vazio -> FAIL (ha ator que pode burlar a regra) =="
 MRK="$T/chamou-ruleset-v5"; rm -f "$MRK"
@@ -1322,11 +1336,36 @@ chk "  NAO relata estado NOT_VERIFIED (severidade nao pode ser rebaixada, v43)" 
 chk "  NAO chama o endpoint de ruleset (ruleset_id nunca foi resolvido, v43)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
 
+echo "== V44. (wave9) mesmo ruleset de V4: visao restrita -> exit 2; visao ADMIN (bypass_actors"
+echo "==      visivel com um ator) -> FAIL, exit 1. Ver MENOS nunca pode aprovar MAIS =="
+# CONTROLE construido pela revisao independente que motivou esta onda: 'bypass-ausente' (V4) e
+# 'bypass-visivel-admin' (aqui) tem a MESMA resposta de rules/branches e o MESMO
+# 'current_user_can_bypass'='never' - a UNICA variavel e se 'bypass_actors' e divulgado pela API
+# (visao ADMIN, com escrita no ruleset) ou omitido (visao CI/leitura, sem escrita). Antes desta
+# onda, a visao MAIS RESTRITA (menos informacao) saia MAIS APROVADA (PASS_PARCIAL exit 0) que a
+# visao MAIS AMPLA (FAIL exit 1) sobre a MESMA realidade - a direcao invertida que a revisao
+# mediu. Depois: a visao restrita nunca sai exit 0, e a visao admin, quando acha um ator com
+# bypass, continua FAIL exit 1 - reduzir a visao do observador nao pode tornar o veredito mais
+# permissivo.
+MRK="$T/chamou-ruleset-v44a"; rm -f "$MRK"
+RC="$(rodar bypass-ausente "$MRK")"
+chk "  visao restrita (bypass_actors omitido): exit code 2, nunca 0 (v44)" "$RC" 2
+chk "  visao restrita: relata PASS_PARCIAL, nunca PASS puro (v44)" \
+    "$(grep -q '^estado: PASS_PARCIAL$' "$T/out" && echo sim || echo nao)" "sim"
+MRK="$T/chamou-ruleset-v44b"; rm -f "$MRK"
+RC="$(rodar bypass-visivel-admin "$MRK")"
+chk "  visao ADMIN (bypass_actors visivel com OrganizationAdmin): exit code 1 (v44)" "$RC" 1
+chk "  visao ADMIN: relata estado FAIL (v44)" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  visao ADMIN: motivo cita 'bypass_actors nao vazio' (v44)" \
+    "$(grep -qF 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
+chk "  visao ADMIN: NAO relata PASS_PARCIAL nem PASS (ver MAIS nao pode aprovar mais que ver MENOS, v44)" \
+    "$(grep -qE '^estado: (PASS|PASS_PARCIAL)$' "$T/out" && echo vazou || echo contido)" "contido"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V43 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=182
+# V10-V44 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=188
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

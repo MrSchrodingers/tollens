@@ -230,17 +230,48 @@ que o codigo ate aqui tratava como a MESMA lacuna:
       nao medido coexistindo com a forma (i). Continua NOT_VERIFIED, exit 2 - a lacuna aqui e
       genuinamente indeterminada, sem outro campo do servidor que a resolva.
 
-EXIT CODE de (i): 0, mesmo numero de PASS, mas com um `estado` DISTINTO (`PASS_PARCIAL`, nunca
-`PASS` puro) e a limitacao NOMEADA em `motivo`. A alternativa (um exit != 0 e != 2, ex. 3) foi
-avaliada e REJEITADA: o passo de CI que consome este probe (ver os workflows citados acima) trata
-QUALQUER exit != 0 como falha do step - um novo exit code manteria o CI vermelho para sempre sob
-o perfil recomendado, o MESMO problema que esta correcao existe para resolver, so deslocado de
-"exit 2" para "exit 3". A garantia que nao pode se perder: (i) nunca pode ser confundido com PASS
-puro por quem le so o exit code (dai o `estado` distinto, verificado literalmente pela suite,
-nunca so a prosa de `motivo`) nem pode mascarar uma lacuna genuinamente indeterminada que
-coexista com ela (dai a comparacao `len(nao_medidos) == len(medicao_parcial)` em `probe`, nao
-"algo tolerado foi encontrado": QUALQUER outra entrada em `nao_medidos`, de qualquer origem,
-bloqueia a classificacao como MEDICAO PARCIAL e preserva NOT_VERIFIED).
+EXIT CODE de (i): revertido em wave9 (ver "O NONO DEGRAU" abaixo) para 2 - o MESMO de
+NOT_VERIFIED. O `estado` continua DISTINTO (`PASS_PARCIAL`, nunca `PASS` puro nem `NOT_VERIFIED`
+puro) e a limitacao continua NOMEADA em `motivo`. A garantia que nao pode se perder: (i) nunca
+pode ser confundido com PASS puro por quem le so o exit code (dai o `estado` distinto, verificado
+literalmente pela suite, nunca so a prosa de `motivo`) nem pode mascarar uma lacuna genuinamente
+indeterminada que coexista com ela (dai a comparacao `len(nao_medidos) == len(medicao_parcial)`
+em `probe`, nao "algo tolerado foi encontrado": QUALQUER outra entrada em `nao_medidos`, de
+qualquer origem, bloqueia a classificacao como MEDICAO PARCIAL e preserva NOT_VERIFIED). Exit 0
+(a decisao original desta onda) foi MEDIDO como o defeito OPOSTO ao que este arquivo existe para
+proibir - ver "O NONO DEGRAU" a seguir.
+
+O NONO DEGRAU (wave9, 2026-08-12) - PASS_PARCIAL exit 0 media o quantificador errado de
+not Bypass(a,P); revertido para exit 2, o estado PERMANECE
+-----------------------------------------------------------------------------------------------
+A correcao acima (wave8) tratava `current_user_can_bypass`='never' como medicao SUFICIENTE de
+not Bypass(a,P) quando `bypass_actors` nao estava disponivel. Uma revisao independente mostrou
+que os dois campos respondem perguntas DIFERENTES: `bypass_actors` responde "existe algum ator
+que contorna a regra?" (exists a. Bypass(a,P) - o quantificador que a lista de condicoes de FAIL
+no topo deste docstring ja usa: "bypass_actors nao vazio, ou current_user_can_bypass != 'never'
+-> FAIL... Bypass(a,P) = True para algum a"); `current_user_can_bypass` responde "ESTE ator (o
+token autenticado) contorna a regra?" (Bypass(token,P)). Medido com o mesmo stub e o MESMO
+ruleset, variando so a VISAO do token: visao ADMIN (`bypass_actors` visivel, contendo
+`OrganizationAdmin`) saia FAIL, exit 1; visao CI/leitura (o MESMO ruleset, campo omitido pela API
+por falta de acesso de escrita) saia PASS_PARCIAL, exit 0. A DIRECAO estava invertida: reduzir o
+privilegio do observador AUMENTAVA a aprovacao sobre a MESMA realidade. Medido contra a API viva
+(github/docs, ruleset 19633356, token sem acesso de escrita ao ruleset): o probe anterior a wave8
+saia NOT_VERIFIED exit 2; o probe de wave8 saia PASS_PARCIAL exit 0 - para o MESMO ruleset, sem
+nenhuma mudanca na configuracao real. Sob o perfil de token que o CI usa, o ramo "bypass_actors
+nao vazio" (a violacao mais grave que este probe existe para pegar) ficava INALCANCAVEL: bypass
+concedido a `OrganizationAdmin`, a um time ou a uma deploy key saia `PASS_PARCIAL exit=0` para
+sempre, porque a API nunca devolve a lista a esse perfil.
+
+REVERTIDO: `EXIT[PASS_PARCIAL]` volta a 2. O `estado` PASS_PARCIAL PERMANECE distinto de
+NOT_VERIFIED e de PASS puro - a distincao e informativa (`motivo` continua nomeando exatamente
+qual medicao foi feita, `current_user_can_bypass`='never' para o ator autenticado, e qual ficou
+de fora, a lista de outros atores) - so o EXIT CODE deixa de tratar essa medicao parcial como
+aprovacao. O LIMITE permanente e conhecido: sob um token sem acesso de escrita ao ruleset,
+`bypass_actors` nao e observavel por este probe, portanto o termo existencial de Bypass
+(exists a. Bypass(a,P)) NAO e medido, e o veredito e NAO VERIFICADO - nunca verde. Rodar este
+probe com privilegio suficiente para ver `bypass_actors` (um token com escrita no ruleset, nao o
+GITHUB_TOKEN de Actions com `contents: read`) e a UNICA forma de fechar essa lacuna; nenhuma
+heuristica sobre o campo parcial que o token consegue ver substitui isso.
 """
 from __future__ import annotations
 
@@ -251,13 +282,16 @@ import subprocess
 import sys
 
 PASS, FAIL, NOT_VERIFIED = "PASS", "FAIL", "NOT_VERIFIED"
-# (wave8) MEDICAO PARCIAL DECLARADA: not Bypass(a,P) medido POR COMPLETO para o ator autenticado
-# ('current_user_can_bypass'='never'), mas a LISTA de atores com bypass concedido
-# ('bypass_actors') nao foi divulgada pela API (falta de acesso de escrita ao ruleset) - ver
-# docstring, secao "O OITAVO DEGRAU". Exit 0 (o portao pode ficar verde), `estado` DISTINTO de
-# PASS puro - nunca confundido com "tudo medido, nada encontrado" por quem le so o exit code.
+# (wave8, exit revertido em wave9) MEDICAO PARCIAL DECLARADA: not Bypass(a,P) medido POR COMPLETO
+# para o ator autenticado ('current_user_can_bypass'='never'), mas a LISTA de atores com bypass
+# concedido ('bypass_actors') nao foi divulgada pela API (falta de acesso de escrita ao ruleset) -
+# ver docstring, secoes "O OITAVO DEGRAU" e "O NONO DEGRAU". `current_user_can_bypass` mede
+# Bypass(token,P); `bypass_actors` mede exists a. Bypass(a,P) - o quantificador que a formula
+# publicada exige. Medir so o primeiro NAO fecha o segundo: exit e o MESMO de NOT_VERIFIED (2),
+# `estado` continua DISTINTO de NOT_VERIFIED puro e de PASS puro - a limitacao fica NOMEADA em
+# `motivo`, nunca escondida atras de um exit verde nem de um exit indistinguivel de "nada medido".
 PASS_PARCIAL = "PASS_PARCIAL"
-EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 0}
+EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 2}
 
 # Formato de owner/repo do GitHub: nunca comeca com '-' (evitaria que um valor externo fosse
 # lido como opcao por `gh`), e so os caracteres que o GitHub aceita em login/nome de repo.
@@ -973,23 +1007,26 @@ def probe(owner, repo, branch, context):
 
     if nao_medidos:
         if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
-            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
-            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
-            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
-            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
-            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
-            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
-            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
-            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
-            # o residuo que sobra.
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
             return Resultado(
                 PASS_PARCIAL,
                 f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
-                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
                 f"('current_user_can_bypass'='never' em todos os rulesets de origem "
-                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
-                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
-                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
                 + "; ".join(medicao_parcial),
                 {"rules": rules, "rulesets": detalhes_rulesets},
             )
@@ -1040,12 +1077,15 @@ def main(argv):
         print("Estado: NAO VERIFICADO - a lacuna de oraculo (rede/token/API) impede o veredito. "
               "Nao declare PASS nem FAIL por auto-avaliacao.", file=sys.stderr)
     elif r.estado == PASS_PARCIAL:
-        # (wave8) exit 0 (o step de CI passa), mas a limitacao fica nomeada no canal que o
-        # operador le - nunca so no `motivo` de stdout, que costuma ser resumido em dashboards.
-        print("Estado: PASS COM MEDICAO PARCIAL - 'bypass_actors' nao foi divulgado pela API "
-              "(falta de acesso de escrita ao ruleset); 'current_user_can_bypass'='never' foi "
-              "medido para o ator autenticado. Bypass concedido a outro ator/role nao e "
-              "observavel por este probe sob este token.", file=sys.stderr)
+        # (wave8, exit revertido em wave9) exit 2 (o step de CI NAO passa), e a medicao parcial
+        # fica nomeada no canal que o operador le - nunca so no `motivo` de stdout, que costuma
+        # ser resumido em dashboards.
+        print("Estado: NAO VERIFICADO COM MEDICAO PARCIAL - 'bypass_actors' nao foi divulgado "
+              "pela API (falta de acesso de escrita ao ruleset), portanto exists a. Bypass(a,P) "
+              "nao foi medido; 'current_user_can_bypass'='never' foi medido para o ator "
+              "autenticado (Bypass(token,P)). Bypass concedido a outro ator/role nao e "
+              "observavel por este probe sob este token - nao declare PASS por auto-avaliacao "
+              "sobre o residuo que sobra.", file=sys.stderr)
     return r.exit_code
 
 
