@@ -107,7 +107,7 @@ jobs:
       # verificado a exaustao e nunca instalado. A claim C-018 ancorava numa observacao manual.
       # exit 0=PASS, 1=FAIL, 2=NAO VERIFICADO. Os tres decidem: NAO VERIFICADO tratado como
       # verde seria o mesmo defeito que o resto deste portao existe para impedir.
-      - name: fronteira viva (Applies(P,r) medido no servidor do GitHub)
+      - name: fronteira viva CONTRA A API REAL do GitHub (nao stub) - Applies(P,r) e Bypass(a,P)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -142,6 +142,8 @@ jobs:
         run: bash tests/mutation/capabilities.sh
       - name: cobertura de decisao (mecanismo, evidence/cobertura.sh)
         run: bash tests/unit/cobertura.sh
+      - name: validacao por mutacao (guarda dura do Fable - superficie de autorizacao)
+        run: bash tests/mutation/fable-guard.sh
       - name: validacao por mutacao (cobertura de decisao)
         run: bash tests/mutation/cobertura.sh
       - name: cobertura de decisao (piso por arquivo, evidence/probes|validate-*|schedule.py)
