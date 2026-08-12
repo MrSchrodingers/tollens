@@ -71,6 +71,19 @@ Este probe segue a mesma doutrina para a rede e a API:
                                                   defeito, um passo adiante: `or []` colapsava
                                                   null em vazio, e um tipo nao-lista estourava
                                                   TypeError nao tratado em vez de NOT_VERIFIED.
+  - `bypass_actors` ausente E
+    `current_user_can_bypass` == "never"    -> PASS_PARCIAL, exit 2. E um REFINAMENTO de
+                                                  NOT_VERIFIED, nao um quarto veredito: o exit
+                                                  code e o mesmo, e o estado existe so para
+                                                  nomear POR QUE nao foi medido. Os dois campos
+                                                  respondem perguntas diferentes -
+                                                  `bypass_actors` responde `∃a. Bypass(a,P)`,
+                                                  `current_user_can_bypass` responde
+                                                  `Bypass(token,P)`. Uma versao anterior tratou
+                                                  o segundo como substituto do primeiro e saiu
+                                                  exit 0; medido contra a API viva, isso INVERTIA
+                                                  a direcao - reduzir o privilegio do observador
+                                                  deixava o portao verde sobre o mesmo ruleset.
   - tudo acima satisfeito                    -> PASS, exit 0.
 
 Quando ha violacao PROVADA (bypass_actors nao vazio, current_user_can_bypass!=never,

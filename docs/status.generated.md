@@ -19,7 +19,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
 | `tests/unit/schedule.sh` | 29 | 0 |
-| `tests/unit/fronteira-viva.sh` | 169 | 0 |
+| `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 38 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
@@ -36,12 +36,12 @@ O README referencia este arquivo em vez de duplicar numeros.
 | fronteira externa | 7 | 0 |
 | conformidade de dois escopos | 7 | 0 |
 | escalonamento | 10 | 0 |
-| fronteira viva | 26 | 0 |
+| fronteira viva | 30 | 0 |
 | camada de literatura | 13 | 0 |
 | claim ledger | 8 | 0 |
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
-| fable-guard (auto) | 12 | 0 |
+| fable-guard (auto) | 12 | passo dedicado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 
@@ -51,7 +51,7 @@ assercao).
 
 | Arquivo | Medido | Piso | Status |
 |---|---:|---:|---|
-| `evidence/probes/github-ruleset.py` | 85.4% | 85.4% | OK |
+| `evidence/probes/github-ruleset.py` | 86.0% | 86.0% | OK |
 | `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
 | `evidence/runtime-probes/declared-capabilities.py` | 90.0% | 90.0% | OK |
