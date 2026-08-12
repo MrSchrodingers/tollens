@@ -15,8 +15,8 @@ url: https://arxiv.org/abs/2601.10338
 cited_in:
 - README.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
 - README.pt-BR.md#6.1 (novo - ainda nao referenciado antes desta mudanca)
-- README.md#16 (referencia [17], nova)
-- README.pt-BR.md#16 (referencia [17], nova)
+- README.md#16.1 (referencia [9])
+- README.pt-BR.md#16.1 (referencia [9])
 provenance: preprint
 study_quality:
   benchmark: "SkillScan (fonte: texto completo - detector proprio do estudo)."

@@ -1,4 +1,6 @@
-# tollens
+<p align="center">
+  <img src="docs/brand/tollens-header-en.png" alt="tollens" width="820">
+</p>
 
 > **Evidence-gated, multi-runtime orchestration for Claude Code Desktop/CLI and OpenAI Codex.**
 >
@@ -61,7 +63,6 @@ The mechanically generated operational status is maintained in [`docs/status.gen
 14. [Threat model and limitations](#14-threat-model-and-limitations)
 15. [Scientific and technical basis](#15-scientific-and-technical-basis)
 16. [References](#16-references)
-17. [Normative sources](#17-normative-sources)
 
 ---
 
@@ -683,7 +684,7 @@ Each guarantee tracked in `evidence/claims/*.yaml` resolves its supporting evide
 
 Local hooks are useful feedback mechanisms, but they execute inside a boundary writable or bypassable by the local actor. They therefore do not serve as the final integration authority.
 
-Claude Code documents hooks as deterministic lifecycle automation [14]. `tollens` uses that capability for local controls while reserving certification for the repository boundary.
+Claude Code documents hooks as deterministic lifecycle automation (Anthropic, [Claude Code: Hooks](https://code.claude.com/docs/en/hooks)). `tollens` uses that capability for local controls while reserving certification for the repository boundary.
 
 ### 9.2 Required context
 
@@ -695,7 +696,7 @@ verify-pr
 
 The workflow handles both `pull_request` and `merge_group`.
 
-GitHub documents that required checks must succeed before protected changes are merged and that merge-queue workflows need `merge_group` support when their checks are required [11][12].
+GitHub documents that required checks must succeed before protected changes are merged and that merge-queue workflows need `merge_group` support when their checks are required (GitHub Docs — [Status checks](https://docs.github.com/en/pull-requests/reference/status-checks); [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)).
 
 The push workflow is intentionally separate:
 
@@ -778,7 +779,7 @@ flowchart TB
 
 The Claude projection uses project configuration under `.claude/` plus `CLAUDE.md`.
 
-Claude Code's official documentation supports project-scoped subagents, tool restrictions, permission modes, hooks, skills, and worktree isolation [13][14][15].
+Claude Code's official documentation supports project-scoped subagents, tool restrictions, permission modes, hooks, skills, and worktree isolation (Anthropic — [Create custom subagents](https://code.claude.com/docs/en/sub-agents), [Hooks](https://code.claude.com/docs/en/hooks), [Run parallel sessions with worktrees](https://code.claude.com/docs/en/worktrees)).
 
 In this repository:
 
@@ -791,7 +792,7 @@ In this repository:
 
 The Codex projection uses `.codex/` and `AGENTS.md` for the agent configuration represented in this repository.
 
-OpenAI's current Codex documentation exposes `AGENTS.md`, subagents, skills, hooks, sandboxing, and Git worktrees as customization surfaces [16][17][18][19].
+OpenAI's current Codex documentation exposes `AGENTS.md`, subagents, skills, hooks, sandboxing, and Git worktrees as customization surfaces (OpenAI — [Custom instructions with AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md), [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Build skills](https://learn.chatgpt.com/docs/build-skills) / [Hooks](https://learn.chatgpt.com/docs/hooks), [Git worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees)).
 
 In this repository:
 
@@ -1003,7 +1004,7 @@ The thesis stated in the Abstract is that every verification layer this reposito
 3. **Mutation testing is necessary and blind to omission.** Measured in this repository (Section 8.5): removing two violation-detection branches from a ruleset-evaluation probe left 78 regression assertions passing and all 11 attributable mutants for that probe dead, because no test exercised a case combining those two conditions outside their expected values. A branch no test reaches cannot produce a live or a killed mutant — it never enters the count.
 4. **Decision coverage catches that omission and is itself satisfiable by dilution.** The same unexercised branch fails a percentage floor alone (87.8%, below an 88.4% floor) and passes once 30 unrelated covered statements sit next to it in the same file (88.8%). Section 8.5 describes the three-layer mechanism this repository uses to close that gap.
 5. **A class of phantom mutant does not close by static analysis.** The check that "a mutation was applied and an oracle was invoked" is textual: a forged block inside a disabled conditional satisfies it without anything running. Closing this requires executing the mutation script against a potentially hostile subject snapshot — declined by the current security boundary, and recorded as a declared limit rather than a fabricated closure.
-6. **The link that generalizes the other five.** An instrument can be exhaustively verified and never be installed. Before this correction, the platform-ruleset probe this repository depends on had 155 assertions, 20 mutants, and 83.3% branch coverage — and zero invocations outside `tests/`: absent from both CI workflows, from the installer manifest, and from every hook. Its correctness also depends on two platform contracts invisible from a single ruleset object: aggregation across rulesets keeps the most restrictive version of a rule [20], and the endpoint the probe polls omits rules from rulesets in `evaluate` or `disabled` enforcement status [21] — a filter the probe must replicate rather than assume.
+6. **The link that generalizes the other five.** An instrument can be exhaustively verified and never be installed. Before this correction, the platform-ruleset probe this repository depends on had 155 assertions, 20 mutants, and 83.3% branch coverage — and zero invocations outside `tests/`: absent from both CI workflows, from the installer manifest, and from every hook. Its correctness also depends on two platform contracts invisible from a single ruleset object: aggregation across rulesets keeps the most restrictive version of a rule (GitHub Docs — [About rulesets, "About rule layering"](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)), and the endpoint the probe polls omits rules from rulesets in `evaluate` or `disabled` enforcement status (GitHub REST API — [Rules, "Get rules for a branch"](https://docs.github.com/en/rest/repos/rules)) — a filter the probe must replicate rather than assume. Both contracts, and the verbatim text that grounds them, are also recorded in the comment above the predicate in `evidence/probes/github-ruleset.py` and in [ADR 0029](docs/adr/0029-sete-ondas-a-cegueira-sobe-um-nivel-por-vez.md).
 
 Formally, extending the `Mergeable(x)` decomposition of Section 4.2 from a pull request to a single guarantee `g`:
 
@@ -1037,7 +1038,11 @@ flowchart TD
 
 ## 16. References
 
-Peer-reviewed papers and preprints only. Every preprint citation below carries an explicit version (`vN`) and an access date, because the version matters: unversioned preprint citations in this domain have been observed to go materially stale — sample size, task count, and even reported headline numbers change between versions of the same identifier. The version and every quoted number were checked directly against the cited version's HTML source in the session that produced this section.
+Every preprint citation below carries an explicit version (`vN`) and an access date, because the version matters: unversioned preprint citations in this domain have been observed to go materially stale — sample size, task count, and even reported headline numbers change between versions of the same identifier. Six such cases of material version drift were measured directly during the session that produced this section.
+
+### 16.1 Works cited
+
+The following works are the ones this document's argument actually depends on: the six-link thesis in Section 15.6, the skill-activation policy in Section 6, and the verification-strategy justification in Sections 8 and 9. The version and every quoted number were checked directly against the cited version's HTML source in the session that produced this section.
 
 1. Jimenez, C. E. et al. **SWE-bench: Can Language Models Resolve Real-World GitHub Issues?** ICLR 2024.  
    https://arxiv.org/abs/2310.06770
@@ -1069,47 +1074,73 @@ Peer-reviewed papers and preprints only. Every preprint citation below carries a
 10. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547v4, accessed 2026-08-12.  
     https://arxiv.org/abs/2602.06547v4
 
----
+### 16.2 Corpus reviewed
 
-## 17. Normative sources
+Section 16.1 lists what this document's prose actually cites. The bibliographic review carried out in the session that produced Section 15.6 covered a substantially larger corpus, most of it consulted to decide whether a candidate finding belonged in the prose above, not to end up quoted there. Listing that full corpus, and the verdict each entry actually reached, is what makes this section a record of a bibliographic review rather than a curated reading list: it records what was checked, not only what survived into the argument. All identifiers below were accessed 2026-08-12; the version is given per row rather than restated per entry.
 
-The entries below are platform specifications, not research literature: they define a contract this repository's mechanisms integrate against, and they are listed separately from Section 16 for that reason.
+Three verdict classes appear, and they are not interchangeable:
 
-11. **GitHub Docs — Status checks.**  
-    https://docs.github.com/en/pull-requests/reference/status-checks
+- **Primary source verified** — the specific number(s) named in that row were checked directly against the cited version's HTML or PDF source.
+- **Existence confirmed** — title and authorship were confirmed against the arXiv API; the paper's own reported numbers were not independently re-checked.
+- **Verified in search context only** — the identifier surfaced during the literature search and its relevance was confirmed, without a full read of the source.
 
-12. **GitHub Docs — Available rules for rulesets.**  
-    https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
-
-13. **Anthropic — Claude Code: Create custom subagents.**  
-    https://code.claude.com/docs/en/sub-agents
-
-14. **Anthropic — Claude Code: Hooks.**  
-    https://code.claude.com/docs/en/hooks
-
-15. **Anthropic — Claude Code: Run parallel sessions with worktrees.**  
-    https://code.claude.com/docs/en/worktrees
-
-16. **OpenAI — Codex: Custom instructions with AGENTS.md.**  
-    https://learn.chatgpt.com/docs/agent-configuration/agents-md
-
-17. **OpenAI — Codex: Subagents.**  
-    https://learn.chatgpt.com/docs/agent-configuration/subagents
-
-18. **OpenAI — Codex: Build skills / Hooks.**  
-    https://learn.chatgpt.com/docs/build-skills  
-    https://learn.chatgpt.com/docs/hooks
-
-19. **OpenAI — Codex: Git worktrees.**  
-    https://learn.chatgpt.com/docs/environments/git-worktrees
-
-20. **GitHub Docs — About rulesets** ("About rule layering").  
-    https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets  
-    Verbatim: "if multiple rulesets target the same branch or tag in a repository, the rules in each of these rulesets are aggregated. If the same rule is defined in different ways across the aggregated rulesets, the most restrictive version of the rule applies."
-
-21. **GitHub REST API — Rules** ("Get rules for a branch").  
-    https://docs.github.com/en/rest/repos/rules  
-    Verbatim: Rules in rulesets with "evaluate" or "disabled" enforcement statuses are not returned.
+| Identifier | Short title | Verification verdict |
+|---|---|---|
+| arXiv:2606.09863v1 | False Success in LLM Agents | Primary source verified — judges reach at most 0.65 AUROC on tau2-bench, 0.54 AUROC on AppWorld; a whole-trajectory-minus-final-message ablation reaches 0.924 against 0.934 for closing-message-only features. |
+| arXiv:2607.02577v1 | Validity Audit of Tool-Calling Evaluation | Primary source verified — 18.5% disagreement with expert judgment across 496 tasks; the deterministic-gated evaluator reaches 95.5% agreement (401/420); of its 19 disagreements, all are false negatives, none are false positives. |
+| arXiv:2602.12670v4 | SkillsBench | Primary source verified — 33.9% -> 50.5%; "tasks with no measurable separation between conditions are rejected as low-signal" (verbatim). |
+| arXiv:2603.15401v1 | SWE-Skills-Bench | Primary source verified — 39 of 49 skills show no pass-rate change, mean gain +1.2pp, baseline 89.8% without skill. |
+| arXiv:2504.08942v2 | AgentRewardBench | Primary source verified — rule-based evaluator: precision 83.8 / recall 55.9; best LLM judge: 69.8 agreement. |
+| arXiv:2402.14848v2 | Same Task, More Tokens (ACL 2024) | Primary source verified — accuracy falls from 0.92 to 0.68 at 3,000 tokens under literal-duplication padding, with zero irrelevant content added. |
+| arXiv:2209.03549v2 | Extractive is not Faithful (ACL 2023) | Primary source verified — 30% of 1,600 extractive summaries carry at least one fidelity defect. |
+| arXiv:2310.04408v1 | RECOMP | Primary source verified — extractive compressor 36.57 vs abstractive compressor 37.04 on NQ (statistical tie). |
+| arXiv:2408.02442v3 | Let Me Speak Freely | Primary source verified — GSM8K falls from 74.7 to 48.9 under JSON constraints; DDXPlus rises from 41.6 to 60.3; "100% ... placed answer before reason" (verbatim) under a schema ordering answer first. |
+| arXiv:2502.09061v4 | CRANE (ICML 2025) | Primary source verified — the degradation is attributed to the constraining grammar itself blocking intermediate reasoning steps, not to formatting alone. |
+| arXiv:2510.21034v2 | Input Matters (INLG 2025) | Primary source verified — structured JSON output reduces factual error rate by 69% and 65% in the two reported settings. |
+| arXiv:2404.03302v4 | How Easily do Irrelevant Inputs Skew (COLM 2024) | Primary source verified — a semantically close distractor degrades performance 2-4x more than an unrelated distractor. |
+| arXiv:2307.03172v3 | Lost in the Middle (TACL) | Primary source verified (version and venue confirmed); no additional headline number from this paper is quoted in this repository's prose beyond the citation itself. |
+| arXiv:2502.05167v3 | NoLiMa (ICML 2025) | Primary source verified — GPT-4o accuracy falls from 99.3% to 69.7% at a 32K context length. |
+| arXiv:2404.06654v3 | RULER (COLM 2024) | Primary source verified (version and venue confirmed); no additional headline number from this paper is quoted in this repository's prose beyond the citation itself. |
+| arXiv:2512.07850v1 | SABER | Primary source verified — odds ratio 0.04 for mutant-detecting tests against 0.81 for non-mutant tests; only 1 of 3 models shows the effect on SWE-Bench Verified. |
+| arXiv:2603.03116v1 | Corrupt Success | Primary source verified — 27-78% of reported successes across the studied settings are corrupted; the string "false success" has zero occurrences in the paper itself. |
+| arXiv:2607.09996v1 | Who&When Pro | Primary source verified — 12,326 trajectories with gold failure-attribution labels, 3 modalities, 26 benchmarks. |
+| arXiv:2601.06112v1 | ReliabilityBench | Primary source verified — 1,280 episodes, 2 models, 2 architectures; the paper itself labels an effect size of e=0.2 as "medium," not "small." |
+| arXiv:2503.13657v3 | Why Do Multi-Agent LLM Systems Fail | Primary source verified — 150 TRACES, not tasks; 7 frameworks analyzed in v3; 14 failure modes; inter-annotator kappa 0.88. |
+| arXiv:2602.01011v4 | Multi-Agent Teams Hold Experts Back | Primary source verified — the reported baseline is ALOC (a per-item oracle selecting the best individual model per task); against the weaker Best-Individual-overall baseline, the team wins in 4 of 5 settings. |
+| arXiv:2601.00481v1 | MAESTRO | Primary source verified — CRAG accuracy 70.6% against 48.3% for Plan&Execute; 75.17% of observed failures are classified "silent semantic." |
+| arXiv:2604.12147v3 | From Plan to Action | Primary source verified — 21,120 trajectories in v3 (16,991 in v1); the plan-quality/outcome correlation is positive in 2 of 4 models and negative in GPT-5 mini. |
+| arXiv:2607.07989v1 | AgentLocate | Primary source verified — 69.05% agent-level accuracy, 38.10% step-level accuracy; the Verification_Expert role is the most frequently mis-attributed. |
+| arXiv:2606.20659v2 | Skill Coverage | Primary source verified — 38.66-45.51% of declared constraints are actually covered, measured by an LLM judge with 88.58% agreement against human labels. |
+| arXiv:2608.05573v1 | SkillTV-Bench | Primary source verified — 681 cases; a headline +14.8pp gain hides a +0.0pp gain in two of the constituent domains. |
+| arXiv:2604.04323v1 | Skills in the Wild | Primary source verified — corpus of 34k skills; Claude Opus 4.6 pass rate 57.7% -> 65.5% with skill. |
+| arXiv:2604.05172v2 | ClawsBench | Primary source verified — 44 tasks, 6 models, 4 harnesses; success rate range 39-64%, unsafe-action rate range 7-33%. |
+| arXiv:2608.03874v1 | ContinualSkillBench | Primary source verified — 0.605 against 0.602 (a 0.003 difference), significant in 3 of 5 domains and 3 of the evaluated models. |
+| arXiv:2605.18693v1 | SkillGenBench | Primary source verified — the evaluation uses a fixed executor and pinned environments across conditions. |
+| arXiv:2605.05726v1 | SkillRet | Primary source verified — retrieval corpus of 17,810 skills; NDCG@10 improves by 13.1 points. |
+| arXiv:2606.01139v3 | SkillRevise | Primary source verified — pass rate 36.05% -> 61.63% at the reported operating point B=3. |
+| arXiv:2607.11098v3 | AgentCheck | Primary source verified — 12 failure types, 5 agents, 120 scenarios; the best-performing configuration reaches 105 of 120. |
+| arXiv:2504.09702v3 | MLRC-Bench | Primary source verified — the best agent closes 9.3% of the human-expert gap; correlation between novelty/innovation and performance is -0.06. |
+| arXiv:2412.14161v3 | TheAgentCompany | Primary source verified — NeurIPS 2025 Datasets & Benchmarks track, confirmed against the PDF; the identity of the best-performing agent changes across versions of the paper, so the specific ranking is not quoted here. |
+| arXiv:2602.16666v3 | Science of AI Agent Reliability | Primary source verified — 12 reliability metrics; 15 models evaluated in v3 (14 in v1/v2). |
+| arXiv:2603.29231v1 | Beyond pass@1 | Primary source verified — 23,392 episodes, 396 tasks, 10 models. |
+| arXiv:2605.24117v1 | SkillEvolBench | Primary source verified — Raw-Trajectory condition scores 48.2/37.6/44.7/25.7 across the four reported metrics; one additional task is worth 1.11pp. |
+| arXiv:2607.12338v1 | How Many Tasks Are Enough | Primary source verified — stabilization thresholds of roughly 15% of tasks on AppWorld, 25% on tau-bench, and 90% on SWE-bench. |
+| arXiv:2608.03836v3 | Resume Means Resume | Primary source verified — 6 formally stated properties, 7.4x10^6 states, 196 TLAPS proof obligations; "exactly-once across interrupts, at-least-once across crashes" (verbatim). |
+| arXiv:2601.10338v1 | Agent Skills in the Wild | Primary source verified — 26.1% of 31,132 analyzed skills flagged with at least one vulnerability pattern by the study's detector. |
+| arXiv:2602.06547v4 | Do Not Mention This to the User | Primary source verified — 157 of 98,380 examined skills confirmed actively malicious after sandboxed behavioral verification. |
+| arXiv:2310.01798v2 | LLMs Cannot Self-Correct Reasoning Yet (ICLR 2024) | Primary source verified (version confirmed); cited for the self-assessment-skepticism premise underlying Section 15.6, not for a specific headline number quoted in this repository. |
+| arXiv:2608.08640v1 | SkillReason | Existence confirmed against the arXiv API (title and authorship match); the paper's own reported numbers were not independently re-checked by this repository. |
+| arXiv:2608.00267v2 | LoopsBench | Existence confirmed against the arXiv API (title and authorship match); the paper's own reported numbers were not independently re-checked by this repository. |
+| arXiv:2608.02693v1 | PRWeaver | Existence confirmed against the arXiv API (title and authorship match); the paper's own reported numbers were not independently re-checked by this repository. |
+| arXiv:2608.02499v1 | SWE-Touch | Existence confirmed against the arXiv API (title and authorship match); the paper's own reported numbers were not independently re-checked by this repository. |
+| arXiv:2510.03595v2 | Decoupling Task-Solving and Output Formatting | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2603.03305v2 | The Hidden Cost of Structured Generation in LLMs | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2304.09848v2 | Evaluating Verifiability in Generative Search Engines | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2407.16833v2 | Retrieval Augmented Generation or Long-Context LLMs? | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2502.09977v2 | LaRA: RAG vs Long-Context LLMs, No Silver Bullet | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2302.00093v3 | LLMs Can Be Easily Distracted by Irrelevant Context | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2411.10541v1 | Does Prompt Formatting Have Any Impact on LLM Performance? | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
+| arXiv:2310.11324v2 | Quantifying Sensitivity to Spurious Features in Prompt Design | Verified in search context only — surfaced as a relevant result during the literature search; not read in depth. |
 
 ---
 
