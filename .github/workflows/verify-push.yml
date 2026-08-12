@@ -151,12 +151,30 @@ jobs:
         run: bash evidence/cobertura.sh --check
       - name: suite legada
         run: bash tests/unit/run.sh
-      # POSICAO DELIBERADA - ULTIMO PASSO. E o unico passo que depende de REDE e de permissao de
-      # token. Estava na posicao 23 de 40, e um vermelho ali PULA 17 verificacoes deterministicas
-      # (medido: run 31607753782, 24 passos skipped apos falha no 16). Verificacao que depende de
-      # fator externo vai por ultimo, para que a sua indisponibilidade nunca esconda o resultado
-      # do que nao depende de nada.
-      #
+      # FIM DO JOB ESTATICO. Paridade com verify-pr.yml: o verde de `verify-push` significa
+      # EXATAMENTE "as verificacoes deterministicas passaram". A fronteira viva saiu daqui.
+
+  # ---------------------------------------------------------------------------------------------
+  # ESPELHO de `verify-live-policy` de verify-pr.yml. A razao completa da separacao esta escrita
+  # la; o resumo e: enquanto era um PASSO, a ausencia do segredo dava exit 0 e o job inteiro
+  # ficava verde com a garantia critica NAO MEDIDA - e a medicao do log da execucao 31641449160
+  # mostra `GH_TOKEN:` VAZIO, isto e, o probe nunca mediu nada desde que foi instalado.
+  #
+  #     CI_SUCCESS   =/=>   para toda garantia critica g:  Verified(g)
+  #
+  # Este gemeo roda em `push` e NAO e exigido pelo ruleset, igual ao job estatico ao lado.
+  #
+  # NOME DISTINTO, DE PROPOSITO. Se os dois workflows produzissem um check-run chamado
+  # `verify-live-policy`, o contexto exigido pelo ruleset ficaria ambiguo entre eles no dia em
+  # que o job virar required - e o ruleset casa por NOME de contexto, nao por workflow. Um
+  # required check que casa com o gemeo de push seria satisfeito por um evento que nao e o PR.
+  # ---------------------------------------------------------------------------------------------
+  verify-live-policy-push:
+    name: verify-live-policy-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinado: tag e mutavel
       # FRONTEIRA VIVA - mede Applies(P,r) e Bypass(a,P) contra o endpoint AUTORITATIVO do
       # GitHub, nao contra os arquivos de workflow deste repositorio.
       #
@@ -164,9 +182,7 @@ jobs:
       # que contorna?"; `current_user_can_bypass` responde so "ESTE ator contorna?". A API omite
       # o primeiro para quem nao tem write no ruleset - medido contra a API viva em 2026-08-12
       # (github/docs ruleset 19633356: campo ausente). Tratar a ausencia como aprovacao INVERTIA
-      # a direcao: reduzir o privilegio do observador deixava o portao verde sobre o mesmo
-      # ruleset. Com RULESET_READ_TOKEN, mede e BLOQUEIA (exit 1 e 2 reprovam). Sem ele, declara
-      # a lacuna - nunca verde fingido, nunca vermelho permanente.
+      # a direcao: reduzir o privilegio do observador deixava o portao verde sobre o mesmo ruleset.
       #
       # A DECISAO ESTA EM BASH, NAO EM `if:` DE PASSO, E ISSO E DELIBERADO. A tentativa anterior
       # usou `if: ${{ secrets.X == '' }}` e invalidou o workflow INTEIRO - execucao 31626367844
@@ -182,8 +198,8 @@ jobs:
             echo "  O termo existencial de Bypass(a,P) NAO foi medido nesta execucao."
             echo "  GITHUB_TOKEN nao recebe 'bypass_actors' da API - medido, nao suposto."
             echo "  LACUNA DECLARADA, nao aprovacao. Ver evidence/claims/C-018.yaml."
-            echo "::warning title=fronteira viva nao medida::Bypass(a,P) exige RULESET_READ_TOKEN"
-            exit 0
+            echo "::error title=fronteira viva NAO MEDIDA::Bypass(a,P) exige RULESET_READ_TOKEN; exit 2 = NOT_VERIFIED"
+            exit 2
           fi
           python3 evidence/probes/github-ruleset.py \
             --owner "${GITHUB_REPOSITORY%%/*}" \
