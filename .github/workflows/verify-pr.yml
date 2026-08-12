@@ -21,12 +21,12 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
-  # administration: read e exigido para GET /repos/{o}/{r}/rulesets/{id}. A doc do GitHub
-  # adverte que `bypass_actors` so e devolvido a quem tem write no ruleset - portanto o probe
-  # abaixo pode sair NAO VERIFICADO mesmo com esta permissao. Isso e MEDICAO, nao suposicao:
-  # o passo e fail-closed, e um vermelho por permissao insuficiente e a resposta a pergunta
-  # "o token do CI consegue observar a fronteira?" - nao um portao quebrado.
-  administration: read
+  # DEFEITO PROPRIO, 2026-08-12: aqui foi declarado `administration: read`, que NAO EXISTE
+  # como escopo de permissions do GITHUB_TOKEN. Conferido na fonte primaria depois de quebrar:
+  # a lista valida e actions, attestations, checks, contents, deployments, discussions,
+  # id-token, issues, packages, pages, pull-requests, security-events, statuses. Chave invalida
+  # invalida o WORKFLOW INTEIRO - a execucao morreu sem nenhum job, sem log e sem anotacao, o
+  # que e um modo de falha pior que um passo vermelho. Instrucao nao executada e hipotese.
 jobs:
   verify-pr:
     name: verify-pr
