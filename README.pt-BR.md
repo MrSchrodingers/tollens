@@ -31,6 +31,12 @@ A arquitetura parte de uma tese operacional simples:
 
 Um LLM pode investigar, planejar, implementar, testar, revisar e reparar uma mudança. Uma sessão local pode, portanto, produzir um **candidato**. Ela não certifica esse candidato. A certificação pertence a um verificador externo associado ao snapshot exato e aplicado por política do repositório.
 
+Uma segunda tese, mais estreita, governa as camadas de verificação especificamente compostas nas seções 8 e 15:
+
+> **Toda camada de verificação é cega a uma classe específica de defeito, e essa cegueira só se fecha subindo de checagem sobre texto para execução — até um limite que é fronteira de segurança, não lacuna de engenharia.**
+
+Autoavaliação, verificação determinística, mutation testing e medição de cobertura de decisão capturam, cada uma, uma classe de defeito que a camada anterior não via; a seção 15.6 desenvolve a cadeia inteira e sua evidência.
+
 O projeto **não** afirma que seu harness melhora universalmente o desempenho de agentes de código. Os testes atuais sustentam claims mais estreitos: determinadas propriedades mecânicas são executáveis, falsificáveis, cobertas por regressão e sensíveis a violações introduzidas deliberadamente. Eficácia geral, custo-benefício e robustez entre modelos exigem benchmark controlado próprio.
 
 O estado operacional gerado mecanicamente é mantido em [`docs/status.generated.md`](docs/status.generated.md). Contagens mutáveis são propositalmente evitadas neste README.
@@ -55,6 +61,7 @@ O estado operacional gerado mecanicamente é mantido em [`docs/status.generated.
 14. [Threat model e limitações](#14-threat-model-e-limitações)
 15. [Fundamentação científica e técnica](#15-fundamentação-científica-e-técnica)
 16. [Referências](#16-referências)
+17. [Fontes normativas](#17-fontes-normativas)
 
 ---
 
@@ -119,7 +126,7 @@ com
 
 O modelo contribui com inferência probabilística. O harness controla contexto observável, ferramentas, autoridade, orquestração, critérios de aceitação e verificação externa.
 
-Essa distinção importa porque o desempenho medido de um agente não é propriedade exclusiva do modelo-base. SWE-agent mostra que a interface agente-computador pode alterar materialmente o desempenho em engenharia de software [12]. Por isso, `evidence-gate` trata **modelo**, **scaffold**, **tarefa** e **condição de skill** como variáveis experimentais distintas.
+Essa distinção importa porque o desempenho medido de um agente não é propriedade exclusiva do modelo-base. SWE-agent mostra que a interface agente-computador pode alterar materialmente o desempenho em engenharia de software [2]. Por isso, `evidence-gate` trata **modelo**, **scaffold**, **tarefa** e **condição de skill** como variáveis experimentais distintas.
 
 ### 2.2 Proposta não é verificação
 
@@ -354,6 +361,27 @@ Para todo grupo paralelo `G`:
 
 Isso reduz condições de corrida, patches conflitantes e ambiguidade sobre autoria no workspace ativo.
 
+`orchestration/schedule.py` formaliza quando dois nós do grafo de um workflow podem legalmente compartilhar um grupo paralelo: nenhuma dependência entre eles, direta ou transitiva; conjuntos de escrita disjuntos; e, para um checkout compartilhado, no máximo um dos dois segurando o lock de suíte (nós isolados em worktree próprio ficam isentos dessa última restrição, porque não competem pelo mesmo arquivo de lock). A checagem é um validador de configuração, não uma auditoria do paralelismo efetivamente observado em produção: todo nó de escrita hoje declara um conjunto de escrita que cobre todos os caminhos, e todo nó read-only declara um conjunto vazio, então a cláusula de disjunção de escrita nunca chega a comparar dois conjuntos não vazios nos workflows que este repositório publica hoje. Ela passa a ter peso real no dia em que um nó de escrita restringir o escopo declarado.
+
+Uma instância representativa de `standard-change`, anotada com conjuntos de escrita:
+
+```mermaid
+flowchart LR
+    subgraph RO1["grupo paralelo: read-only, writes = conjunto vazio"]
+        inv["investigador"]
+        map["mapeador-dependencias"]
+    end
+    RO1 --> RED["tdd: estado RED<br/>writes: tests/"]
+    RED --> IMPL["implementador<br/>writes: todo o caminho"]
+    IMPL --> RUN["executa testes<br/>writes: vazio"]
+    subgraph RO2["grupo paralelo: read-only, writes = conjunto vazio"]
+        REV["revisor-codigo"]
+        REF["refutador"]
+    end
+    RUN --> RO2
+    RO2 --> CAND["CANDIDATE"]
+```
+
 ### 5.3 Correção limitada
 
 Correção é deliberadamente finita. O registry limita rodadas de correção em vez de permitir ciclos ilimitados de auto-reparo. Falha recorrente na mesma região deve forçar replanejamento ou re-arquitetura, não uma sequência indefinida de patches locais.
@@ -390,11 +418,11 @@ As definições legíveis por máquina vivem em `orchestration/workflows/`.
 
 A evidência empírica recente não sustenta a premissa de que adicionar documentos procedurais melhora universalmente um agente.
 
-SWE-Skills-Bench avalia aproximadamente 565 instâncias de tarefas SWE orientadas por requisitos sobre 49 skills, usando verificação determinística baseada em execução, com um único modelo e um único scaffold (Claude Code rodando Claude Haiku 4.5); avaliar outros frameworks de agente consta como trabalho futuro declarado pelos autores, não como algo que o artigo realiza. Contra uma taxa de acerto agregada de 89,8% sem skill — um teto de no máximo +10,2 pontos percentuais para o ganho médio chegar a 100% —, o ganho médio reportado com skill é de +1,2 ponto percentual, para 91,0%. 39 de 49 skills não mudam o pass rate, três reduzem desempenho, e 24 de 49 já marcam 100% nos dois braços, sem espaço no desenho do experimento para mostrar melhora nessas skills. O artigo é um pre-print, e o próprio rodapé descreve os resultados como preliminares [14].
+SWE-Skills-Bench avalia aproximadamente 565 instâncias de tarefas SWE orientadas por requisitos sobre 49 skills, usando verificação determinística baseada em execução, com um único modelo e um único scaffold (Claude Code rodando Claude Haiku 4.5); avaliar outros frameworks de agente consta como trabalho futuro declarado pelos autores, não como algo que o artigo realiza. Contra uma taxa de acerto agregada de 89,8% sem skill — um teto de no máximo +10,2 pontos percentuais para o ganho médio chegar a 100% —, o ganho médio reportado com skill é de +1,2 ponto percentual, para 91,0%. 39 de 49 skills não mudam o pass rate, três reduzem desempenho, e 24 de 49 já marcam 100% nos dois braços, sem espaço no desenho do experimento para mostrar melhora nessas skills. O artigo é um pre-print, e o próprio rodapé descreve os resultados como preliminares [6].
 
-SkillsBench relata ganhos médios maiores para skills curadas em um benchmark multi-domínio mais amplo, mas também encontra grande heterogeneidade, deltas negativos em determinadas tarefas e ausência de ganho médio para skills auto-geradas [15].
+SkillsBench relata ganhos médios maiores para skills curadas em um benchmark multi-domínio mais amplo, mas também encontra grande heterogeneidade, deltas negativos em determinadas tarefas e ausência de ganho médio para skills auto-geradas [7].
 
-Independente da eficácia de skill, estudos de segurança em larga escala sobre marketplaces de agent skills relatam dois sinais de risco distintos, em ordens de grandeza muito diferentes, que não devem ser somados nem tratados como equivalentes: 26,1% das 31.132 skills que um estudo analisou com um detector automático contêm ao menos um padrão de vulnerabilidade [17]; um estudo independente, com verificação comportamental, confirmou 157 de 98.380 skills examinadas (cerca de 0,16%) como ativamente maliciosas após execução em sandbox, e descreve essa contagem como um limite inferior [18]. O primeiro número mede a presença de um *padrão* de vulnerabilidade; o segundo mede malícia *confirmada* por comportamento — construtos diferentes, populações diferentes, não somáveis. Essa superfície de risco não depende de a skill melhorar o pass rate, e por si só já motiva os portões de quarentena e compatibilidade abaixo; a incerteza de eficácia é a justificativa mais fraca das duas para a política a seguir.
+Independente da eficácia de skill, estudos de segurança em larga escala sobre marketplaces de agent skills relatam dois sinais de risco distintos, em ordens de grandeza muito diferentes, que não devem ser somados nem tratados como equivalentes: 26,1% das 31.132 skills que um estudo analisou com um detector automático contêm ao menos um padrão de vulnerabilidade [9]; um estudo independente, com verificação comportamental, confirmou 157 de 98.380 skills examinadas (cerca de 0,16%) como ativamente maliciosas após execução em sandbox, e descreve essa contagem como um limite inferior [10]. O primeiro número mede a presença de um *padrão* de vulnerabilidade; o segundo mede malícia *confirmada* por comportamento — construtos diferentes, populações diferentes, não somáveis. Essa superfície de risco não depende de a skill melhorar o pass rate, e por si só já motiva os portões de quarentena e compatibilidade abaixo; a incerteza de eficácia é a justificativa mais fraca das duas para a política a seguir.
 
 A consequência de política é deliberadamente conservadora:
 
@@ -593,19 +621,27 @@ Um verificador é mais forte quando uma implementação plausivelmente inválida
 
 Mutation testing pergunta se a remoção ou o enfraquecimento de uma garantia é detectado pela suíte. O repositório usa mutantes atribuíveis em mecanismos críticos, incluindo gate externo, contrato de subagente, comportamento do instalador e metodologia de skills.
 
-Mutation testing não é prova de correção. É evidência de que a suíte distingue variantes defeituosas selecionadas do comportamento de referência, de acordo com a interpretação clássica da literatura da área [16].
+Mutation testing não é prova de correção. É evidência de que a suíte distingue variantes defeituosas selecionadas do comportamento de referência, de acordo com a interpretação clássica da literatura da área [8].
 
-### 8.5 Testes metamórficos
+### 8.5 Cobertura de decisão
+
+Mutation testing é necessário e estruturalmente cego à omissão: um mutante só pode morrer se algum teste exercitar o ramo mutado, e um ramo que nenhum teste alcança nunca produz mutante vivo nem morto — ele nem entra na contagem. Medido neste repositório: remover duas detecções de violação de um probe de avaliação de ruleset deixou a suíte de regressão inteiramente verde (78 asserções) e todos os mutantes atribuíveis daquele probe mortos (11 de 11), porque nenhum teste exercitava um caso que combinasse essas duas condições fora do valor esperado.
+
+`evidence/cobertura.sh` fecha a lacuna de observação com três camadas compostas, nenhuma substituindo as outras: um piso de igualdade exata por alvo, porque um piso simples de `>=` é satisfazível por diluição — medido, o mesmo ramo intocado reprova um piso sozinho em 87,8% (abaixo de um piso de 88,4%) e passa quando 30 statements cobertos e sem relação se somam a ele no mesmo arquivo (88,8%), por isso a comparação é fixada em igualdade exata em vez de mínimo; um predicado absoluto sobre os ramos e linhas ausentes por arquivo, checado contra uma lista de isenção explícita e justificada em vez de uma porcentagem; e uma varredura de completude que exige que todo executável candidato sob `evidence/`, `orchestration/` e `execution/` esteja listado como alvo coberto ou como excluído com motivo declarado.
+
+Cobertura de decisão prova que um ramo foi *executado* por algum teste. Não prova que a asserção do teste está correta — um teste que alcança um ramo sem checar seu resultado ainda satisfaz esse piso. As suítes que fornecem o oráculo de correção continuam sendo `tests/unit/*.sh` e `tests/mutation/*.sh`; a medição de cobertura só consegue avaliar ramos que essas suítes alcançam. Ver [ADR 0028](docs/adr/0028-quatro-ondas-mutacao-nao-cobre-decisao.md).
+
+### 8.6 Testes metamórficos
 
 Quando um único golden output é inadequado, testes metamórficos verificam relações esperadas como invariantes sob transformações controladas.
 
-### 8.6 Revisão e refutação independentes
+### 8.7 Revisão e refutação independentes
 
 Autoria e avaliação são separadas. Revisores inspecionam o artefato e a evidência crua de execução em vez de aceitar como fato o resumo do implementador.
 
-Essa organização é estruturalmente compatível com abordagens verificadas externamente, como LLM-Modulo, nas quais modelos generativos são combinados com verificadores externos em vez de tratados como autocertificadores confiáveis [13].
+Essa organização é estruturalmente compatível com abordagens verificadas externamente, como LLM-Modulo, nas quais modelos generativos são combinados com verificadores externos em vez de tratados como autocertificadores confiáveis [3].
 
-### 8.7 Comando de verificação fornecido pelo projeto
+### 8.8 Comando de verificação fornecido pelo projeto
 
 Por padrão o gate local de Stop escolhe analisadores genéricos pelo ecossistema detectado. Um repositório pode sobrepor essa escolha com `.claude/verify.json`. Esta é a superfície de maior risco do harness, porque faz o gate executar um comando originado no repositório sob análise — a classe do CVE-2025-59536. Duas condições independentes a governam.
 
@@ -629,6 +665,16 @@ Candidate(x)=\bigwedge_{a\in Applicable(x)\setminus replaces} Pass(a,x)\;\land\;
 
 **Limite declarado.** O digest cobre os *bytes de `verify.json`*, não os bytes que ele manda executar. Um `verify.json` que invoca `bash scripts/verify.sh` permanece aprovado enquanto esse script muda por baixo. Fechar isso exige digest transitivo ou sandbox; nenhum dos dois está implementado.
 
+### 8.9 Qualidade da literatura externa
+
+Citar um artigo externo é, em si, uma afirmação que precisa de evidência, não só um título plausível. `evidence/validate-literature.py` checa cada entrada de `evidence/literature/*.yaml` contra três dimensões separadas: **proveniência** — onde o resultado foi publicado (peer-reviewed, preprint, vendor-primary ou experimento local); **qualidade do estudo** — como o estudo foi desenhado (benchmark, tamanho de amostra, modelos, scaffold, oráculo, baseline, replicação); e **aplicabilidade** — o quanto o domínio, o scaffold e o oráculo do estudo se parecem com os deste repositório. Um estudo peer-reviewed com amostra grande ainda pode ser apenas `EXTRAPOLATED` para este repositório se o domínio for distante.
+
+O validador checa *forma* — campos obrigatórios presentes, vocabulário fechado, número com ponteiro de fonte — não fidelidade à fonte primária; ele não lê o artigo. Essa lacuna deixou dois defeitos chegarem a este README antes de serem capturados por revisão independente: um título de referência copiado de uma página agregadora em vez do próprio artigo, e uma string citada como verbatim que era, na verdade, paráfrase de um sumarizador. Ver [ADR 0027](docs/adr/0027-evidencia-repassada-carrega-fonte.md).
+
+### 8.10 Integridade do ledger de claims
+
+Cada garantia rastreada em `evidence/claims/*.yaml` resolve sua evidência de suporte varrendo suítes de regressão (`tests/unit/`) e de mutação (`tests/mutation/`) em busca de um identificador de asserção ou de mutante que combine. Um conjunto de identificadores plano torna essa resolução barata, mas também absorve duplicidade em silêncio: se o mesmo identificador é declarado em dois arquivos diferentes do mesmo espaço de evidência, a checagem de pertencimento ainda reporta "existe", sem dizer qual dos dois arquivos a claim realmente cita. `_contrato_extracao_ok`, em `evidence/validate-claims.py`, checa os dois espaços de evidência contra essa colisão em vez de confiar num set simples. A checagem resolve identificadores contra o snapshot do worktree que a claim cita, não contra o histórico do repositório — a mesma fronteira de escopo que motiva ancorar as medições da seção 15.6 a tags duráveis em vez de a um branch que pode não sobreviver.
+
 ---
 
 ## 9. Gate externo de CI
@@ -637,7 +683,7 @@ Candidate(x)=\bigwedge_{a\in Applicable(x)\setminus replaces} Pass(a,x)\;\land\;
 
 Hooks locais são mecanismos úteis de feedback, mas executam dentro de uma fronteira gravável ou contornável pelo ator local. Portanto, não constituem a autoridade final de integração.
 
-A documentação do Claude Code apresenta hooks como automação determinística do ciclo de vida [5]. `evidence-gate` usa essa capacidade para controles locais enquanto reserva certificação à fronteira do repositório.
+A documentação do Claude Code apresenta hooks como automação determinística do ciclo de vida [14]. `evidence-gate` usa essa capacidade para controles locais enquanto reserva certificação à fronteira do repositório.
 
 ### 9.2 Contexto required
 
@@ -649,7 +695,7 @@ verify-pr
 
 O workflow responde a `pull_request` e `merge_group`.
 
-O GitHub documenta que required checks precisam passar antes de mudanças protegidas serem integradas e que workflows usados com merge queue precisam responder a `merge_group` quando seus checks são obrigatórios [2][3].
+O GitHub documenta que required checks precisam passar antes de mudanças protegidas serem integradas e que workflows usados com merge queue precisam responder a `merge_group` quando seus checks são obrigatórios [11][12].
 
 O workflow de push é separado deliberadamente:
 
@@ -702,6 +748,28 @@ Se o próprio rollback falhar, o instalador retorna código `70`, emite `ROLLBAC
 
 A garantia é deliberadamente limitada. Ela não cobre modos de falha que o shell não consegue observar, comprometimento arbitrário do sistema operacional ou política administrativa fora da fronteira testada.
 
+O diagrama abaixo traça a fronteira de confiança que o instalador aplica: a configuração local ao repositório permanece no escopo gravável pelo usuário, enquanto o caminho managed captura snapshot, aplica e — em caso de falha observada de commit — restaura estado root-owned.
+
+```mermaid
+flowchart TB
+    subgraph U["escopo gravável pelo usuário"]
+        REPO["configuração local ao repositório<br/>.claude/ .codex/ CLAUDE.md"]
+        DRY["install/apply.sh --dry-run"]
+    end
+    subgraph R["escopo managed, root-owned"]
+        SNAP["snapshot do estado ativo"]
+        APPLY["aplica o deployment managed"]
+        VERIFY["verifica permissões e ownership"]
+        ROLLBACK["restaura o estado ativo anterior"]
+    end
+    REPO -->|"install/apply-managed.sh"| SNAP
+    SNAP --> APPLY
+    APPLY -->|"falha de commit observada"| ROLLBACK
+    APPLY -->|"commit bem-sucedido"| OK["estado ativo = novo estado managed"]
+    ROLLBACK -->|"rollback também falha"| FAIL["exit 70: ROLLBACK_FAILED"]
+    ROLLBACK -->|"rollback bem-sucedido"| PRIOR["estado ativo = estado anterior"]
+```
+
 ---
 
 ## 11. Projeções por runtime
@@ -710,7 +778,7 @@ A garantia é deliberadamente limitada. Ela não cobre modos de falha que o shel
 
 A projeção Claude usa configuração de projeto em `.claude/` e `CLAUDE.md`.
 
-A documentação oficial do Claude Code oferece subagentes de projeto, restrições de ferramentas, permission modes, hooks, skills e isolamento por worktree [4][5][6].
+A documentação oficial do Claude Code oferece subagentes de projeto, restrições de ferramentas, permission modes, hooks, skills e isolamento por worktree [13][14][15].
 
 Neste repositório:
 
@@ -723,7 +791,7 @@ Neste repositório:
 
 A projeção Codex usa `.codex/` e `AGENTS.md` para a configuração de agentes representada neste repositório.
 
-A documentação atual da OpenAI expõe `AGENTS.md`, subagentes, skills, hooks, sandboxing e Git worktrees como superfícies de customização do Codex [7][8][9][10].
+A documentação atual da OpenAI expõe `AGENTS.md`, subagentes, skills, hooks, sandboxing e Git worktrees como superfícies de customização do Codex [16][17][18][19].
 
 Neste repositório:
 
@@ -761,9 +829,14 @@ Essa é uma afirmação de integridade de configuração, não um teorema de equ
 │   ├── document-tools/      # ferramentas auxiliares de documentos
 │   ├── hooks/               # hooks locais de execução
 │   └── skills/              # material canônico de skills
-├── evidence/                # verificação, observações, ledger e grafos
+├── evidence/
+│   ├── claims/               # ledger de evidência por garantia
+│   ├── literature/           # registros de qualidade de citação externa
+│   ├── probes/                # probes de verificação de runtime/plataforma
+│   └── cobertura.sh          # piso de cobertura de decisão (ramo/linha, três camadas)
 ├── orchestration/
 │   ├── registry.json        # arquitetura e invariantes canônicos
+│   ├── schedule.py           # validador de grupo paralelo por write-set disjunto
 │   ├── skill-policy.json    # lifecycle evidence-gated de skills
 │   ├── evaluation-protocol.json
 │   └── workflows/           # grafos legíveis por máquina
@@ -892,19 +965,19 @@ O projeto deve, portanto, ser descrito como **harness experimental orientado por
 
 ### 15.1 Avaliação em repositórios reais
 
-SWE-bench consolidou resolução de issues em repositórios reais como problema representativo de avaliação em engenharia de software [11]. `evidence-gate` segue a mesma preferência geral por avaliação executável e ancorada no repositório, em vez de depender apenas de snippets ou julgamento narrativo.
+SWE-bench consolidou resolução de issues em repositórios reais como problema representativo de avaliação em engenharia de software [1]. `evidence-gate` segue a mesma preferência geral por avaliação executável e ancorada no repositório, em vez de depender apenas de snippets ou julgamento narrativo.
 
 ### 15.2 Efeito do scaffold
 
-SWE-agent mostra que a interface agente-computador pode afetar materialmente o desempenho [12]. Isso justifica tratar scaffold como variável experimental em vez de atribuir todo resultado ao modelo.
+SWE-agent mostra que a interface agente-computador pode afetar materialmente o desempenho [2]. Isso justifica tratar scaffold como variável experimental em vez de atribuir todo resultado ao modelo.
 
 ### 15.3 Verificação externa
 
-LLM-Modulo defende combinar modelos generativos com verificadores externos em vez de depender de autoverificação não assistida [13]. `evidence-gate` aplica a mesma separação na fronteira de governança da engenharia de software.
+LLM-Modulo defende combinar modelos generativos com verificadores externos em vez de depender de autoverificação não assistida [3]. `evidence-gate` aplica a mesma separação na fronteira de governança da engenharia de software.
 
 ### 15.4 Heterogeneidade e interferência de skills
 
-SWE-Skills-Bench relata ganhos marginais médios limitados em SWE e casos negativos concretos causados por incompatibilidade contextual ou de versão [14]. SkillsBench relata efeitos médios mais positivos para skills curadas, mas ainda encontra regressões em tarefas específicas e resultados fracos para skills auto-geradas [15].
+SWE-Skills-Bench relata ganhos marginais médios limitados em SWE e casos negativos concretos causados por incompatibilidade contextual ou de versão [6]. SkillsBench relata efeitos médios mais positivos para skills curadas, mas ainda encontra regressões em tarefas específicas e resultados fracos para skills auto-geradas [7].
 
 Esses resultados motivam:
 
@@ -919,66 +992,124 @@ Eles **não** provam que a política atual de `evidence-gate` seja ótima. Isso 
 
 ### 15.5 Mutation testing
 
-Mutation testing fornece um método disciplinado para avaliar se uma suíte distingue implementações defeituosas selecionadas do comportamento de referência [16]. O repositório usa mutation testing como mecanismo anti-tautologia para invariantes críticos de política e verificação.
+Mutation testing fornece um método disciplinado para avaliar se uma suíte distingue implementações defeituosas selecionadas do comportamento de referência [8]. O repositório usa mutation testing como mecanismo anti-tautologia para invariantes críticos de política e verificação.
+
+### 15.6 Cegueira em camadas de verificação: uma cadeia de seis elos
+
+A tese enunciada no Resumo é que toda camada de verificação composta neste repositório é cega a uma classe específica de defeito, e essa cegueira só se fecha subindo de checagem sobre texto para execução — até um limite que é fronteira de segurança, não lacuna de engenharia. Seis elos a sustentam, cada um extraído de fonte primária ou medido diretamente neste repositório.
+
+1. **Autoavaliação não distingue sucesso de falso sucesso.** Em cinco juízes LLM e cinco estratégias de prompt, nenhum ultrapassa AUROC 0,65 em tau2-bench, e os mesmos juízes alcançam apenas 0,54 de AUROC em AppWorld. O sinal de falha não está concentrado na mensagem de fechamento do agente: um detector treinado em todo o texto da trajetória, *exceto* a mensagem final, alcança AUROC 0,924, contra 0,934 usando só as features da mensagem final — o sinal está distribuído pela trajetória inteira [4].
+2. **Verificador determinístico não é verdade, mas é o melhor oráculo disponível.** Em 496 tarefas de tool-calling revisadas por especialistas, em quatro famílias de benchmark, os vereditos oficiais discordam do julgamento especialista em 18,5% dos casos. Ainda assim, um avaliador com gate determinístico e fallback restrito a LLM, auditado no mesmo estudo, alcança 95,5% de concordância com julgamento humano (401 de 420 avaliações), contra 69,0% de um avaliador puramente por juiz LLM auditado ao lado dele; e, das 19 discordâncias desse avaliador determinístico com o julgamento humano, todas as 19 são falso-negativas e nenhuma é falso-positiva. Ele erra por rejeitar, não por aprovar [5].
+3. **Mutation testing é necessário e cego à omissão.** Medido neste repositório (seção 8.5): remover duas detecções de violação de um probe de avaliação de ruleset deixou 78 asserções de regressão passando e os 11 mutantes atribuíveis daquele probe todos mortos, porque nenhum teste exercitava um caso que combinasse essas duas condições fora do valor esperado. Um ramo que nenhum teste alcança não pode gerar mutante vivo nem morto — ele nunca entra na contagem.
+4. **Cobertura de decisão pega essa omissão e é, ela mesma, satisfazível por diluição.** O mesmo ramo não exercitado reprova um piso percentual sozinho (87,8%, abaixo de um piso de 88,4%) e passa quando 30 statements cobertos e sem relação se somam a ele no mesmo arquivo (88,8%). A seção 8.5 descreve o mecanismo de três camadas que este repositório usa para fechar essa lacuna.
+5. **Uma classe de mutante fantasma não se fecha por análise estática.** A checagem de que "uma mutação foi aplicada e um oráculo foi invocado" é textual: um bloco forjado dentro de um condicional desativado a satisfaz sem que nada rode. Fechar isso exige executar o script de mutação contra um `subject_snapshot` potencialmente hostil — recusado pela fronteira de segurança atual, e registrado como limite declarado, não como fechamento fingido.
+6. **O elo que generaliza os outros cinco.** Um instrumento pode ser verificado à exaustão e nunca ser instalado. Antes desta correção, o probe de ruleset de plataforma do qual este repositório depende tinha 155 asserções, 20 mutantes e 83,3% de cobertura de ramo — e zero invocações fora de `tests/`: ausente dos dois workflows de CI, do manifesto do instalador e de todo hook. Sua correção também depende de dois contratos de plataforma invisíveis a partir de um único objeto de ruleset: a agregação entre rulesets mantém a versão mais restritiva de uma regra [20], e o endpoint que o probe consulta omite regras de rulesets com status de enforcement `evaluate` ou `disabled` [21] — um filtro que o probe precisa replicar, não presumir.
+
+Formalmente, estendendo a decomposição de `Mergeable(x)` da seção 4.2, de um pull request para uma garantia `g` qualquer:
+
+```math
+\mathrm{Guarantee}(g)
+\iff
+\mathrm{Policy}(g)
+\land
+\mathrm{Mechanism}(g)
+\land
+\mathrm{ObservableVerifier}(g)
+\land
+\mathrm{FreshEvidence}(g).
+```
+
+Sete ondas de correção endureceram `Mechanism`; `ObservableVerifier` não existia até a onda que produziu esta seção. Cada medição acima está ancorada a uma tag durável (`evidencia/snapshot-*`) que aponta para o commit em que foi medida, para que a evidência da afirmação não dependa de um branch lateral sobreviver. O [ADR 0029](docs/adr/0029-sete-ondas-a-cegueira-sobe-um-nivel-por-vez.md) registra o relato completo, incluindo um oitavo defeito, estruturalmente idêntico, encontrado e deliberadamente deixado sem correção em vez de remendado sob pressão de tempo.
+
+```mermaid
+flowchart TD
+    A["Autoavaliação<br/>o agente narra o próprio sucesso"] -->|"cega a falso sucesso<br/>AUROC no máximo 0.65"| B["Verificador determinístico<br/>exit code, asserção"]
+    B -->|"cega a ramo omitido<br/>18,5% de desacordo com especialistas, erro unilateral"| C["Mutation testing<br/>mata variantes enfraquecidas"]
+    C -->|"cega à omissão<br/>78 asserções / 11 mutantes ficaram verdes"| D["Cobertura de decisão<br/>piso de ramo/linha"]
+    D -->|"satisfazível por diluição<br/>87,8% sozinho vs 88,8% diluído"| E["Fronteira de execução"]
+    E -->|"mutante fantasma exige rodar<br/>entrada não confiável; recusado"| F["Limite declarado<br/>NOT_VERIFIED, não PASS fabricado"]
+
+    G["Verificador observável<br/>instalado em CI, manifesto, hooks"] -.->|"qualquer camada acima pode ser<br/>verificada à exaustão e nunca instalada"| A
+    G -.->|"155 asserções, 20 mutantes, 83,3% de cobertura de ramo,<br/>zero invocações fora de tests/"| F
+```
 
 ---
 
 ## 16. Referências
 
-1. **GitHub Docs — Writing mathematical expressions.**  
-   https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions
+Só artigo, estudo ou pesquisa entra aqui. Toda citação de preprint abaixo carrega versão explícita (`vN`) e data de acesso, porque a versão importa: citações de preprint sem versão, neste domínio, já se mostraram materialmente desatualizadas de uma versão para outra - tamanho de amostra, número de tarefas e até números centrais reportados mudam entre versões do mesmo identificador. A versão e cada número citado foram conferidos diretamente contra o HTML da versão citada, na sessão que produziu esta seção.
 
-2. **GitHub Docs — Status checks.**  
-   https://docs.github.com/en/pull-requests/reference/status-checks
+1. Jimenez, C. E. et al. **SWE-bench: Can Language Models Resolve Real-World GitHub Issues?** ICLR 2024.  
+   https://arxiv.org/abs/2310.06770
 
-3. **GitHub Docs — Available rules for rulesets.**  
-   https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+2. Yang, J. et al. **SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering.** NeurIPS 2024.  
+   https://proceedings.neurips.cc/paper_files/paper/2024/hash/5a7c947568c1b1328ccc5230172e1e7c-Abstract-Conference.html
 
-4. **Anthropic — Claude Code: Create custom subagents.**  
-   https://code.claude.com/docs/en/sub-agents
+3. Kambhampati, S. et al. **Position: LLMs Can't Plan, But Can Help Planning in LLM-Modulo Frameworks.** ICML 2024.  
+   https://proceedings.mlr.press/v235/kambhampati24a.html
 
-5. **Anthropic — Claude Code: Hooks.**  
-   https://code.claude.com/docs/en/hooks
+4. Advani, L. **From Confident Closing to Silent Failure: Characterizing False Success in LLM Agents.** arXiv:2606.09863v1, acesso em 2026-08-12.  
+   https://arxiv.org/abs/2606.09863v1
 
-6. **Anthropic — Claude Code: Run parallel sessions with worktrees.**  
-   https://code.claude.com/docs/en/worktrees
+5. Bhat, V.; Vaghasiya, J.; Mohsin, M. A.; Aali, A. **Benchmarking the Benchmarks: A Validity Audit of Tool-Calling Evaluation.** arXiv:2607.02577v1, acesso em 2026-08-12.  
+   https://arxiv.org/abs/2607.02577v1
 
-7. **OpenAI — Codex: Custom instructions with AGENTS.md.**  
-   https://learn.chatgpt.com/docs/agent-configuration/agents-md
+6. Han, T. et al. **SWE-Skills-Bench: Do Agent Skills Actually Help in Real-World Software Engineering?** arXiv:2603.15401v1, acesso em 2026-08-12.  
+   https://arxiv.org/abs/2603.15401v1
 
-8. **OpenAI — Codex: Subagents.**  
-   https://learn.chatgpt.com/docs/agent-configuration/subagents
+7. Li, X. et al. **SkillsBench: Benchmarking How Well Agent Skills Work Across Diverse Tasks.** arXiv:2602.12670v4, acesso em 2026-08-12.  
+   https://arxiv.org/abs/2602.12670v4
 
-9. **OpenAI — Codex: Build skills / Hooks.**  
-   https://learn.chatgpt.com/docs/build-skills  
-   https://learn.chatgpt.com/docs/hooks
+8. Jia, Y.; Harman, M. **An Analysis and Survey of the Development of Mutation Testing.** IEEE Transactions on Software Engineering 37(5), 2011.  
+   https://doi.org/10.1109/TSE.2010.62
 
-10. **OpenAI — Codex: Git worktrees.**  
+9. Liu, Y. et al. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338v1, acesso em 2026-08-12.  
+   https://arxiv.org/abs/2601.10338v1
+
+10. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547v4, acesso em 2026-08-12.  
+    https://arxiv.org/abs/2602.06547v4
+
+---
+
+## 17. Fontes normativas
+
+As entradas abaixo são especificação de plataforma, não literatura de pesquisa: definem um contrato que os mecanismos deste repositório integram, e por isso ficam separadas da seção 16.
+
+11. **GitHub Docs — Status checks.**  
+    https://docs.github.com/en/pull-requests/reference/status-checks
+
+12. **GitHub Docs — Available rules for rulesets.**  
+    https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+
+13. **Anthropic — Claude Code: Create custom subagents.**  
+    https://code.claude.com/docs/en/sub-agents
+
+14. **Anthropic — Claude Code: Hooks.**  
+    https://code.claude.com/docs/en/hooks
+
+15. **Anthropic — Claude Code: Run parallel sessions with worktrees.**  
+    https://code.claude.com/docs/en/worktrees
+
+16. **OpenAI — Codex: Custom instructions with AGENTS.md.**  
+    https://learn.chatgpt.com/docs/agent-configuration/agents-md
+
+17. **OpenAI — Codex: Subagents.**  
+    https://learn.chatgpt.com/docs/agent-configuration/subagents
+
+18. **OpenAI — Codex: Build skills / Hooks.**  
+    https://learn.chatgpt.com/docs/build-skills  
+    https://learn.chatgpt.com/docs/hooks
+
+19. **OpenAI — Codex: Git worktrees.**  
     https://learn.chatgpt.com/docs/environments/git-worktrees
 
-11. Jimenez, C. E. et al. **SWE-bench: Can Language Models Resolve Real-World GitHub Issues?** ICLR 2024.  
-    https://arxiv.org/abs/2310.06770
+20. **GitHub Docs — About rulesets** ("About rule layering").  
+    https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets  
+    Verbatim: "if multiple rulesets target the same branch or tag in a repository, the rules in each of these rulesets are aggregated. If the same rule is defined in different ways across the aggregated rulesets, the most restrictive version of the rule applies."
 
-12. Yang, J. et al. **SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering.** NeurIPS 2024.  
-    https://proceedings.neurips.cc/paper_files/paper/2024/hash/5a7c947568c1b1328ccc5230172e1e7c-Abstract-Conference.html
-
-13. Kambhampati, S. et al. **Position: LLMs Can't Plan, But Can Help Planning in LLM-Modulo Frameworks.** ICML 2024.  
-    https://proceedings.mlr.press/v235/kambhampati24a.html
-
-14. Han, T. et al. **SWE-Skills-Bench: Do Agent Skills Actually Help in Real-World Software Engineering?** arXiv:2603.15401, preprint de 2026.  
-    https://arxiv.org/abs/2603.15401
-
-15. Li, X. et al. **SkillsBench: Benchmarking How Well Agent Skills Work Across Diverse Tasks.** arXiv:2602.12670, preprint de 2026.  
-    https://arxiv.org/abs/2602.12670
-
-16. Jia, Y.; Harman, M. **An Analysis and Survey of the Development of Mutation Testing.** IEEE Transactions on Software Engineering 37(5), 2011.  
-    https://doi.org/10.1109/TSE.2010.62
-
-17. Liu, Y. et al. **Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale.** arXiv:2601.10338, preprint de 2026.  
-    https://arxiv.org/abs/2601.10338
-
-18. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547, preprint de 2026.  
-    https://arxiv.org/abs/2602.06547
+21. **GitHub REST API — Rules** ("Get rules for a branch").  
+    https://docs.github.com/en/rest/repos/rules  
+    Verbatim: Rules in rulesets with "evaluate" or "disabled" enforcement statuses are not returned.
 
 ---
 
