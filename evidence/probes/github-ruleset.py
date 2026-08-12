@@ -161,6 +161,37 @@ caso). Reintroduzir a coercao de ausencia em `strict_medidos.append(bool(params.
 substituir por sempre-falso a comparacao que detecta enforcement e current_user_can_bypass
 invalidos, deixava a suite inteira verde - garantia sem teste e o mesmo risco de uma garantia
 removida em silencio.
+
+O SETIMO DEGRAU (wave7, 2026-08-12) - Bypass(a,P) tem de ser resolvido mesmo quando Required(P)
+fica indeterminado, e o predicado de agregacao de `strict` corrigido contra fonte primaria
+-----------------------------------------------------------------------------------------------
+C-1 - o laco que resolve `rulesets/{id}` (`resolve_bypass`, ver abaixo) so era alcancado quando
+      `context in contextos` (Required(P) confirmado). Quando uma regra `required_status_checks`
+      aplicavel ficava ilegivel (D5/D6/C1/A1, `nao_medidos` nao-vazio) E nenhuma violacao ainda
+      medida (`problemas` vazio), o probe retornava NOT_VERIFIED sem NUNCA consultar o ruleset -
+      mesmo com `ruleset_id` valido e resolvivel. Se aquele ruleset tem bypass_actors nao vazio,
+      enforcement != active ou current_user_can_bypass != never, nada disso era observado: a
+      formula publicada (Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P)) da FAIL sob
+      QUALQUER hipotese sobre Required(P) quando not Bypass(a,P) e falso e MENSURAVEL - o mesmo
+      argumento que o bloco irmao `if problemas:` (strict ja medido) ja aplicava tres linhas acima
+      ("as duas hipoteses levam ao mesmo resultado... NOT_VERIFIED aqui descreveria uma incerteza
+      que nao existe"). Corrigido: quando `nao_medidos` e nao-vazio, `problemas` esta vazio e
+      `ruleset_ids` ja tem ao menos um id valido, o probe chama `resolve_bypass` ANTES de decidir
+      entre FAIL e NOT_VERIFIED - se a chamada encontrar violacao, FAIL; se nao encontrar nada
+      (ruleset limpo), a lacuna de Required(P) permanece genuinamente NOT_VERIFIED (controle: nao
+      transformar ausencia de medicao em FAIL fabricado, o defeito OPOSTO ja fechado por A2/C1/A4).
+A-3 - `if not all(strict_medidos)` reprovava com QUALQUER regra aplicavel de strict=false, mesmo
+      que outra regra aplicavel exigisse strict=true. Confirmado contra fonte primaria (HTTP 200,
+      "About rule layering", ver comentario junto ao predicado): sob agregacao por regra mais
+      restritiva, uma unica regra com strict=true basta. Trocado para `strict_medidos and not
+      any(strict_medidos)` - o guard `strict_medidos and` NAO e vacuo para `any` (ao contrario do
+      que valia para `all`), e evita fabricar violacao quando nenhuma regra teve strict medido.
+      O `enforcement != "active"` acumulado por ruleset (defesa em profundidade pre-existente) foi
+      AVALIADO e MANTIDO: "Get rules for a branch" (docs.github.com/en/rest/branches/branch-
+      protection) declara que rules/branches/{branch} ja exclui rulesets em `evaluate`/`disabled`
+      - um ruleset nao-ativo alcancando `resolve_bypass` e sempre uma anomalia, nunca o resultado
+      esperado de "rule layering" (que agrega VALORES de regra entre rulesets JA ativos, nao
+      decide quais rulesets entram na agregacao).
 """
 from __future__ import annotations
 
@@ -286,6 +317,155 @@ def resolve_owner_repo(explicit_owner, explicit_repo):
     if not m:
         return None, None, f"remote.origin.url '{url}' nao e um remoto do github.com reconhecivel"
     return m.group(1), m.group(2), None
+
+
+def resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas):
+    """Consulta `rulesets/{id}` para cada id em `ruleset_ids` e resolve enforcement,
+    bypass_actors e current_user_can_bypass - o termo not Bypass(a,P). Muta `nao_medidos` e
+    `problemas` (listas do chamador `probe`) em vez de devolve-los: os dois acumuladores sao
+    compartilhados com o resto de `probe`, que decide FAIL vs NOT_VERIFIED depois que esta funcao
+    volta. Devolve `detalhes_rulesets` (dict rid -> resposta) para a evidencia do `Resultado`.
+
+    CHAMADA DE DOIS PONTOS DE `probe` (wave7, C-1): o ponto "normal" (Required(P) confirmado,
+    `ruleset_ids` resolvido) e o ponto NOVO, dentro de `if context not in contextos: if
+    nao_medidos:`, quando Required(P) fica indeterminado mas ha `ruleset_id` resolvivel - uma
+    violacao encontrada aqui decide FAIL de qualquer forma (ver comentario em `probe`). Os dois
+    pontos sao MUTUAMENTE EXCLUSIVOS numa mesma execucao (o primeiro sempre retorna antes que o
+    segundo seja alcancado): esta funcao roda no maximo uma vez por chamada de `probe`, sem
+    precisar de guard de reentrada.
+
+    --- ¬Bypass(a,P): so o endpoint de RULESET individual traz bypass_actors e
+    current_user_can_bypass. rules/branches/{branch} nao os inclui (medido: ver observacao).
+
+    NENHUM dos dois campos e garantido na resposta. A documentacao da API ("Get a repository
+    ruleset", https://docs.github.com/en/rest/repos/rules) declara: "To prevent leaking
+    sensitive information, the bypass_actors property is only returned if the user making the
+    API request has write access to the ruleset." Medido nesta sessao contra um repositorio
+    onde o token NAO tem write no ruleset (`gh api repos/github/docs/rulesets/19633356`):
+    'bypass_actors' ausente da resposta, 'current_user_can_bypass' presente. Um GITHUB_TOKEN de
+    Actions com `contents: read` (o perfil que evidence/claims/C-018.yaml recomenda para
+    execucao AGENDADA) esta nessa mesma situacao. `detalhe.get("bypass_actors") or []`
+    colapsava "medido: nenhum ator pode burlar" com "nao divulgado por falta de permissao" - o
+    mesmo defeito que este probe existe para corrigir, agora sobre o proprio termo
+    not Bypass(a,P). Campo ausente e NOT_VERIFIED, nunca PASS por omissao de sinal.
+
+    NENHUM ponto deste laco RETORNA cedo. Uma falha de rede/permissao ao ler UM ruleset, ou uma
+    resposta malformada, vira entrada em `nao_medidos` e o laco CONTINUA para os demais - um
+    `return` aqui descartaria `problemas` ja acumulado (o strict acima, ou o bypass de um
+    ruleset anterior no mesmo laco), mascarando uma violacao ja provada atras de uma lacuna de
+    medicao encontrada depois. Quem decide a precedencia e sempre o portao final em `probe`,
+    depois que esta funcao volta - nunca este laco.
+    """
+    bypass_total = []
+    detalhes_rulesets = {}
+    for rid in sorted(ruleset_ids):
+        detalhe, err = gh_api(f"repos/{owner}/{repo}/rulesets/{rid}")
+        if err:
+            nao_medidos.append(
+                f"ruleset {rid}: nao foi possivel ler para resolver bypass: {err}")
+            continue
+        if not isinstance(detalhe, dict):
+            # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
+            # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
+            # "nao medido" - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
+            nao_medidos.append(
+                f"ruleset {rid}: resposta de rulesets/{rid} nao e um objeto: "
+                f"{type(detalhe).__name__} - oraculo malformado, nao ha como resolver "
+                f"bypass_actors nem enforcement")
+            continue
+        detalhes_rulesets[rid] = detalhe
+
+        # (A-3, wave7, IRMAO da mesma forma - avaliado e NAO alterado) `problemas.append` abaixo
+        # acumula por ruleset: qualquer `enforcement != "active"` entre os rulesets aplicaveis
+        # reprova, mesmo que outro ruleset aplicavel esteja `active`. CONFIRMADO (2026-08-12, HTTP
+        # 200) que isto NAO e o mesmo caso do predicado de `strict` acima: "Get rules for a
+        # branch" (docs.github.com/en/rest/branches/branch-protection) declara "Rules in rulesets
+        # with 'evaluate' or 'disabled' enforcement statuses are not returned" por
+        # rules/branches/{branch} - o endpoint que alimenta `rsc`/`ruleset_ids` (ver `probe`) ja
+        # exclui rulesets nao-ativos ANTES deste ponto. Um `ruleset_id` que chega aqui com
+        # enforcement != "active" e, portanto, sempre uma ANOMALIA (corrida entre as duas
+        # chamadas, ou mudanca de comportamento da API) - nunca o resultado esperado de agregar
+        # "mais restritiva". "Rule layering" agrega o VALOR de uma regra (ex.:
+        # required_approving_review_count) entre rulesets JA ativos; enforcement decide SE um
+        # ruleset entra na agregacao, nao e ele mesmo um valor de regra a agregar. Tratar
+        # "enforcement != active ao lado de um active" como inofensivo confundiria as duas
+        # doutrinas e desarmaria a defesa em profundidade contra a anomalia.
+        enf_status, enforcement = valida_campo(detalhe, "enforcement", str)
+        if enf_status == FALTANTE:
+            # (A2, metade 2) `detalhe.get("enforcement")` coagia a AUSENCIA em `None`, e
+            # `enforcement != "active"` fabricava uma violacao ("enforcement='None'") sobre um
+            # campo que nao foi medido. Ausencia agora e "nao medido", nunca "medido: inativo".
+            nao_medidos.append(
+                f"ruleset {rid}: 'enforcement' ausente da resposta - enforcement NAO foi medido "
+                f"para este ruleset.")
+        elif enf_status == NULO:
+            nao_medidos.append(f"ruleset {rid}: 'enforcement' e null na resposta - mesma doutrina de campo ausente.")
+        elif enf_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"ruleset {rid}: 'enforcement' tem tipo inesperado ({type(enforcement).__name__}, "
+                f"esperava string) - nao medido.")
+        elif enforcement != "active":
+            # Defesa em profundidade: rules/branches/{branch} ja deveria filtrar por regra
+            # ativa. Se um dia esse filtro mudar de comportamento, este probe nao herda a
+            # suposicao em silencio.
+            problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
+
+        bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
+        if bp_status == FALTANTE:
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
+                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+        elif bp_status == NULO:
+            # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
+            # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
+            # dois casos no mesmo PASS fabricado que a correcao anterior fechou so para a chave
+            # ausente - a INSTANCIA foi corrigida, a CLASSE (valor nulo) continuava aberta.
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' e null na resposta - not Bypass(a,P) NAO foi "
+                f"medido (mesma doutrina de campo ausente).")
+        elif bp_status == TIPO_INVALIDO:
+            # Tipo inesperado (ex.: string, numero): sem este guard, `**a` sobre um elemento que
+            # nao e mapeamento (ou a propria iteracao sobre uma string) produz TypeError nao
+            # tratado - a mesma promessa de "nunca traceback" que ja valia para o OBJETO
+            # `detalhe`, agora tambem para este CAMPO dele.
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' tem tipo inesperado "
+                f"({type(bp_valor).__name__}, esperava lista) - oraculo "
+                f"malformado, not Bypass(a,P) NAO foi medido.")
+        elif bp_status == ITEM_INVALIDO:
+            # (C2) o guard acima cobria o CONTAINER (`isinstance(..., list)`), nao o ELEMENTO -
+            # uma lista de nao-mapeamentos (`["OrganizationAdmin"]`) passava por ele e estourava
+            # TypeError em `{"ruleset_id": rid, **a}`. `valida_campo` fecha a mesma classe de
+            # defeito no ELEMENTO que ja fechava no container.
+            idx, item = bp_valor
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors[{idx}]' tem tipo inesperado "
+                f"({type(item).__name__}, esperava objeto) - elemento nao mapeavel, "
+                f"not Bypass(a,P) NAO foi medido por completo.")
+        else:
+            if bp_valor:
+                bypass_total.extend({"ruleset_id": rid, **a} for a in bp_valor)
+
+        cucb_status, cucb = valida_campo(detalhe, "current_user_can_bypass", str)
+        if cucb_status == FALTANTE:
+            nao_medidos.append(
+                f"ruleset {rid}: 'current_user_can_bypass' ausente da resposta - not Bypass(a,P) "
+                f"NAO foi medido para o ator autenticado (mesma doutrina de 'bypass_actors': "
+                f"ausencia nao e 'never').")
+        elif cucb_status == NULO:
+            nao_medidos.append(
+                f"ruleset {rid}: 'current_user_can_bypass' e null na resposta - mesma doutrina de campo ausente.")
+        elif cucb_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"ruleset {rid}: 'current_user_can_bypass' tem tipo inesperado "
+                f"({type(cucb).__name__}, esperava string) - nao medido.")
+        elif cucb != "never":
+            problemas.append(
+                f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
+
+    if bypass_total:
+        problemas.append(f"bypass_actors nao vazio: {bypass_total}")
+    return detalhes_rulesets
 
 
 def probe(owner, repo, branch, context):
@@ -528,21 +708,35 @@ def probe(owner, repo, branch, context):
     # uma lista vazia aqui significa "nenhuma regra aplicavel tinha o campo legivel", nunca "todas
     # desligadas".
     #
-    # (questao em aberto, [nao verificado]) se o GitHub compoe rulesets aplicaveis pela regra MAIS
-    # RESTRITIVA (strict=true em qualquer uma bastaria), o predicado correto seria `not
-    # any(strict_medidos)` em vez de `not all(strict_medidos)` - `not all` trata strict=false em
-    # QUALQUER regra aplicavel como violacao, mesmo que outra regra aplicavel exija strict=true.
-    # Nao confirmado em fonte primaria (documentacao oficial do GitHub) nesta sessao. Nao mudar
-    # este predicado por intuicao - so com a fonte primaria em maos.
+    # (A-3, wave7, CONFIRMADO 2026-08-12 contra fonte primaria, HTTP 200) "About rule layering",
+    # https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/
+    # managing-rulesets/about-rulesets, verbatim: "if multiple rulesets target the same branch or
+    # tag in a repository, the rules in each of these rulesets are aggregated. If the same rule is
+    # defined in different ways across the aggregated rulesets, the most restrictive version of
+    # the rule applies." O predicado ANTERIOR, `not all(strict_medidos)`, reprovava com UMA UNICA
+    # regra aplicavel com strict=false mesmo que outra regra aplicavel exigisse strict=true - a
+    # versao MAIS RESTRITIVA (true) e a que vale sob agregacao, nao qualquer ocorrencia de false.
+    # LIMITE desta citacao: a pagina exemplifica a regra geral com `required_approving_review_count`
+    # (3 revisores vs 2 -> vale 3), NAO cita `strict_required_status_checks_policy` pelo nome - a
+    # aplicacao do MESMO principio de agregacao a este campo especifico e inferencia de quem faz
+    # esta correcao, nao afirmacao literal da fonte.
     #
-    # (S3) `all([])` e vacuamente `True` em Python: `not all(strict_medidos)` ja e `False` quando
-    # `strict_medidos` esta vazio, sem precisar do guard extra `strict_medidos and`. O guard era
-    # termo morto - um mutante que o removesse seria EQUIVALENTE, nao um mutante que a suite
-    # devesse matar. Removido.
-    if not all(strict_medidos):
+    # `strict_medidos and not any(strict_medidos)`: o guard `strict_medidos and` NAO e vacuo aqui,
+    # ao contrario do que valia para `all` (S3, ver historico abaixo). `any([])` e vacuamente
+    # `False` em Python, logo `not any([])` e `True` - sem o guard, uma lista VAZIA (nenhuma regra
+    # aplicavel com strict genuinamente medido - todas ausentes/nulas/tipo errado, cada uma ja
+    # registrada em `nao_medidos` pelo laco acima) fabricaria a violacao "nao esta ligado em
+    # nenhuma regra" sobre um campo que na verdade NUNCA foi lido - a MESMA classe de coercao de
+    # ausencia em conclusao que A2 fechou para enforcement/bypass, agora reintroduzida pela troca
+    # de `all` por `any` se o guard for esquecido. (S3, historico) `all([])` e vacuamente `True`:
+    # o guard antigo era termo morto para `not all`, removido; a troca para `not any` INVERTE essa
+    # propriedade e torna o guard necessario de novo - o oposto de "sempre foi termo morto".
+    if strict_medidos and not any(strict_medidos):
         problemas.append(
-            f"strict_required_status_checks_policy nao esta ligado em toda regra aplicavel "
-            f"legivel ({strict_medidos})")
+            f"strict_required_status_checks_policy nao esta ligado em NENHUMA regra aplicavel "
+            f"legivel ({strict_medidos}) - sob agregacao por regra mais restritiva (ver fonte "
+            f"acima), uma unica regra aplicavel com strict=true bastaria para satisfazer a "
+            f"politica de atualizacao.")
 
     if context not in contextos:
         if nao_medidos:
@@ -567,11 +761,40 @@ def probe(owner, repo, branch, context):
                     + "; ".join(nao_medidos) + "): " + "; ".join(problemas),
                     {"rules": rules},
                 )
+            # (C-1, wave7 - O SETIMO DEGRAU) Antes de concluir NOT_VERIFIED, se ao menos uma regra
+            # aplicavel ja declarou 'ruleset_id' valido, ha not Bypass(a,P) a resolver - e uma
+            # violacao encontrada agora decide Gate(P,a,r) = False de qualquer forma, pela MESMA
+            # razao do bloco `if problemas:` logo acima: as duas hipoteses sobre a regra ilegivel
+            # (exigia o contexto pedido ou nao) levam ao mesmo FAIL quando bypass_actors nao esta
+            # vazio, current_user_can_bypass != never ou enforcement != active - nenhuma delas
+            # depende de Required(P) estar confirmado. ANTES desta correcao, este ramo retornava
+            # NOT_VERIFIED sem NUNCA consultar `rulesets/{id}`, mesmo com `ruleset_ids` populado -
+            # reproduzido nesta sessao (V40): 'required_status_checks' de tipo errado (ambiguo) +
+            # ruleset com bypass_actors nao vazio saia `estado: NOT_VERIFIED exit=2, chamadas de
+            # ruleset: 0`, quando o proprio bypass ja provava `estado: FAIL exit=1`. Simetrico ao
+            # `if not all(strict_medidos)` fabricando FAIL por omissao (A2): aqui a omissao era o
+            # INVERSO, NOT_VERIFIED por lacuna de consulta nunca feita, sobre uma violacao que
+            # UMA CHAMADA DE API JA DISPONIVEL (ruleset_id valido) teria revelado.
+            if ruleset_ids:
+                detalhes_rulesets = resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas)
+                if problemas:
+                    return Resultado(
+                        FAIL,
+                        f"Applies(P,r) vale e uma violacao ja medida (Bypass(a,P) ou a politica "
+                        f"de atualizacao) decide Gate(P,a,r) = False, independente de Required(P) "
+                        f"para '{context}' ficar indeterminado (regra required_status_checks "
+                        f"aplicavel ilegivel: " + "; ".join(nao_medidos) + "): "
+                        + "; ".join(problemas),
+                        {"rules": rules, "rulesets": detalhes_rulesets},
+                    )
             # Sem isto, uma regra aplicavel ILEGIVEL (C1/A1 acima) que PODERIA ter exigido
             # `context` faria este ramo declarar `Required(P) = False` por omissao - a mesma
             # coercao de ausencia em conclusao que A2 fecha para bypass/enforcement, agora para
             # Required(P). So quando toda regra aplicavel foi lida por completo e nenhuma exige
-            # `context` e que "Required(P) = False" e medido, nao suposto.
+            # `context` e que "Required(P) = False" e medido, nao suposto. CONTROLE (V35/V36/V37,
+            # wave7): quando `resolve_bypass` acima roda e NAO acha nada (ruleset limpo), este
+            # `return` ainda e o alcancado - a lacuna de Required(P) continua genuinamente nao
+            # verificada, nao vira FAIL fabricado so por termos chamado o endpoint.
             return Resultado(
                 NOT_VERIFIED,
                 f"Required(P) para '{context}' nao pode ser determinado: o contexto nao foi "
@@ -626,120 +849,14 @@ def probe(owner, repo, branch, context):
             {"rules": rules},
         )
 
-    # --- ¬Bypass(a,P): so o endpoint de RULESET individual traz bypass_actors e
-    # current_user_can_bypass. rules/branches/{branch} nao os inclui (medido: ver observacao).
-    #
-    # NENHUM dos dois campos e garantido na resposta. A documentacao da API ("Get a repository
-    # ruleset", https://docs.github.com/en/rest/repos/rules) declara: "To prevent leaking
-    # sensitive information, the bypass_actors property is only returned if the user making the
-    # API request has write access to the ruleset." Medido nesta sessao contra um repositorio
-    # onde o token NAO tem write no ruleset (`gh api repos/github/docs/rulesets/19633356`):
-    # 'bypass_actors' ausente da resposta, 'current_user_can_bypass' presente. Um GITHUB_TOKEN de
-    # Actions com `contents: read` (o perfil que evidence/claims/C-018.yaml recomenda para
-    # execucao AGENDADA) esta nessa mesma situacao. `detalhe.get("bypass_actors") or []`
-    # colapsava "medido: nenhum ator pode burlar" com "nao divulgado por falta de permissao" - o
-    # mesmo defeito que este probe existe para corrigir, agora sobre o proprio termo
-    # not Bypass(a,P). Campo ausente e NOT_VERIFIED, nunca PASS por omissao de sinal.
-    #
-    # NENHUM ponto deste laco RETORNA cedo. Uma falha de rede/permissao ao ler UM ruleset, ou uma
-    # resposta malformada, vira entrada em `nao_medidos` e o laco CONTINUA para os demais - um
-    # `return` aqui descartaria `problemas` ja acumulado (o strict acima, ou o bypass de um
-    # ruleset anterior no mesmo laco), mascarando uma violacao ja provada atras de uma lacuna de
-    # medicao encontrada depois. O portao final, apos o laco, e quem decide a precedencia.
-    bypass_total = []
-    detalhes_rulesets = {}
-    for rid in sorted(ruleset_ids):
-        detalhe, err = gh_api(f"repos/{owner}/{repo}/rulesets/{rid}")
-        if err:
-            nao_medidos.append(
-                f"ruleset {rid}: nao foi possivel ler para resolver bypass: {err}")
-            continue
-        if not isinstance(detalhe, dict):
-            # Mesma doutrina do type-guard de `rules` acima: uma resposta que nao e objeto nao
-            # pode ser lida com `.get(...)` sem AttributeError, e um oraculo malformado e
-            # "nao medido" - nunca a excecao nao tratada que sairia 1 (FAIL) por acidente.
-            nao_medidos.append(
-                f"ruleset {rid}: resposta de rulesets/{rid} nao e um objeto: "
-                f"{type(detalhe).__name__} - oraculo malformado, nao ha como resolver "
-                f"bypass_actors nem enforcement")
-            continue
-        detalhes_rulesets[rid] = detalhe
-
-        enf_status, enforcement = valida_campo(detalhe, "enforcement", str)
-        if enf_status == FALTANTE:
-            # (A2, metade 2) `detalhe.get("enforcement")` coagia a AUSENCIA em `None`, e
-            # `enforcement != "active"` fabricava uma violacao ("enforcement='None'") sobre um
-            # campo que nao foi medido. Ausencia agora e "nao medido", nunca "medido: inativo".
-            nao_medidos.append(
-                f"ruleset {rid}: 'enforcement' ausente da resposta - enforcement NAO foi medido "
-                f"para este ruleset.")
-        elif enf_status == NULO:
-            nao_medidos.append(f"ruleset {rid}: 'enforcement' e null na resposta - mesma doutrina de campo ausente.")
-        elif enf_status == TIPO_INVALIDO:
-            nao_medidos.append(
-                f"ruleset {rid}: 'enforcement' tem tipo inesperado ({type(enforcement).__name__}, "
-                f"esperava string) - nao medido.")
-        elif enforcement != "active":
-            # Defesa em profundidade: rules/branches/{branch} ja deveria filtrar por regra
-            # ativa. Se um dia esse filtro mudar de comportamento, este probe nao herda a
-            # suposicao em silencio.
-            problemas.append(f"ruleset {rid} enforcement='{enforcement}' (esperado 'active')")
-
-        bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
-        if bp_status == FALTANTE:
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
-                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
-        elif bp_status == NULO:
-            # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
-            # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
-            # dois casos no mesmo PASS fabricado que a correcao anterior fechou so para a chave
-            # ausente - a INSTANCIA foi corrigida, a CLASSE (valor nulo) continuava aberta.
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors' e null na resposta - not Bypass(a,P) NAO foi "
-                f"medido (mesma doutrina de campo ausente).")
-        elif bp_status == TIPO_INVALIDO:
-            # Tipo inesperado (ex.: string, numero): sem este guard, `**a` sobre um elemento que
-            # nao e mapeamento (ou a propria iteracao sobre uma string) produz TypeError nao
-            # tratado - a mesma promessa de "nunca traceback" que ja valia para o OBJETO
-            # `detalhe`, agora tambem para este CAMPO dele.
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors' tem tipo inesperado "
-                f"({type(bp_valor).__name__}, esperava lista) - oraculo "
-                f"malformado, not Bypass(a,P) NAO foi medido.")
-        elif bp_status == ITEM_INVALIDO:
-            # (C2) o guard acima cobria o CONTAINER (`isinstance(..., list)`), nao o ELEMENTO -
-            # uma lista de nao-mapeamentos (`["OrganizationAdmin"]`) passava por ele e estourava
-            # TypeError em `{"ruleset_id": rid, **a}`. `valida_campo` fecha a mesma classe de
-            # defeito no ELEMENTO que ja fechava no container.
-            idx, item = bp_valor
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors[{idx}]' tem tipo inesperado "
-                f"({type(item).__name__}, esperava objeto) - elemento nao mapeavel, "
-                f"not Bypass(a,P) NAO foi medido por completo.")
-        else:
-            if bp_valor:
-                bypass_total.extend({"ruleset_id": rid, **a} for a in bp_valor)
-
-        cucb_status, cucb = valida_campo(detalhe, "current_user_can_bypass", str)
-        if cucb_status == FALTANTE:
-            nao_medidos.append(
-                f"ruleset {rid}: 'current_user_can_bypass' ausente da resposta - not Bypass(a,P) "
-                f"NAO foi medido para o ator autenticado (mesma doutrina de 'bypass_actors': "
-                f"ausencia nao e 'never').")
-        elif cucb_status == NULO:
-            nao_medidos.append(
-                f"ruleset {rid}: 'current_user_can_bypass' e null na resposta - mesma doutrina de campo ausente.")
-        elif cucb_status == TIPO_INVALIDO:
-            nao_medidos.append(
-                f"ruleset {rid}: 'current_user_can_bypass' tem tipo inesperado "
-                f"({type(cucb).__name__}, esperava string) - nao medido.")
-        elif cucb != "never":
-            problemas.append(
-                f"ruleset {rid}: current_user_can_bypass='{cucb}' (esperado 'never')")
-
-    if bypass_total:
-        problemas.append(f"bypass_actors nao vazio: {bypass_total}")
+    # --- ¬Bypass(a,P): resolvido por `resolve_bypass` (definida acima) contra o endpoint de
+    # RULESET individual - rules/branches/{branch} nao inclui bypass_actors/current_user_can_bypass
+    # (medido: ver docstring de `resolve_bypass`). Chamada UNCONDICIONAL aqui: neste ponto,
+    # `context in contextos` (Required(P) confirmado) e `ruleset_ids` nao-vazio ja foram
+    # estabelecidos pelos dois blocos acima - e o ponto "normal", mutuamente exclusivo com o novo
+    # ponto de chamada em `if context not in contextos: if nao_medidos: if ruleset_ids:` (C-1,
+    # wave7, ver comentario la).
+    detalhes_rulesets = resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas)
 
     if problemas:
         # FAIL vence sobre "nao medido": uma violacao ja PROVADA (bypass_actors nao vazio,

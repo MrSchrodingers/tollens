@@ -523,6 +523,38 @@ JSON
 ]
 JSON
         ;;
+      container-ilegivel-bypass-aberto)
+        # (C-1, wave7, O SETIMO DEGRAU) reproducao EXATA do defeito: 'required_status_checks' de
+        # tipo errado (Required(P) indeterminado, nao_medidos nao-vazio) numa regra cujo
+        # 'ruleset_id' (999) E VALIDO. Antes da correcao, o probe retornava NOT_VERIFIED sem
+        # NUNCA consultar rulesets/999 - mesmo com o bypass aberto abaixo. Depois, FAIL.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":999,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,"required_status_checks":"nao-e-uma-lista"}}
+]
+JSON
+        ;;
+      strict-mista)
+        # (A-3, wave7) DUAS regras aplicaveis, ambas exigindo 'verify-pr': uma com strict=true
+        # (ruleset 601), outra com strict=false (ruleset 602). Sob agregacao por regra mais
+        # restritiva (fonte primaria citada no probe), strict=true de UMA regra basta - nao ha
+        # violacao de strict aqui. Ambos os rulesets ficam limpos de bypass (ver rulesets/* abaixo)
+        # para isolar o predicado de strict de qualquer outro termo.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "ruleset_id":601,"parameters":{"strict_required_status_checks_policy":true,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}},
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo2",
+   "ruleset_id":602,"parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"verify-pr","integration_id":15369}]}}
+]
+JSON
+        ;;
       *) echo "fake-gh: STUB_MODE nao reconhecido: ${STUB_MODE:-<vazio>}" >&2; exit 1 ;;
     esac
     ;;
@@ -610,6 +642,12 @@ JSON
         # coagia em violacao fabricada ("enforcement='None'") em vez de registrar como nao
         # medida.
         echo '{"id":999,"current_user_can_bypass":"never"}' ;;
+      container-ilegivel-bypass-aberto)
+        # (C-1, wave7) o ruleset que so seria consultado se a correcao rodar: enforcement != active,
+        # current_user_can_bypass != never E bypass_actors nao vazio - qualquer um dos tres ja
+        # decide FAIL, os tres juntos tornam o achado inequivoco.
+        echo '{"id":999,"enforcement":"evaluate","current_user_can_bypass":"always",
+               "bypass_actors":[{"actor_id":5,"actor_type":"OrganizationAdmin","bypass_mode":"always"}]}' ;;
       *)
         echo '{"id":999,"enforcement":"active","bypass_actors":[],"current_user_can_bypass":"never"}' ;;
     esac
@@ -847,8 +885,13 @@ chk "  motivo cita 'parameters' tipo inesperado" \
     "$(grep -q "'parameters' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
 chk "  nao ha traceback do Python em stderr (a1-parametros)" \
     "$(grep -q 'Traceback (most recent call last)' "$T/err" && echo vazou || echo contido)" "contido"
-chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
-    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (C-1, wave7) Esta regra TEM 'ruleset_id' valido (999) apesar de 'parameters' ilegivel - ha
+# bypass a resolver mesmo com Required(P) indeterminado. Antes da correcao, o endpoint de
+# ruleset NUNCA era chamado aqui (o mesmo defeito medido em V40); depois, e sempre chamado
+# quando ha 'ruleset_id' resolvivel, mesmo que a resposta acabe limpa (controle: motivo e exit
+# code acima nao mudam so por termos chamado o endpoint e nao termos achado nada).
+chk "  CHAMA o endpoint de ruleset (ruleset_id resolvivel, mesmo com Required(P) indeterminado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
 
 echo "== V19. (A2) 'enforcement' E 'bypass_actors' AUSENTES -> NOT_VERIFIED, nunca FAIL fabricado =="
 # Antes da correcao: `detalhe.get("enforcement")` coagia a ausencia em `None`, e
@@ -880,8 +923,9 @@ chk "  motivo cita 'required_status_checks[0]' tipo inesperado" \
     "$(grep -q "'required_status_checks\[0\]' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL a partir de item malformado)" \
     "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
-chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
-    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (C-1, wave7) 'ruleset_id' (999) e valido - ver a mesma nota em V18.
+chk "  CHAMA o endpoint de ruleset (ruleset_id resolvivel, mesmo com Required(P) indeterminado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
 
 # V21-V31 fecham a QUINTA onda (2026-08-11, o QUINTO DEGRAU e RAMOS DE DECISAO SEM CASO - ver o
 # docstring de evidence/probes/github-ruleset.py, secao "O SEXTO CAMPO, ANTES DO SCHEMA"). D1/D2
@@ -919,6 +963,12 @@ chk "exit code 2 (nao 1 - ausencia nao e 'strict:false' medido)" "$RC" 2
 chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
 chk "  motivo cita 'strict_required_status_checks_policy' ausente" \
     "$(grep -q "'strict_required_status_checks_policy' ausente" "$T/out" && echo sim || echo nao)" "sim"
+# (A-3, wave7) `strict_medidos` fica VAZIO aqui (o unico campo strict aplicavel nao foi medido) -
+# prova que o guard `strict_medidos and` (necessario para `not any`, ver comentario no probe) NAO
+# e termo morto: sem ele, `not any([])` e vacuamente `True` e fabricaria violacao sobre um campo
+# nunca lido.
+chk "  NAO relata estado FAIL (guard 'strict_medidos and': lista vazia nao e violacao fabricada)" \
+    "$(grep -q '^estado: FAIL$' "$T/out" && echo vazou || echo contido)" "contido"
 
 echo "== V24. (D3) 'strict_required_status_checks_policy' e NULL -> NOT_VERIFIED =="
 MRK="$T/chamou-ruleset-v24"; rm -f "$MRK"
@@ -948,8 +998,9 @@ chk "  motivo cita 'required_status_checks[0]' sem 'context'" \
     "$(grep -qF "'required_status_checks[0]' sem 'context'" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL por item sem 'context')" \
     "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
-chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
-    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (C-1, wave7) 'ruleset_id' (999) e valido - ver a mesma nota em V18.
+chk "  CHAMA o endpoint de ruleset (ruleset_id resolvivel, mesmo com Required(P) indeterminado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
 
 echo "== V27. (D1, O QUINTO DEGRAU) 'type' AUSENTE numa regra, ao lado de outra legivel -> NOT_VERIFIED, nunca PASS =="
 # Reproduzido antes desta correcao: com o ruleset da segunda regra (998) trazendo bypass_actors
@@ -1023,6 +1074,25 @@ chk "  NAO relata NOT_VERIFIED (ruleset_id ausente nao rebaixa violacao ja prova
     "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
 chk "  NAO chama o endpoint de ruleset (ruleset_id nunca foi resolvido)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (A-1, wave7) ASSERCAO NEGATIVA: 'strict_required_status_checks_policy' aparece no motivo via o
+# PAYLOAD de `problemas` (`"; ".join(problemas)`) INDEPENDENTE da PROSA que introduz a mensagem -
+# a asercao positiva acima nao discrimina se a prosa nomeia corretamente qual termo foi medido.
+# Neste ponto do codigo (bloco `if not ruleset_ids: if problemas:`), SO strict pode estar em
+# `problemas` - bypass_actors/current_user_can_bypass/enforcement dependem do laco de rulesets,
+# que NUNCA roda aqui (ruleset_id nunca foi resolvido, ver acima). A frase generica "Bypass(a,P)
+# ou a politica de atualizacao" (a mesma usada, corretamente, no portao final DEPOIS que o laco de
+# rulesets roda) afirmaria aqui uma medicao de Bypass(a,P) que nao aconteceu - NAO a substring
+# 'Bypass(a,P)' isolada, que tambem aparece legitimamente dentro de `nao_medidos` ("'ruleset_id'
+# ausente da regra - not Bypass(a,P) e enforcement NAO podem ser resolvidos..." e uma explicacao
+# de LACUNA, nao uma afirmacao de medicao).
+# ROTULO UNICO (v32, ver a nota identica em V4/V19): o mesmo texto tambem existe em V33 - o sufixo
+# "(v32)" evita que um mutante que so quebra V33 (ou vice-versa) seja creditado ao caso errado.
+chk "  motivo NAO cita 'Bypass(a,P) ou a politica de atualizacao' (nao foi medido neste ponto, v32)" \
+    "$(grep -qF 'Bypass(a,P) ou a politica de atualizacao' "$T/out" && echo citou || echo nao-citou)" "nao-citou"
+# (A-3/A3, wave7) a razao pela qual 'ruleset_id' ficou vazio precisa sobreviver no relatorio -
+# sem isto, `problemas` era relatado sozinho e a itemizacao de `nao_medidos` desaparecia.
+chk "  motivo cita 'ruleset_id' ausente (A3: nao_medidos preservado no FAIL)" \
+    "$(grep -qF "'ruleset_id' ausente" "$T/out" && echo sim || echo nao)" "sim"
 
 echo "== V33. (wave6) Required(P) indeterminado (regra ilegivel) + strict=false JA MEDIDO -> FAIL =="
 # MESMA violacao de strict, descartada pelo OUTRO 'return' precoce: 'if context not in contextos:
@@ -1038,6 +1108,10 @@ chk "  NAO relata NOT_VERIFIED (regra ilegivel nao rebaixa violacao ja provada)"
     "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
 chk "  NAO chama o endpoint de ruleset (retorno antes do laco que resolve bypass)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (A-1, wave7) mesma asercao negativa de V32, agora no OUTRO ponto de codigo (`if context not in
+# contextos: if nao_medidos: if problemas:`) - ver a nota em V32. ROTULO UNICO (v33).
+chk "  motivo NAO cita 'Bypass(a,P) ou a politica de atualizacao' (nao foi medido neste ponto, v33)" \
+    "$(grep -qF 'Bypass(a,P) ou a politica de atualizacao' "$T/out" && echo citou || echo nao-citou)" "nao-citou"
 
 echo "== V34. (wave6, NAO-REGRESSAO) 'ruleset_id' AUSENTE, SEM violacao (strict=true) -> continua NOT_VERIFIED =="
 # Prova que o guard 'if problemas' introduzido por V32 REALMENTE gateia no valor de 'problemas' -
@@ -1064,8 +1138,12 @@ chk "  motivo cita 'required_status_checks' ausente de 'parameters'" \
     "$(grep -qF "'required_status_checks' ausente de 'parameters'" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'Required(P) = False' (nao fabrica FAIL por container ilegivel)" \
     "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
-chk "  NAO chama o endpoint de ruleset (Required(P) ja nao pode ser confirmado)" \
-    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (C-1, wave7) 'ruleset_id' (999) e valido - ver a mesma nota em V18. CONTROLE: o ruleset 999
+# fica LIMPO nesta resposta (nao ha caso stubado para este STUB_MODE em rulesets/*, cai no
+# default sem violacao) - prova que chamar o endpoint e nao achar nada NAO fabrica FAIL: o
+# estado continua NOT_VERIFIED (linha acima), so o marcador muda.
+chk "  CHAMA o endpoint de ruleset (ruleset_id resolvivel, mesmo com Required(P) indeterminado)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
 
 echo "== V36. (D6) 'required_status_checks' e NULL (nao a chave ausente) -> NOT_VERIFIED =="
 MRK="$T/chamou-ruleset-v36"; rm -f "$MRK"
@@ -1076,8 +1154,11 @@ chk "  motivo cita 'required_status_checks' e null em 'parameters'" \
     "$(grep -qF "'required_status_checks' e null em 'parameters'" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'Required(P) = False'" \
     "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
-chk "  NAO chama o endpoint de ruleset" \
-    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (C-1, wave7) 'ruleset_id' (999) e valido - ver a mesma nota em V35. ROTULO UNICO (v36): nao
+# usar a forma curta "CHAMA o endpoint de ruleset" sozinha - seria PREFIXO do rotulo de V18/V20/
+# V26/V40, o que o proprio arnes de mutacao proibe (credito de kill por prefixo indevido).
+chk "  CHAMA o endpoint de ruleset (v36)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
 
 echo "== V37. (D6) 'required_status_checks' de tipo errado (string) -> NOT_VERIFIED, nunca FAIL fabricado =="
 MRK="$T/chamou-ruleset-v37"; rm -f "$MRK"
@@ -1088,8 +1169,9 @@ chk "  motivo cita 'required_status_checks' tipo inesperado" \
     "$(grep -qF "'required_status_checks' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'Required(P) = False'" \
     "$(grep -qF 'Required(P) = False' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
-chk "  NAO chama o endpoint de ruleset" \
-    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+# (C-1, wave7) 'ruleset_id' (999) e valido - ver a mesma nota em V35. ROTULO UNICO (v37).
+chk "  CHAMA o endpoint de ruleset (v37)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
 
 echo "== V1 (controle positivo, reafirmado) e V8 (controle negativo, reafirmado) continuam validos =="
 # A correcao acima NAO pode transformar 'Required(P) = False' genuino (contexto realmente ausente
@@ -1122,11 +1204,49 @@ chk "  motivo cita 'ruleset_id' tipo inesperado" \
 chk "  NAO chama o endpoint de ruleset (ruleset_id nunca foi resolvido)" \
     "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
 
+echo "== V40. (C-1, wave7, O SETIMO DEGRAU) container ilegivel + ruleset_id resolvivel com bypass"
+echo "==      aberto -> FAIL, exit 1 (nunca NOT_VERIFIED sem consultar o ruleset) =="
+# Reproducao EXATA do defeito medido pela revisao independente: 'required_status_checks' de tipo
+# errado deixa Required(P) indeterminado (nao_medidos nao-vazio), mas a MESMA regra declara
+# 'ruleset_id':999 valido. Antes da correcao, `if context not in contextos: if nao_medidos:`
+# retornava NOT_VERIFIED sem NUNCA chamar rulesets/999 - mesmo com bypass_actors nao vazio,
+# enforcement='evaluate' e current_user_can_bypass='always' la esperando. Sob a formula publicada
+# (Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P)), a resposta e FAIL sob QUALQUER
+# hipotese sobre Required(P), porque not Bypass(a,P) e falso e MENSURAVEL - o mesmo argumento que
+# `if problemas:` (bloco irmao, tres linhas acima no codigo) ja aplica para strict.
+MRK="$T/chamou-ruleset-v40"; rm -f "$MRK"
+RC="$(rodar container-ilegivel-bypass-aberto "$MRK")"
+chk "exit code 1 (nao 2 - bypass ja mensuravel decide FAIL independente de Required(P))" "$RC" 1
+chk "relata estado FAIL" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado NOT_VERIFIED (o defeito historico: retornar sem consultar o ruleset)" \
+    "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
+chk "  motivo cita 'bypass_actors nao vazio' (violacao que so aparece se o ruleset foi consultado)" \
+    "$(grep -qF 'bypass_actors nao vazio' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo TAMBEM cita 'required_status_checks' tipo inesperado (Required(P) segue indeterminado)" \
+    "$(grep -qF "'required_status_checks' tem tipo inesperado" "$T/out" && echo sim || echo nao)" "sim"
+chk "  CHAMA o endpoint de ruleset (a correcao consulta antes de decidir NOT_VERIFIED)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "chamou"
+
+echo "== V41. (A-3, wave7) strict=[true,false] em regras aplicaveis DISTINTAS -> PASS (mais restritiva"
+echo "==      vence: strict=true de uma regra basta, nao ha violacao) =="
+# Confirmado contra fonte primaria (ver comentario junto ao predicado em probe.py): 'not
+# all(strict_medidos)' fabricava violacao aqui so porque UMA das duas regras tinha strict=false,
+# mesmo com a outra em strict=true - o caso [True, False] nao tinha NENHUM caso na suite ate aqui.
+# Ambos os rulesets (601, 602) ficam limpos de bypass para isolar o predicado de strict.
+MRK="$T/chamou-ruleset-v41"; rm -f "$MRK"
+RC="$(rodar strict-mista "$MRK")"
+chk "exit code 0 (regra mais restritiva - strict=true de UMA regra basta)" "$RC" 0
+chk "relata estado PASS" "$(grep -q '^estado: PASS$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado FAIL (nao fabrica violacao de strict so por haver um strict=false)" \
+    "$(grep -q '^estado: FAIL$' "$T/out" && echo vazou || echo contido)" "contido"
+chk "  NAO cita 'strict_required_status_checks_policy nao esta ligado' (nenhuma violacao medida)" \
+    "$(grep -qF 'strict_required_status_checks_policy nao esta ligado' "$T/out" && echo vazou || echo contido)" "contido"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V39 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=155
+# V10-V41 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=169
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
