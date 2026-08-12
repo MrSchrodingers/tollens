@@ -211,10 +211,17 @@ chk "FAIL-CLOSED sem jq disponivel" "$R" 2
 # seria aceito - e essa e a garantia central do ADR: "a negacao de subagente sobrevive ao
 # consentimento valido"). Sem sudo nao-interativo neste ambiente, a posse de root e obtida por
 # um namespace de usuario NAO PRIVILEGIADO (`unshare --map-root-user --user`): o kernel mapeia
-# o UID real do processo para 0 dentro do namespace, e um arquivo criado ali E realmente
-# relatado como pertencente a "root" por `stat -c '%U'` fora daquele namespace tambem (mesmo
-# UID real, mesmo mapeamento) - nao e um mock da ferramenta, e o mesmo mecanismo de UID do
-# kernel que o hook consulta em producao. Se o kernel deste ambiente nao permitir namespaces de
+# o UID real do processo para 0 dentro do namespace. CORRECAO DE 2026-08-12, medida: o arquivo
+# criado ali NAO e relatado como root fora do namespace - `stat -c '%U'` devolve `root` DENTRO
+# e o usuario real FORA (medido: dentro=root, fora=ti, uid on-disk=1000). A versao anterior
+# deste comentario afirmava o contrario, e quem refatorasse confiando nela quebraria os tres
+# casos em silencio. O mecanismo funciona por outra razao: o HOOK e executado DENTRO de um
+# namespace com o mesmo mapeamento, entao a consulta de posse que ele faz em producao ocorre no
+# mesmo contexto em que o arquivo foi criado.
+# LIMITE, declarado: dentro do namespace o agente E root e poderia forjar o sentinela. Logo o
+# substituto exercita o DISCRIMINADOR do hook (a checagem `OWNER != root` reprova quando deve),
+# nao a PROPRIEDADE DE SEGURANCA (que so root real pode criar o sentinela). E adequado para
+# validacao por mutacao, e deve ser lido assim. Se o kernel deste ambiente nao permitir namespaces de
 # usuario sem privilegio, as tres garantias abaixo ficam SEM MEDICAO - declarado, e distinto de
 # terem passado.
 UNSHARE_OK=0

@@ -83,8 +83,16 @@ trap 'rm -f "$TMP"' EXIT
     _b="$(basename "$_mf" .sh)"
     case " $CURADOS " in *" $_b "*) continue ;; esac
     _n="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' "$_mf" | head -1 | cut -d= -f2)"
-    bash "$_mf" >/dev/null 2>&1
-    printf '| %s (auto) | %s | %s |\n' "$_b" "${_n:-?}" "$?"
+    # ROTULO CONSTANTE, NAO EXIT CODE MEDIDO. Defeito meu, pago com uma CI vermelha (run
+    # 31607753782): a primeira versao desta varredura EXECUTAVA o arnes e gravava o `$?` no
+    # artefato. `fable-guard.sh` deu 0 nesta maquina e 1 no runner - o ubuntu-24.04 restringe
+    # user namespace nao privilegiado por AppArmor, e 3 dos 12 mutantes dependem de
+    # `unshare --map-root-user` para exercitar posse de root sem sudo. Resultado: o artefato
+    # NUNCA poderia bater nos dois ambientes, e `--check` reprovava para sempre.
+    # E exatamente o que o comentario 30 linhas acima ja explicava sobre `install.sh`, e que eu
+    # li antes de escrever isto. Enunciar a regra nao a executa.
+    # A execucao real acontece no passo dedicado do workflow, que e onde o veredito importa.
+    printf '| %s (auto) | %s | passo dedicado no CI |\n' "$_b" "${_n:-?}"
   done
 
   printf '\n## Cobertura de decisao (branch), medida via subprocesso instrumentado\n\n'

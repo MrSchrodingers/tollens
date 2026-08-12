@@ -101,21 +101,6 @@ jobs:
         run: bash tests/unit/literatura.sh
       - name: conformidade de capability declarada (projecoes do repo)
         run: python3 evidence/runtime-probes/declared-capabilities.py --repo-only
-      # FRONTEIRA VIVA - mede Applies(P,r) contra o endpoint AUTORITATIVO do GitHub, nao contra
-      # os arquivos de workflow deste repositorio. Ate 2026-08-12 este probe tinha 155 asercoes,
-      # 20 mutantes e 83% de cobertura de ramo, e ZERO invocacoes fora de tests/ - instrumento
-      # verificado a exaustao e nunca instalado. A claim C-018 ancorava numa observacao manual.
-      # exit 0=PASS, 1=FAIL, 2=NAO VERIFICADO. Os tres decidem: NAO VERIFICADO tratado como
-      # verde seria o mesmo defeito que o resto deste portao existe para impedir.
-      - name: fronteira viva CONTRA A API REAL do GitHub (nao stub) - Applies(P,r) e Bypass(a,P)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 evidence/probes/github-ruleset.py \
-            --owner "${GITHUB_REPOSITORY%%/*}" \
-            --repo  "${GITHUB_REPOSITORY##*/}" \
-            --branch main \
-            --context verify-pr
       - name: conformidade de capability declarada (suite)
         run: bash tests/unit/capabilities.sh
       - name: regressao do gate
@@ -142,6 +127,22 @@ jobs:
         run: bash tests/mutation/capabilities.sh
       - name: cobertura de decisao (mecanismo, evidence/cobertura.sh)
         run: bash tests/unit/cobertura.sh
+      # UBUNTU 24.04 RESTRINGE USER NAMESPACE NAO PRIVILEGIADO POR APPARMOR. Tres dos doze
+      # mutantes de fable-guard exercitam POSSE DE ROOT sobre o sentinela usando
+      # `unshare --map-root-user --user`, que mapeia o UID real para 0 num namespace - o
+      # `stat -c %U` reporta root de verdade, nao mock, e nao exige sudo. Sem essa capacidade o
+      # arnes nao consegue MEDIR essas tres garantias. Habilitar e melhor que degradar o teste:
+      # a alternativa seria o arnes declarar NAO MEDIDO em CI para sempre, e uma garantia de
+      # autorizacao permanentemente nao medida no portao e o defeito que este repositorio
+      # existe para impedir. O passo imprime o estado do sysctl ANTES e DEPOIS - se a
+      # habilitacao falhar, isso fica visivel no log em vez de virar um vermelho mudo.
+      - name: capacidade de user namespace (pre-requisito dos mutantes de posse-root)
+        run: |
+          echo "antes: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 'sysctl ausente')"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null 2>&1 || true
+          echo "depois: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 'sysctl ausente')"
+          if unshare --map-root-user --user true 2>/dev/null; then echo "unshare: DISPONIVEL"
+          else echo "unshare: INDISPONIVEL - os 3 mutantes de posse-root sairao NAO MEDIDO"; fi
       - name: validacao por mutacao (guarda dura do Fable - superficie de autorizacao)
         run: bash tests/mutation/fable-guard.sh
       - name: validacao por mutacao (cobertura de decisao)
@@ -150,3 +151,23 @@ jobs:
         run: bash evidence/cobertura.sh --check
       - name: suite legada
         run: bash tests/unit/run.sh
+      # POSICAO DELIBERADA - ULTIMO PASSO. Este e o unico passo que depende de REDE e de
+      # permissao de token. Ele estava na posicao 23 de 40, e um vermelho ali PULA 17
+      # verificacoes deterministicas (medido: CI run 31607753782, 24 passos skipped apos uma
+      # falha no passo 16). Verificacao que depende de fator externo vai por ultimo, para que a
+      # sua indisponibilidade nunca esconda o resultado do que nao depende de nada.
+      # FRONTEIRA VIVA - mede Applies(P,r) contra o endpoint AUTORITATIVO do GitHub, nao contra
+      # os arquivos de workflow deste repositorio. Ate 2026-08-12 este probe tinha 155 asercoes,
+      # 20 mutantes e 83% de cobertura de ramo, e ZERO invocacoes fora de tests/ - instrumento
+      # verificado a exaustao e nunca instalado. A claim C-018 ancorava numa observacao manual.
+      # exit 0=PASS, 1=FAIL, 2=NAO VERIFICADO. Os tres decidem: NAO VERIFICADO tratado como
+      # verde seria o mesmo defeito que o resto deste portao existe para impedir.
+      - name: fronteira viva CONTRA A API REAL do GitHub (nao stub) - Applies(P,r) e Bypass(a,P)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 evidence/probes/github-ruleset.py \
+            --owner "${GITHUB_REPOSITORY%%/*}" \
+            --repo  "${GITHUB_REPOSITORY##*/}" \
+            --branch main \
+            --context verify-pr

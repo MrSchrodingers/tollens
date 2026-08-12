@@ -38,6 +38,18 @@ REG="tests/unit/run.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.sh"
 P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=12
+# SOBREVIVEU E NAO MEDIDO SAO OPOSTOS, E ESTE ARNES OS CONFUNDIA. Medido em 2026-08-12 (CI run
+# 31607753782, reproduzido local com `unshare` neutralizado): sem user namespace nao
+# privilegiado, MFB1/MFB6/MFB8 saiam "SOBREVIVEU - a suite passa sem a garantia", acusando o
+# teste de nao proteger nada quando a verdade e que o experimento nao pode ser feito. O
+# ubuntu-24.04 restringe userns por AppArmor, entao isto NAO e hipotetico - foi o que deixou a
+# CI vermelha. Mesma classe ja registrada em tests/mutation/install.sh.
+# Contrato: com a capacidade, 12 mutantes, exit 0/1. Sem ela, 9 medidos, 3 declarados NAO
+# MEDIDO por nome, exit 2 (NAO VERIFICADO) - nunca 0, nunca 1. Garantia de autorizacao nao
+# interrogada nao e verde, e tambem nao e acusacao contra o teste.
+if unshare --map-root-user --user true 2>/dev/null; then USERNS=sim; else USERNS=nao; fi
+DEPENDEM_DE_ROOT="MFB1 MFB6 MFB8"
+NAO_MEDIDOS=0
 
 echo "== baseline: a suite precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -61,6 +73,12 @@ PY
 
 mutante(){ # $1=nome  $2=descricao  $3=caso-alvo que DEVE reprovar  $4..=comando (troca ...)
   local nome="$1" desc="$2" alvo="$3"; shift 3
+  if [ "$USERNS" = nao ]; then
+    case " $DEPENDEM_DE_ROOT " in *" $nome "*)
+      echo "  NAO MEDIDO  $nome: exige user namespace nao privilegiado; a garantia \"$desc\" NAO foi interrogada - isto NAO e sobrevivencia"
+      NAO_MEDIDOS=$((NAO_MEDIDOS+1)); return ;;
+    esac
+  fi
   cp -f "$TMP/orig.sh" "$ORIG"
   "$@"
   if cmp -s "$TMP/orig.sh" "$ORIG"; then
@@ -182,10 +200,14 @@ mutante MFB12 "escrita de verify-cmd-approved por Bash e bloqueada" \
 
 cp -f "$TMP/orig.sh" "$ORIG"
 echo
-printf 'baseline=%s  mutantes_esperados=%s  mortos=%s  invalidos_ou_sobreviventes=%s\n' \
-       "$BASELINE" "$EXPECTED_MUTANTS" "$P" "$F"
+printf 'baseline=%s  mutantes_esperados=%s  mortos=%s  invalidos_ou_sobreviventes=%s  nao_medidos=%s\n' \
+       "$BASELINE" "$EXPECTED_MUTANTS" "$P" "$F" "$NAO_MEDIDOS"
 echo "================================================================"
 if [ "$F" -ne 0 ]; then echo "mutacao VERMELHA: ha garantia que a suite nao protege"; exit 1; fi
+if [ "$NAO_MEDIDOS" -ne 0 ]; then
+  echo "mutacao NAO VERIFICADA: $P mortos, $NAO_MEDIDOS nao medidos por falta de user namespace"
+  echo "  habilite com: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0"
+  echo "  NAO diga verde nem vermelho - a garantia de posse de root nao foi interrogada."; exit 2; fi
 if [ "$P" -ne "$EXPECTED_MUTANTS" ]; then
   echo "mutacao VERMELHA: $P mortos para $EXPECTED_MUTANTS mutantes - algum nao executou"; exit 1; fi
 echo "mutacao verde: os $EXPECTED_MUTANTS mutantes morreram no caso-alvo correspondente"; exit 0
