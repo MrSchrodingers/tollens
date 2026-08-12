@@ -18,7 +18,7 @@ evidence:
   observation:
     command: 'git push origin fase1/contrato-ancora:main  # -> GH013, exit 1, origin/main inalterado'
     recorded: evidence/observations/2026-08-04-fronteira-externa-e-contrato-no-runtime.md
-    blob_sha: fd1e01d2a1a0b9e85e1d82f0de77d8c642e1b95e
+    blob_sha: 2237e5e351fbb4954d99d8cd0246b08404797db9
     line_start: 29
     line_end: 188
   ci:

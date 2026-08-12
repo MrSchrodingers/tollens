@@ -19,7 +19,7 @@ inequivoca justamente no ponto que ela existe para decidir.
 tinha um unico job `verify`. Sobre o head do PR #4:
 
 ```
-$ gh api repos/MrSchrodingers/tollens/commits/ef307bf1a4aef4fae2dcc34dc83bd86d4b620b0c/check-runs \
+$ gh api repos/MrSchrodingers/evidence-gate/commits/ef307bf1a4aef4fae2dcc34dc83bd86d4b620b0c/check-runs \
     --jq '.total_count, (.check_runs[] | "\(.name) | \(.conclusion) | app=\(.app.slug) | id=\(.id)")'
 2
 verify | success | app=github-actions | id=92057531104
@@ -71,7 +71,7 @@ sem `name:`, o string resultante e o mesmo, e a premissa deixa de decidir o resu
 ## Medido
 
 ```
-$ gh api repos/MrSchrodingers/tollens/commits/8f7b543ef7d61239cb9e7bf5210e40f72cb4f38d/check-runs \
+$ gh api repos/MrSchrodingers/evidence-gate/commits/8f7b543ef7d61239cb9e7bf5210e40f72cb4f38d/check-runs \
     --jq '.total_count, (.check_runs[] | "\(.name) | \(.conclusion) | id=\(.id)")'
 2
 verify-pr | success | id=92127228645
@@ -106,3 +106,9 @@ nao se realizou: bastaria aparecer mais de um `verify-pr`, ou um `verify` remane
   correcao remove a condicao em vez de responder a pergunta; medi-la exigiria empurrar um commit
   vermelho de proposito para o branch protegido.
 - Nada aqui mede eficacia de engenharia. Mede que o portao tem um nome so.
+
+> NOTA DE INTEGRIDADE (2026-08-12): os comandos acima citam `MrSchrodingers/evidence-gate`
+> porque foi contra ESSE nome que eles foram executados. O repositorio passou a se chamar
+> `tollens` depois. A renomeacao automatica reescreveu estas linhas e o `blob_sha` do ledger
+> acusou a divergencia - reescrever comando gravado faz o registro afirmar uma execucao que
+> nunca ocorreu naquela URL, que e falsificacao de evidencia. Restaurado ao que foi rodado.

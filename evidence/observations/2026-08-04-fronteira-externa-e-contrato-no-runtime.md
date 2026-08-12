@@ -1,7 +1,7 @@
 # Observacao - a fronteira externa impoe, e o runtime honra `exit 2`
 
 - Data: 2026-08-04
-- Ambiente: Linux, `claude-code 2.1.220`; GitHub `MrSchrodingers/tollens`
+- Ambiente: Linux, `claude-code 2.1.220`; GitHub `MrSchrodingers/evidence-gate`
 - Fecha: P1 do `docs/HANDOFF.md`, e a lacuna de teste E2E da regra de metodo 3 (CLAUDE.md 6.3)
 
 ---
@@ -18,7 +18,7 @@ inteiro. Em rulesets o bypass so existe por concessao explicita; administrador N
 por ser administrador, ao contrario da branch protection classica, onde isso e uma flag.
 
 ```
-gh api -X POST repos/MrSchrodingers/tollens/rulesets --input ruleset.json
+gh api -X POST repos/MrSchrodingers/evidence-gate/rulesets --input ruleset.json
 -> id 20385799, enforcement "active", bypass_actors []
 ```
 
@@ -187,3 +187,9 @@ o erro simetrico do que este repositorio persegue, e igualmente caro. O primeiro
 sessao (recusa com GH013) e este (aceite) diferem em UMA variavel: a existencia de um PR
 satisfeito. Sem variar essa variavel de proposito, qualquer um dos dois resultados sozinho
 autorizaria a conclusao errada.
+
+> NOTA DE INTEGRIDADE (2026-08-12): os comandos acima citam `MrSchrodingers/evidence-gate`
+> porque foi contra ESSE nome que eles foram executados. O repositorio passou a se chamar
+> `tollens` depois. A renomeacao automatica reescreveu estas linhas e o `blob_sha` do ledger
+> acusou a divergencia - reescrever comando gravado faz o registro afirmar uma execucao que
+> nunca ocorreu naquela URL, que e falsificacao de evidencia. Restaurado ao que foi rodado.

@@ -29,7 +29,7 @@ evidence:
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
-    blob_sha: 45ca059b5a702fcb3285f0fa90a5dab40feaf574
+    blob_sha: 4383f74690457aac21a3fdb16bdbf9b6cd2b3712
     line_start: 27
     line_end: 44
 warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-externa.sh` declara
