@@ -41,6 +41,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | claim ledger | 8 | 0 |
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
+| fable-guard (auto) | 12 | 0 |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 

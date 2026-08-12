@@ -72,6 +72,20 @@ trap 'rm -f "$TMP"' EXIT
   m_cobertura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/cobertura.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/cobertura.sh >/dev/null 2>&1
   printf '| cobertura de decisao | %s | %s |\n' "${m_cobertura:-?}" "$?"
+  # COMPLETUDE, nao lista digitada a mao. As linhas acima tem rotulo curado por arnes; esta
+  # varredura garante que um arnes NOVO nunca nasca fora do relatorio. Foi o que aconteceu com
+  # tests/mutation/fable-guard.sh, escrito na onda 7 (12 mutantes sobre 148 linhas de superficie
+  # de autorizacao) e ausente daqui ate esta correcao - a MESMA classe que a varredura de
+  # completude de ALVOS fechou em evidence/cobertura.sh. Instrumento escrito e nao reportado e
+  # a versao pequena do instrumento escrito e nao executado (ADR 0029).
+  CURADOS='run install fronteira conformidade schedule fronteira-viva literatura claims capabilities cobertura contrato'
+  for _mf in tests/mutation/*.sh; do
+    _b="$(basename "$_mf" .sh)"
+    case " $CURADOS " in *" $_b "*) continue ;; esac
+    _n="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' "$_mf" | head -1 | cut -d= -f2)"
+    bash "$_mf" >/dev/null 2>&1
+    printf '| %s (auto) | %s | %s |\n' "$_b" "${_n:-?}" "$?"
+  done
 
   printf '\n## Cobertura de decisao (branch), medida via subprocesso instrumentado\n\n'
   printf 'Piso por arquivo (evidence/cobertura.sh --check); ver o script para a mecanica de\n'
