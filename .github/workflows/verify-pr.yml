@@ -165,41 +165,40 @@ jobs:
         run: bash evidence/cobertura.sh --check
       - name: suite legada
         run: bash tests/unit/run.sh
-      # POSICAO DELIBERADA - ULTIMO PASSO. Este e o unico passo que depende de REDE e de
-      # permissao de token. Ele estava na posicao 23 de 40, e um vermelho ali PULA 17
-      # verificacoes deterministicas (medido: CI run 31607753782, 24 passos skipped apos uma
-      # falha no passo 16). Verificacao que depende de fator externo vai por ultimo, para que a
-      # sua indisponibilidade nunca esconda o resultado do que nao depende de nada.
+      # POSICAO DELIBERADA - ULTIMO PASSO. E o unico passo que depende de REDE e de permissao de
+      # token. Estava na posicao 23 de 40, e um vermelho ali PULA 17 verificacoes deterministicas
+      # (medido: run 31607753782, 24 passos skipped apos falha no 16). Verificacao que depende de
+      # fator externo vai por ultimo, para que a sua indisponibilidade nunca esconda o resultado
+      # do que nao depende de nada.
+      #
       # FRONTEIRA VIVA - mede Applies(P,r) e Bypass(a,P) contra o endpoint AUTORITATIVO do
       # GitHub, nao contra os arquivos de workflow deste repositorio.
       #
-      # EXIGE SEGREDO, E A RAZAO E UMA MEDICAO, NAO CAUTELA. `bypass_actors` responde ao
-      # EXISTENCIAL "existe algum ator que contorna?"; `current_user_can_bypass` responde so
-      # "ESTE ator contorna?". A API omite o primeiro campo para quem nao tem write no ruleset -
-      # medido contra a API viva em 2026-08-12 (github/docs ruleset 19633356: campo ausente).
-      # Uma versao anterior deste passo tratava a ausencia como aprovacao parcial, e a revisao
-      # de codigo mostrou que isso INVERTE a direcao: reduzir o privilegio do observador deixava
-      # o portao verde sobre o mesmo ruleset. Sob GITHUB_TOKEN o ramo que detecta bypass concedido
-      # a OrganizationAdmin, time ou deploy key ficava INALCANCAVEL.
+      # EXIGE SEGREDO, POR MEDICAO. `bypass_actors` responde ao existencial "existe algum ator
+      # que contorna?"; `current_user_can_bypass` responde so "ESTE ator contorna?". A API omite
+      # o primeiro para quem nao tem write no ruleset - medido contra a API viva em 2026-08-12
+      # (github/docs ruleset 19633356: campo ausente). Tratar a ausencia como aprovacao INVERTIA
+      # a direcao: reduzir o privilegio do observador deixava o portao verde sobre o mesmo
+      # ruleset. Com RULESET_READ_TOKEN, mede e BLOQUEIA (exit 1 e 2 reprovam). Sem ele, declara
+      # a lacuna - nunca verde fingido, nunca vermelho permanente.
       #
-      # Logo: com RULESET_READ_TOKEN presente, o passo MEDE e BLOQUEIA (exit 1 e 2 reprovam).
-      # Ausente, o passo e PULADO e a lacuna fica DECLARADA no log - nunca verde fingido, nunca
-      # vermelho permanente. Portao sempre vermelho e portao que alguem desliga; portao verde por
-      # cegueira e pior. Para ligar: crie um PAT ou GitHub App com write no ruleset e guarde como
-      # segredo RULESET_READ_TOKEN.
-      - name: fronteira viva - lacuna declarada quando o segredo nao existe
-        if: ${{ secrets.RULESET_READ_TOKEN == '' }}
-        run: |
-          echo "NAO VERIFICADO: RULESET_READ_TOKEN ausente."
-          echo "  O termo existencial de Bypass(a,P) NAO foi medido nesta execucao."
-          echo "  GITHUB_TOKEN nao recebe 'bypass_actors' da API - medido, nao suposto."
-          echo "  Isto e uma LACUNA DECLARADA, nao uma aprovacao. Ver evidence/claims/C-018.yaml."
-          echo "::warning title=fronteira viva nao medida::Bypass(a,P) exige RULESET_READ_TOKEN"
+      # A DECISAO ESTA EM BASH, NAO EM `if:` DE PASSO, E ISSO E DELIBERADO. A tentativa anterior
+      # usou `if: ${{ secrets.X == '' }}` e invalidou o workflow INTEIRO - execucao 31626367844
+      # saiu failure com ZERO jobs, sem log e sem anotacao. Segunda vez nesta serie que uma
+      # expressao de configuracao foi publicada sem nunca ter sido executada; a primeira foi um
+      # escopo de `permissions` inexistente. Em bash a condicao e testavel antes de subir.
       - name: fronteira viva CONTRA A API REAL do GitHub - Applies(P,r) e Bypass(a,P)
-        if: ${{ secrets.RULESET_READ_TOKEN != '' }}
         env:
           GH_TOKEN: ${{ secrets.RULESET_READ_TOKEN }}
         run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "NAO VERIFICADO: RULESET_READ_TOKEN ausente."
+            echo "  O termo existencial de Bypass(a,P) NAO foi medido nesta execucao."
+            echo "  GITHUB_TOKEN nao recebe 'bypass_actors' da API - medido, nao suposto."
+            echo "  LACUNA DECLARADA, nao aprovacao. Ver evidence/claims/C-018.yaml."
+            echo "::warning title=fronteira viva nao medida::Bypass(a,P) exige RULESET_READ_TOKEN"
+            exit 0
+          fi
           python3 evidence/probes/github-ruleset.py \
             --owner "${GITHUB_REPOSITORY%%/*}" \
             --repo  "${GITHUB_REPOSITORY##*/}" \
