@@ -52,7 +52,7 @@ study_quality:
 applicability:
   domain_similarity: >-
     Media - o oraculo (verificacao executavel de tarefas de codigo com criterio de aceite) e o
-    mesmo principio que evidence-gate adota, mas o objeto medido e um conjunto de skills de
+    mesmo principio que tollens adota, mas o objeto medido e um conjunto de skills de
     dominio SWE especificas do estudo (fonte - findings.skills_no_pass_rate_change acima), nao
     as skills deste repositorio.
   scaffold_similarity: >-

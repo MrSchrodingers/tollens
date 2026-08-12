@@ -31,7 +31,7 @@
 # zsh - ai "$TMPDIR/x" vira "/x" e falha com permission denied. `${TMPDIR:-/tmp}` cobre os dois
 # casos; `${TMPDIR-/tmp}` cobriria so o indefinido e reintroduziria o bug.
 
-if [ "${EVIDENCE_GATE_LOCK:-}" != "held" ]; then
+if [ "${TOLLENS_LOCK:-}" != "held" ]; then
   if ! command -v flock >/dev/null 2>&1; then
     # LACUNA DECLARADA, nao inercia silenciosa: sem flock nao ha exclusao mutua. Seguir e
     # correto (voltar ao comportamento anterior nao e regressao); calar nao seria.
@@ -43,14 +43,14 @@ if [ "${EVIDENCE_GATE_LOCK:-}" != "held" ]; then
     # NAO se excluiriam - exclusao mutua que depende de variavel de ambiente nao e exclusao
     # mutua. Por isso a preferencia e `.git/`, que e o mesmo caminho para todo processo que
     # enxerga este repositorio, e e gravavel sempre que a arvore e.
-    #   EVIDENCE_GATE_LOCK_FILE: override explicito. Existe para tests/unit/concorrencia.sh,
+    #   TOLLENS_LOCK_FILE: override explicito. Existe para tests/unit/concorrencia.sh,
     #   que precisa exercitar o lock sem colidir com o lock real tomado por scripts/status.sh.
     #   Nao usar em producao - apontar dois processos para arquivos distintos e desligar a
     #   garantia, nao configura-la.
-    if [ -n "${EVIDENCE_GATE_LOCK_FILE:-}" ]; then
-      _lk_file="$EVIDENCE_GATE_LOCK_FILE"
+    if [ -n "${TOLLENS_LOCK_FILE:-}" ]; then
+      _lk_file="$TOLLENS_LOCK_FILE"
     elif [ -d "$_lk_root/.git" ] && [ -w "$_lk_root/.git" ]; then
-      _lk_file="$_lk_root/.git/evidence-gate-suite.lock"
+      _lk_file="$_lk_root/.git/tollens-suite.lock"
     else
       # Sem `.git` gravavel (export por tarball, worktree somente-leitura): cai para o
       # temporario. LIMITE DECLARADO: aqui a exclusao volta a depender de $TMPDIR coincidir.
@@ -63,7 +63,7 @@ if [ "${EVIDENCE_GATE_LOCK:-}" != "held" ]; then
       # ninguem mais consegue criar entradas la dentro. Se o diretorio ja existir com outro
       # dono ou modo frouxo, o fallback e RECUSADO em vez de usado: um lock que outro usuario
       # controla nao e lock.
-      _lk_dir="${TMPDIR:-/tmp}/evidence-gate-$(id -u)"
+      _lk_dir="${TMPDIR:-/tmp}/tollens-$(id -u)"
       mkdir -p -m 700 "$_lk_dir" 2>/dev/null || true
       if [ ! -d "$_lk_dir" ] || [ "$(stat -c '%u:%a' "$_lk_dir" 2>/dev/null)" != "$(id -u):700" ]; then
         echo "AVISO: '$_lk_dir' nao e um diretorio 0700 do usuario corrente - fallback de lock" >&2
@@ -91,7 +91,7 @@ if [ "${EVIDENCE_GATE_LOCK:-}" != "held" ]; then
       } >&2
       exit 3
     else
-      export EVIDENCE_GATE_LOCK=held
+      export TOLLENS_LOCK=held
     fi
   fi
 fi

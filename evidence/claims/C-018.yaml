@@ -149,7 +149,7 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   `valida_campo`; V9/MV3 tambem passaram a usar um ESCALAR, nao uma lista, como resposta
   malformada de rulesets/{id} - `valida_campo` usa `nome not in objeto`, que nao estoura para
   lista/string, so para um valor nao iteravel) e ganhou MV8-MV11, um por garantia nova - 11/11
-  mortos no caso certo. O PASS legitimo (repositorio proprio `MrSchrodingers/evidence-gate`,
+  mortos no caso certo. O PASS legitimo (repositorio proprio `MrSchrodingers/tollens`,
   token com `admin: true` sobre o ruleset) foi reexecutado ANTES e DEPOIS desta correcao e
   permanece PASS/exit 0 nos dois commits - a mudanca nao regride o caminho feliz.
 
@@ -206,7 +206,7 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   Os cinco pontos foram reproduzidos com o binario `gh` stubado ANTES desta correcao, contra o
   HEAD herdado da onda 4 (`9156bee24894b1fb2224dada69e724cb4666003a`), e as saidas batem
   exatamente com o descrito acima. O PASS
-  legitimo (repositorio proprio `MrSchrodingers/evidence-gate`, token com escopo `repo` e acesso
+  legitimo (repositorio proprio `MrSchrodingers/tollens`, token com escopo `repo` e acesso
   de escrita ao ruleset 20385799) foi reexecutado ANTES e DEPOIS desta correcao e permanece
   PASS/exit 0 nos dois commits.'
 limitations:

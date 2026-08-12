@@ -134,7 +134,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 # LOCK: suites deste repo nao sao reentrantes entre si (tests/lib/lock.sh). Tomado UMA vez aqui
-# e mantido (reentrante por EVIDENCE_GATE_LOCK=held) por toda a bateria de suites abaixo -
+# e mantido (reentrante por TOLLENS_LOCK=held) por toda a bateria de suites abaixo -
 # soltar e retomar entre cada suite abriria uma janela de corrida com outro processo.
 . "$(dirname "$0")/../tests/lib/lock.sh"
 export LC_ALL=C
@@ -146,7 +146,7 @@ CHECK=0
 # padrao - producao nunca precisa das variaveis abaixo. Os overrides COBERTURA_* existem SO
 # para tests/unit/cobertura.sh (mecanismo) e tests/mutation/cobertura.sh (mutacao) validarem
 # sobre um subconjunto rapido e, no caso da suite unitaria, uma COPIA descartavel. NAO USAR EM
-# CI REAL - mesma doutrina de EVIDENCE_GATE_LOCK_FILE em tests/lib/lock.sh: apontar a medicao
+# CI REAL - mesma doutrina de TOLLENS_LOCK_FILE em tests/lib/lock.sh: apontar a medicao
 # de producao para um subconjunto arbitrario desliga a garantia, nao a configura.
 ALVOS="${COBERTURA_ALVOS:-$(cat <<'EOF'
 evidence/probes/github-ruleset.py:85.4

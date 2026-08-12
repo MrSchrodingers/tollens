@@ -29,7 +29,7 @@ E, para toda dependência executada por `p`:
 
 1. `install/apply-managed.sh` trata execução com UID 0 sobre a raiz real como uma fronteira privilegiada distinta.
 2. Antes de delegar para qualquer helper, o supervisor stock exige que o repositório inteiro observado por ele seja `root:root`, não contenha symlinks e não seja gravável por grupo/outros segundo os bits POSIX.
-3. `EVIDENCE_GATE_MANAGED_LEGACY` é proibido nessa execução privilegiada real. O override permanece exclusivamente como seam de teste quando `MANAGED_PREFIX` desloca a raiz.
+3. `TOLLENS_MANAGED_LEGACY` é proibido nessa execução privilegiada real. O override permanece exclusivamente como seam de teste quando `MANAGED_PREFIX` desloca a raiz.
 4. A pós-condição do deploy passa a verificar **modos exatos**, não apenas conteúdo e ausência de escrita por grupo/outros:
    - diretórios: `0755`;
    - `*.sh`: `0755`;
@@ -72,7 +72,7 @@ Também permanecem fora da claim:
 - ACLs, Linux capabilities, atributos imutáveis e semânticas de filesystem não exercitadas;
 - comprometimento do administrador/host;
 - terminação não observável do supervisor, como `SIGKILL` do próprio processo ou falha do host/filesystem;
-- segurança de `EVIDENCE_GATE_REPO` em um deployment no qual hooks managed dependam dele.
+- segurança de `TOLLENS_REPO` em um deployment no qual hooks managed dependam dele.
 
 ## Evidência executável
 

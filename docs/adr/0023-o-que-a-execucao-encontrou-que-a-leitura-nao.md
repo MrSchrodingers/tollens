@@ -321,7 +321,7 @@ de escrita do ator".
   O teste mede o parser do git, nao a guarda. `RE_SHA` fica como defesa em profundidade sem
   bypass demonstrado, e o TESTE e que esta errado.
 - **A politica managed executa `install/verify.sh` do espaco do ator.** `session-integrity.sh`
-  roda `cd $EVIDENCE_GATE_REPO && bash install/verify.sh`, e esse env e gravado pelo proprio
+  roda `cd $TOLLENS_REPO && bash install/verify.sh`, e esse env e gravado pelo proprio
   `managed-settings.json` root-owned apontando para o clone no home. `verify.sh` nao e
   componente do manifesto, logo nao vai para `/opt`. O ator faz o proprio auditor sair 0.
   Corrigir exige promover `verify.sh` e o manifesto a componentes managed.

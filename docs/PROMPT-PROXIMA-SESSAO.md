@@ -1,11 +1,11 @@
 # Prompt de abertura - proxima sessao
 
-Cole o bloco abaixo como primeira mensagem de uma sessao limpa, com `cwd` em `~/evidence-gate`.
+Cole o bloco abaixo como primeira mensagem de uma sessao limpa, com `cwd` em `~/tollens`.
 
 ---
 
 ```
-Sessao seguinte do evidence-gate. Estado: M3 PARCIAL.
+Sessao seguinte do tollens. Estado: M3 PARCIAL.
 
 LEIA PRIMEIRO, NESTA ORDEM, E NAO COMECE ANTES:
   docs/HANDOFF.md            - contrato de teste, rigor exigido, 12 armadilhas ja pagas

@@ -29,7 +29,7 @@ emit(){ # $1=tipo $2=origem $3=destino
 }
 
 {
-  printf '# evidence-gate manifest - estado DESEJADO de ~/.claude\n'
+  printf '# tollens manifest - estado DESEJADO de ~/.claude\n'
   printf '# gerado por install/manifest.sh; conferido por install/verify.sh\n'
   printf '# tipo\torigem\tdestino\tsha256\n'
   for f in control/hooks/*.sh execution/hooks/*.sh evidence/hooks/*.sh; do
@@ -42,13 +42,13 @@ emit(){ # $1=tipo $2=origem $3=destino
     [ -d "$d" ] || continue; emit skill "${d%/}" "skills/$(basename "${d%/}")"
   done
   for f in execution/adapters/code/*.json; do
-    [ -f "$f" ] || continue; emit adapter "$f" "evidence-gate/adapters/code/$(basename "$f")"
+    [ -f "$f" ] || continue; emit adapter "$f" "tollens/adapters/code/$(basename "$f")"
   done
   for f in execution/adapters/documents/*.json; do
-    [ -f "$f" ] || continue; emit adapter "$f" "evidence-gate/adapters/documents/$(basename "$f")"
+    [ -f "$f" ] || continue; emit adapter "$f" "tollens/adapters/documents/$(basename "$f")"
   done
   for f in execution/document-tools/*; do
-    [ -f "$f" ] || continue; emit doctool "$f" "evidence-gate/document-tools/$(basename "$f")"
+    [ -f "$f" ] || continue; emit doctool "$f" "tollens/document-tools/$(basename "$f")"
   done
 } > "$OUT"
 

@@ -12,7 +12,7 @@
 # chega a ser avaliada (todo no de codigo declara writes:["**"], os demais writes:[] - a
 # condicao `writes_a and writes_b` nunca fica verdadeira entre dois nos concorrentes reais). O
 # poder discriminante demonstrado abaixo vem inteiramente das fixtures SINTETICAS F1-F15,
-# construidas sob EVIDENCE_GATE_ROOT (mesma convencao de tests/unit/methodology.py e do
+# construidas sob TOLLENS_ROOT (mesma convencao de tests/unit/methodology.py e do
 # `_prepara` de tests/mutation/fronteira.sh): sem elas, um validador inerte (que sempre sai 0)
 # passaria despercebido, porque os dados reais nunca exercitam o caminho de rejeicao.
 set -uo pipefail
@@ -26,7 +26,7 @@ chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL
 
 command -v jq >/dev/null 2>&1 || { echo "NAO VERIFICADO: jq ausente - oraculo de ondas exatas nao pode ser avaliado." >&2; exit 2; }
 
-echo "== fixtures sinteticas: F1-F15 sob EVIDENCE_GATE_ROOT proprio =="
+echo "== fixtures sinteticas: F1-F15 sob TOLLENS_ROOT proprio =="
 python3 - "$TMP" <<'PY'
 import json, os, sys
 root = sys.argv[1]
@@ -147,7 +147,7 @@ write("f15-aresta-origem-fantasma", 4,
       {"a": node(), "b": node()})
 PY
 
-roda(){ EVIDENCE_GATE_ROOT="$TMP/$1" python3 "$SCHED" --check; }
+roda(){ TOLLENS_ROOT="$TMP/$1" python3 "$SCHED" --check; }
 
 OUT1="$(roda f1-legal-escritas-disjuntas 2>&1)"; RC1=$?
 chk "F1 escritas disjuntas em paralelo: legal" "$RC1" 0

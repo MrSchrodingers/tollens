@@ -6,7 +6,7 @@
 # O workflow chamava-se `verify`, disparava em `push` e em `pull_request`, e tinha um unico job
 # `verify`. Sobre o head do PR #4:
 #
-#   $ gh api repos/MrSchrodingers/evidence-gate/commits/ef307bf.../check-runs \
+#   $ gh api repos/MrSchrodingers/tollens/commits/ef307bf.../check-runs \
 #       --jq '.total_count, (.check_runs[] | "\(.name) | \(.conclusion) | id=\(.id)")'
 #   2
 #   verify | success | id=92057531104

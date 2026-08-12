@@ -1,5 +1,5 @@
 {
-  "name": "evidence-gate",
+  "name": "tollens",
   "version": "2.0.0",
   "description": "Harness experimental multirruntime para Claude Code Desktop/CLI e Codex, com núcleo canônico, projeções verificáveis, workflows em grafo, subagentes com escrita serializada e certificação externa vinculada ao SHA.",
   "author": {

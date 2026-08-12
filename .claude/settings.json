@@ -1,4 +1,4 @@
 {
-  "env": {"EVIDENCE_GATE_REPO": "${CLAUDE_PROJECT_DIR}"},
+  "env": {"TOLLENS_REPO": "${CLAUDE_PROJECT_DIR}"},
   "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash", "args": ["${CLAUDE_PROJECT_DIR}/evidence/hooks/verify-gate.sh"]}]}]}
 }

@@ -1,10 +1,10 @@
-# evidence-gate
+# tollens
 
 > **Evidence-gated, multi-runtime orchestration for Claude Code Desktop/CLI and OpenAI Codex.**
 >
-> `evidence-gate` treats an agent result as a **candidate**, not as certified truth. Integration is authorized only after executable evidence, bound to the evaluated snapshot, succeeds at an external repository boundary.
+> `tollens` treats an agent result as a **candidate**, not as certified truth. Integration is authorized only after executable evidence, bound to the evaluated snapshot, succeeds at an external repository boundary.
 
-[![verify-pr](https://github.com/MrSchrodingers/evidence-gate/actions/workflows/verify-pr.yml/badge.svg)](https://github.com/MrSchrodingers/evidence-gate/actions/workflows/verify-pr.yml)
+[![verify-pr](https://github.com/MrSchrodingers/tollens/actions/workflows/verify-pr.yml/badge.svg)](https://github.com/MrSchrodingers/tollens/actions/workflows/verify-pr.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **English** · [Português (Brasil)](README.pt-BR.md)
@@ -13,7 +13,7 @@
 
 ## Abstract
 
-`evidence-gate` is an experimental software-engineering harness for AI coding agents. It provides:
+`tollens` is an experimental software-engineering harness for AI coding agents. It provides:
 
 - a canonical orchestration registry;
 - verified Claude Code and Codex agent projections;
@@ -126,7 +126,7 @@ with
 
 The model contributes probabilistic inference. The harness controls observable context, tools, authority, orchestration, acceptance criteria, and external verification.
 
-This distinction matters because measured agent performance is not a property of the base model alone. SWE-agent shows that the agent-computer interface can materially affect software-engineering performance [2]. Accordingly, `evidence-gate` treats **model**, **scaffold**, **task**, and **skill condition** as separate experimental variables.
+This distinction matters because measured agent performance is not a property of the base model alone. SWE-agent shows that the agent-computer interface can materially affect software-engineering performance [2]. Accordingly, `tollens` treats **model**, **scaffold**, **task**, and **skill condition** as separate experimental variables.
 
 ### 2.2 Proposal is not verification
 
@@ -683,7 +683,7 @@ Each guarantee tracked in `evidence/claims/*.yaml` resolves its supporting evide
 
 Local hooks are useful feedback mechanisms, but they execute inside a boundary writable or bypassable by the local actor. They therefore do not serve as the final integration authority.
 
-Claude Code documents hooks as deterministic lifecycle automation [14]. `evidence-gate` uses that capability for local controls while reserving certification for the repository boundary.
+Claude Code documents hooks as deterministic lifecycle automation [14]. `tollens` uses that capability for local controls while reserving certification for the repository boundary.
 
 ### 9.2 Required context
 
@@ -965,7 +965,7 @@ The project should therefore be described as an **evidence-oriented experimental
 
 ### 15.1 Repository-level evaluation
 
-SWE-bench established repository-level issue resolution as a realistic software-engineering evaluation problem [1]. `evidence-gate` follows the same general preference for repository-grounded executable evaluation over snippet-only or narrative assessment.
+SWE-bench established repository-level issue resolution as a realistic software-engineering evaluation problem [1]. `tollens` follows the same general preference for repository-grounded executable evaluation over snippet-only or narrative assessment.
 
 ### 15.2 Scaffold effects
 
@@ -973,7 +973,7 @@ SWE-agent shows that the agent-computer interface can materially influence perfo
 
 ### 15.3 External verification
 
-LLM-Modulo argues for combining generative models with external verifiers instead of relying on unassisted self-verification [3]. `evidence-gate` applies the same separation principle at the software-engineering governance boundary.
+LLM-Modulo argues for combining generative models with external verifiers instead of relying on unassisted self-verification [3]. `tollens` applies the same separation principle at the software-engineering governance boundary.
 
 ### 15.4 Skill heterogeneity and interference
 
@@ -988,7 +988,7 @@ These results motivate:
 - negative-result reporting;
 - separate correctness and token-cost measurement.
 
-They do **not** prove that the current `evidence-gate` skill policy is optimal. That remains an empirical hypothesis.
+They do **not** prove that the current `tollens` skill policy is optimal. That remains an empirical hypothesis.
 
 ### 15.5 Mutation testing
 

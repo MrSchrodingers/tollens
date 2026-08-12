@@ -158,7 +158,7 @@ echo "== G10. --dry-run do instalador NAO altera estado (byte a byte) =="
 DH="$TMP/dryhome/.claude"; mkdir -p "$DH"
 ( cd "$REPO_ROOT" && CLAUDE_HOME="$DH" bash install/apply.sh >/dev/null 2>&1 )
 echo "orfao" > "$DH/hooks/saiu.sh"
-printf 'hooks/saiu.sh\n' >> "$DH/evidence-gate/managed-files.lock"
+printf 'hooks/saiu.sh\n' >> "$DH/tollens/managed-files.lock"
 dig(){ find "$1" -type f ! -path '*/backups/*' -exec sha256sum {} + 2>/dev/null | sed "s|$1||" | LC_ALL=C sort -k2 | sha256sum | cut -c1-32; }
 rm -rf "$DH/backups"      # o backup existente veio do apply que preparou o cenario
 ANTES=$(dig "$DH")

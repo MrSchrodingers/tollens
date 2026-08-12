@@ -58,7 +58,7 @@ As regras de máquina vivem em `orchestration/skill-policy.json` e
 
 ## Claims explicitamente não feitas
 
-Este ADR não afirma que `evidence-gate` melhora a qualidade de agentes, que uma skill promovida é
+Este ADR não afirma que `tollens` melhora a qualidade de agentes, que uma skill promovida é
 universalmente útil ou que subagentes são estatisticamente independentes. Tais afirmações exigem
 experimentos próprios e permanecem hipóteses até medição.
 

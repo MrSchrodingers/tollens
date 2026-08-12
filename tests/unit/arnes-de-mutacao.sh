@@ -62,7 +62,7 @@ if ! git diff --quiet -- "$ALVO"; then
   exit 2
 fi
 # Nao ha deadlock aqui: `tests/lib/lock.sh` e re-entrante por variavel EXPORTADA
-# (EVIDENCE_GATE_LOCK=held), justamente porque os runners de mutacao invocam as suites de
+# (TOLLENS_LOCK=held), justamente porque os runners de mutacao invocam as suites de
 # regressao. O filho herda a marca e nao tenta tomar o lock de novo.
 #
 # DUAS PRECAUCOES, ambas pagas por uma CI vermelha (run 31397403110):
@@ -70,7 +70,7 @@ fi
 # `9>&-` FECHA O FD DO LOCK NO FILHO. `tests/lib/lock.sh` segura a exclusao com
 # `exec 9>arquivo; flock -n 9`. O flock vive na descricao de arquivo ABERTA, nao no processo:
 # qualquer filho que herde o fd mantem o lock vivo depois que este script sair. O filho aqui
-# nem usa o lock (herda EVIDENCE_GATE_LOCK=held e pula a secao), mas herdava o fd - e um neto
+# nem usa o lock (herda TOLLENS_LOCK=held e pula a secao), mas herdava o fd - e um neto
 # orfao segurava o lock para sempre. Medido: o passo seguinte da CI, `regressao do gate`,
 # abortou com exit 3 "ja ha uma suite em execucao".
 #
