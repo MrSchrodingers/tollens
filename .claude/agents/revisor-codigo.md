@@ -3,7 +3,6 @@ name: revisor-codigo
 description: Projeção do agente canônico revisor-codigo.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

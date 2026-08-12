@@ -105,7 +105,7 @@ chk "  heartbeat prova que a verificacao managed RODOU (liveness)" $? 0
 
 echo "== CM7. politica VIVA com a arvore APAGADA e o pior drift, nao 'absent' =="
 # Achado critico da revisao independente. O verificador julga DUAS metades; a guarda testava
-# UMA. Estado real: SIGKILL entre os dois renames (documentado em apply-managed-legacy.sh:254),
+# UMA. Estado real: SIGKILL entre os dois renames (documentado em apply-managed-worker.sh:254),
 # ou `rm -rf /opt/tollens`. Com allowManagedHooksOnly=true e o mecanismo inteiro desligado
 # apontando para caminhos inexistentes - e era reportado como conformidade silenciosa.
 R="$TMP/r6"; H="$TMP/h6"; PFX="$TMP/p6"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/etc/claude-code"

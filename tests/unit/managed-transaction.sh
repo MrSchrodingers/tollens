@@ -22,7 +22,7 @@ SH
 chmod +x "$T/fake.sh"
 
 PFX="$T/p1"
-FAKE_MODE=fail MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_LEGACY="$T/fake.sh" "$W" >/dev/null 2>&1
+FAKE_MODE=fail MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_WORKER="$T/fake.sh" "$W" >/dev/null 2>&1
 rc=$?
 chk first-deploy-rc "$rc" 1
 chk first-deploy-tree "$([ -e "$PFX/opt/tollens" ] && echo present || echo absent)" absent
@@ -32,20 +32,20 @@ PFX="$T/p2"
 mkdir -p "$PFX/opt/tollens" "$PFX/etc/claude-code"
 echo old > "$PFX/opt/tollens/x"
 echo old > "$PFX/etc/claude-code/managed-settings.json"
-FAKE_MODE=fail MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_LEGACY="$T/fake.sh" "$W" >/dev/null 2>&1
+FAKE_MODE=fail MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_WORKER="$T/fake.sh" "$W" >/dev/null 2>&1
 rc=$?
 chk existing-rc "$rc" 1
 chk existing-tree "$(cat "$PFX/opt/tollens/x")" old
 chk existing-policy "$(cat "$PFX/etc/claude-code/managed-settings.json")" old
 
 PFX="$T/p3"
-FAKE_MODE=unsafe MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_LEGACY="$T/fake.sh" "$W" >/dev/null 2>&1
+FAKE_MODE=unsafe MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_WORKER="$T/fake.sh" "$W" >/dev/null 2>&1
 rc=$?
 chk unsafe-rc "$rc" 1
 chk unsafe-cleanup "$([ -e "$PFX/opt/tollens" ] && echo present || echo absent)" absent
 
 PFX="$T/p4"
-FAKE_MODE=wrongmode MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_LEGACY="$T/fake.sh" "$W" >/dev/null 2>&1
+FAKE_MODE=wrongmode MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_WORKER="$T/fake.sh" "$W" >/dev/null 2>&1
 rc=$?
 chk exact-mode-rc "$rc" 1
 chk exact-mode-cleanup "$([ -e "$PFX/opt/tollens" ] && echo present || echo absent)" absent

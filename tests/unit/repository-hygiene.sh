@@ -45,9 +45,47 @@ allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|\.git|\.github|\.gitig
 ignorado(){
   [ "$(git check-ignore -v -- "$1" 2>/dev/null | cut -d: -f1)" = ".gitignore" ]
 }
+# MASCARA DO RUNTIME, e nao entrada do repositorio. Medido em 2026-08-12: rodando dentro do
+# Claude Code, `find` na raiz devolve `.mcp.json` como CHARACTER SPECIAL FILE, dono nobody:nobody,
+# dispositivo 1,3 - e /proc/self/mountinfo confirma um bind mount read-only de `devtmpfs /null`
+# sobre esse caminho. Nove entradas nesta arvore estao nessa condicao (`.mcp.json` e oito sob
+# `.claude/`), parte de 176 mascaras que o runtime aplica a arquivos de configuracao e credencial
+# no namespace de mount da sessao. Elas nao existem em disco e somem com a sessao.
+#
+# Sem esta clausula a suite dava FALSO VERMELHO para qualquer pessoa que a rodasse de dentro do
+# Claude Code - foi o que aconteceu aqui, e ainda arrastou junto `evidence/cobertura.sh`, que se
+# recusa (corretamente) a medir cobertura sobre um oraculo ja vermelho.
+#
+# NAO E AFROUXAMENTO, e o motivo e estrutural: o git so versiona arquivo regular, symlink e
+# gitlink. Um character device NAO PODE ser conteudo commitado - `git add` o recusa. Logo esta
+# clausula nao cria caminho para esconder nada; ela ignora exatamente a classe de entrada que o
+# teste jamais poderia ter a ver. Diretorio e arquivo regular seguem valendo integralmente.
+#
+# O TIPO OSCILA, e por isso o predicado nao pode ser so o tipo. Medido em 2026-08-12: o mesmo
+# caminho mascarado apareceu como `character special file / nobody:nobody / 666` numa leitura e
+# como `regular empty file / ti:ti / 444` minutos depois, sem nada ter mudado no repositorio.
+# Uma execucao desta suite reprovou nesse intervalo e a seguinte passou - falha intermitente num
+# portao de higiene, que este repositorio nao normaliza como "as vezes acontece".
+#
+# O discriminante ESTAVEL nao e o tipo: e ser um PONTO DE MONTAGEM. A mascara existe porque o
+# runtime monta algo sobre o caminho no namespace da sessao; o que a montagem expoe (devtmpfs
+# /null, bind ro do proprio arquivo) varia, a montagem nao. As tres condicoes sao exigidas em
+# CONJUNTO para nao abrir buraco: montado, NAO rastreado pelo git, e sem conteudo.
+mascara_de_runtime(){
+  [ -c "$1" ] || [ -b "$1" ] && return 0
+  local abs; abs="$(cd "$(dirname -- "$1")" 2>/dev/null && pwd -P)/$(basename -- "$1")" || return 1
+  grep -qF " $abs " /proc/self/mountinfo 2>/dev/null || return 1
+  git ls-files --error-unmatch -- "$1" >/dev/null 2>&1 && return 1   # rastreado: nunca e mascara
+  [ -s "$1" ] && return 1                                            # tem conteudo: nao e mascara
+  return 0
+}
 while IFS= read -r entry; do
   if ! [[ "$entry" =~ $allowed_root ]]; then
     if ignorado "$entry"; then continue; fi
+    if mascara_de_runtime "$entry"; then
+      echo "  ignorado (mascara do runtime, nao versionavel): $entry"
+      continue
+    fi
     echo "FAIL entrada nao declarada na raiz: $entry"
     fail=1
   fi

@@ -121,7 +121,7 @@ trap 'rm -f "$TMP"' EXIT
 
   printf '\n## Propriedades de seguranca medidas\n\n'
   printf -- '- fonte privilegiada user-owned, symlinkada ou group/world-writable e rejeitada antes da delegacao quando o supervisor roda como root na raiz real.\n'
-  printf -- '- `TOLLENS_MANAGED_LEGACY` e proibido em execucao root sobre a raiz real; o override permanece apenas para ensaios com `MANAGED_PREFIX`.\n'
+  printf -- '- `TOLLENS_MANAGED_WORKER` e proibido em execucao root sobre a raiz real; o override permanece apenas para ensaios com `MANAGED_PREFIX`.\n'
   printf -- '- modos esperados sao revalidados apos o deploy (`0755` para diretorios/scripts/document-tools; `0644` para os demais arquivos regulares), e divergencia provoca rollback.\n'
   printf -- '- ownership usa `find ... \\( ! -user root -o ! -group root \\) -print -quit`, evitando o bug de precedencia onde `owner!=root, group=root` podia nao produzir saida.\n'
   printf -- '- confinamento de origem/destino do manifesto, re-hash do staging, restauracao transacional e verificacao de permissao continuam cobertos pelas suites managed existentes.\n'

@@ -60,4 +60,22 @@ limitations:
   compartilhado por qualquer sessao concorrente - rotacionou durante a propria investigacao
   desta alegacao. O que foi ancorado por blob_sha e o ARQUIVO DE OBSERVACAO deste repositorio,
   nao o log externo, que pode nao mais conter os mesmos dados no futuro.'
+- 'MITIGACAO PARCIAL EM 2026-08-12 (onda 10), registrada aqui porque muda o que esta alegacao
+  pode ser lida como afirmando - sem mudar o status. O canal de escrita por MEMORIA foi fechado
+  nas duas arvores do repositorio: `memory: user` removido dos oito agentes que
+  orchestration/registry.json declara com `writes: false`, em execution/agents/ e na projecao
+  .claude/agents/. A causa foi confirmada em FONTE PRIMARIA, que esta alegacao antes so tinha
+  por inferencia: https://code.claude.com/docs/en/sub-agents.md, secao "Enable persistent
+  memory", verbatim - "Read, Write, and Edit tools are automatically enabled so the subagent can
+  manage its memory files". declared-capabilities.py ganhou a propriedade correspondente e sai 1
+  com 16 violacoes sobre o estado anterior, 0 sobre o corrigido, e 1 de novo se `memory:`
+  reaparecer em um unico agente.
+  O STATUS PERMANECE not-verified, e por duas razoes que a mitigacao nao toca. Primeira: isto
+  compara DECLARACAO com DECLARACAO. O efeito no runtime nao e observavel na sessao que fez a
+  mudanca, porque o registro de agentes e resolvido na inicializacao - o discriminante para uma
+  sessao NOVA esta escrito em evidence/runtime-probes/capabilities.md (vetor A1m, com a
+  expectativa INVERTIDA pela onda 10) e em docs/adr/0007 (errata). Segunda, e mais grave: fechar
+  o canal de memoria NAO torna nenhum agente read-only. Os oito mantem `Bash`, superficie de
+  escrita estritamente maior que Write e Edit. O proprio probe imprime esse limite mesmo quando
+  verde, e ha caso de suite que reprova se a linha sumir.'
 status: not-verified

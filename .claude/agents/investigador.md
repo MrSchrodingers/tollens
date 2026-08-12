@@ -3,7 +3,6 @@ name: investigador
 description: Projeção do agente canônico investigador.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

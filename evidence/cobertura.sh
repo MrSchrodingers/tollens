@@ -152,8 +152,9 @@ ALVOS="${COBERTURA_ALVOS:-$(cat <<'EOF'
 evidence/probes/github-ruleset.py:86.0
 evidence/validate-claims.py:81.4
 evidence/validate-literature.py:92.3
-evidence/runtime-probes/declared-capabilities.py:90.0
+evidence/runtime-probes/declared-capabilities.py:92.6
 orchestration/schedule.py:88.4
+evidence/validate-adapters.py:69.3
 EOF
 )}"
 
@@ -164,6 +165,7 @@ tests/unit/literatura.sh
 tests/unit/capabilities.sh
 tests/unit/schedule.sh
 tests/unit/runtime-ports.sh
+tests/unit/document-tools.sh
 EOF
 )}"
 
@@ -233,6 +235,7 @@ evidence/probes/github-ruleset.py|arquivo em correcao concorrente por outro agen
 evidence/validate-claims.py|arquivo em correcao concorrente por outro agente nesta mesma onda (fora do escopo desta tarefa tocar); 108 itens hoje (67 linhas + 41 ramos, medido nesta sessao) - mesma razao de evidence/probes/github-ruleset.py.
 evidence/validate-literature.py|estavel (sem edicao concorrente) mas fora do escopo desta correcao pontual do mecanismo; 22 itens hoje (12 linhas + 10 ramos, medido nesta sessao) - estender a camada 2 a este arquivo e decisao de quem responde por ele.
 evidence/runtime-probes/declared-capabilities.py|estavel (sem edicao concorrente) mas fora do escopo desta correcao pontual do mecanismo; 21 itens hoje (13 linhas + 8 ramos, medido nesta sessao) - mesma razao de evidence/validate-literature.py.
+evidence/validate-adapters.py|arquivo NOVO da onda 10 (validador de conformidade de adaptador); 130 itens hoje (66 linhas + 64 ramos, medido nesta sessao), quase todos as mensagens de violacao de cada regra do schema. A CAMADA 1 vale integralmente com piso 69.3 medido; estender a CAMADA 2 exigiria uma fixture por regra de schema, o que e trabalho proprio e nao correcao pontual. O piso percentual ja impede regressao silenciosa, e tests/mutation/adaptadores.sh mede se o validador DISCRIMINA, que e a pergunta que a cobertura nao responde.
 EOF
 )}"
 

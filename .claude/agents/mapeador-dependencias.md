@@ -3,7 +3,6 @@ name: mapeador-dependencias
 description: Projeção do agente canônico mapeador-dependencias.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

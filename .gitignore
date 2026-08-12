@@ -12,3 +12,22 @@ install/manifest.check
 # rastreado - sem esta linha, um `git add -A` engoliria a arvore inteira de cada delegado,
 # incluindo o `.git` deles. Mesma classe do .pyc acima: acidente de `add -A`, so que maior.
 .claude/worktrees/
+
+# MASCARAS DO RUNTIME. Medido em 2026-08-12: o Claude Code monta 176 bind mounts sobre arquivos
+# de configuracao no namespace da sessao, e o TIPO exposto oscila - o mesmo caminho aparece como
+# `character special file / nobody / 666` numa leitura e como `regular empty file / ti / 444`
+# minutos depois. O git recusa char device, mas aceita o arquivo regular vazio: um `git add` que
+# caia na janela errada commita NOVE blobs vazios como se fossem conteudo. Aconteceu no commit
+# e4ab92e desta mesma onda, e a suite de higiene pegou - mas so DEPOIS de rastreados, porque o
+# predicado de mascara exige nao-rastreado, e com razao.
+# Estas linhas fecham a janela. Se algum dia um destes precisar ser versionado de verdade,
+# remova a linha correspondente com a decisao escrita, nao por descuido.
+.mcp.json
+.claude/hooks
+.claude/launch.json
+.claude/loop.md
+.claude/output-styles
+.claude/routines
+.claude/scheduled_tasks.json
+.claude/skills
+.claude/workflows

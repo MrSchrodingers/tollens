@@ -3,7 +3,6 @@ name: analista-otimalidade
 description: Projeção do agente canônico analista-otimalidade.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---
