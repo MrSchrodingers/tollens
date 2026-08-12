@@ -7,6 +7,12 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  # administration: read e exigido para GET /repos/{o}/{r}/rulesets/{id}. A doc do GitHub
+  # adverte que `bypass_actors` so e devolvido a quem tem write no ruleset - portanto o probe
+  # abaixo pode sair NAO VERIFICADO mesmo com esta permissao. Isso e MEDICAO, nao suposicao:
+  # o passo e fail-closed, e um vermelho por permissao insuficiente e a resposta a pergunta
+  # "o token do CI consegue observar a fronteira?" - nao um portao quebrado.
+  administration: read
 jobs:
   verify-push:
     name: verify-push
@@ -95,6 +101,21 @@ jobs:
         run: bash tests/unit/literatura.sh
       - name: conformidade de capability declarada (projecoes do repo)
         run: python3 evidence/runtime-probes/declared-capabilities.py --repo-only
+      # FRONTEIRA VIVA - mede Applies(P,r) contra o endpoint AUTORITATIVO do GitHub, nao contra
+      # os arquivos de workflow deste repositorio. Ate 2026-08-12 este probe tinha 155 asercoes,
+      # 20 mutantes e 83% de cobertura de ramo, e ZERO invocacoes fora de tests/ - instrumento
+      # verificado a exaustao e nunca instalado. A claim C-018 ancorava numa observacao manual.
+      # exit 0=PASS, 1=FAIL, 2=NAO VERIFICADO. Os tres decidem: NAO VERIFICADO tratado como
+      # verde seria o mesmo defeito que o resto deste portao existe para impedir.
+      - name: fronteira viva (Applies(P,r) medido no servidor do GitHub)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 evidence/probes/github-ruleset.py \
+            --owner "${GITHUB_REPOSITORY%%/*}" \
+            --repo  "${GITHUB_REPOSITORY##*/}" \
+            --branch main \
+            --context verify-pr
       - name: conformidade de capability declarada (suite)
         run: bash tests/unit/capabilities.sh
       - name: regressao do gate
