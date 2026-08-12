@@ -1,0 +1,32 @@
+<svg width="1800" height="560" viewBox="0 0 1800 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>tollens logo</title>
+  <desc>Horizontal tollens lockup with the evidence-gate symbol and a minimal wordmark.</desc>
+
+  <!-- mark -->
+  <g transform="translate(40 40) scale(.46875)">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="#0B1020"/>
+    <circle cx="260" cy="332" r="28" stroke="#E8EEF7" stroke-width="24"/>
+    <path d="M304 332H454" stroke="#E8EEF7" stroke-width="48" stroke-linecap="round"/>
+    <path d="M512 258V724" stroke="#E8EEF7" stroke-width="64" stroke-linecap="round"/>
+    <path d="M512 250V416" stroke="#59E1C5" stroke-width="64" stroke-linecap="round"/>
+    <rect x="474" y="294" width="76" height="76" rx="16" transform="rotate(45 474 294)" fill="#59E1C5"/>
+    <path d="M570 332H724" stroke="#E8EEF7" stroke-width="48" stroke-linecap="round"/>
+    <path d="M724 266L814 332L724 398" stroke="#59E1C5" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="512" cy="332" r="19" fill="#0B1020"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="575" y="343"
+        fill="#0B1020"
+        font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="224"
+        font-weight="700"
+        letter-spacing="-9">tollens</text>
+
+  <!-- tiny semantic underline: proposal / evidence / authorization -->
+  <g transform="translate(591 405)">
+    <rect x="0" y="0" width="128" height="10" rx="5" fill="#0B1020" fill-opacity="0.20"/>
+    <rect x="142" y="0" width="72" height="10" rx="5" fill="#59E1C5"/>
+    <rect x="228" y="0" width="128" height="10" rx="5" fill="#0B1020" fill-opacity="0.20"/>
+  </g>
+</svg>

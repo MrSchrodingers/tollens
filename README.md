@@ -1,4 +1,6 @@
-# tollens
+<p align="center">
+  <img src="docs/brand/tollens-header-en.png" alt="tollens" width="820">
+</p>
 
 > **Evidence-gated, multi-runtime orchestration for Claude Code Desktop/CLI and OpenAI Codex.**
 >

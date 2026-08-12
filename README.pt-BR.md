@@ -1,4 +1,6 @@
-# tollens
+<p align="center">
+  <img src="docs/brand/tollens-header-pt-BR.png" alt="tollens" width="820">
+</p>
 
 > **Orquestração multirruntime, governada por evidência, para Claude Code Desktop/CLI e OpenAI Codex.**
 >

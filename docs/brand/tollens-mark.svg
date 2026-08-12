@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>tollens — evidence gate mark</title>
+  <desc>A minimal T-shaped verification gate: a candidate enters from the left, crosses an evidence boundary, and exits as an authorized result.</desc>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#0B1020"/>
+
+  <!-- candidate node -->
+  <circle cx="260" cy="332" r="28" stroke="#E8EEF7" stroke-width="24"/>
+
+  <!-- proposal path -->
+  <path d="M304 332H454" stroke="#E8EEF7" stroke-width="48" stroke-linecap="round"/>
+
+  <!-- evidence gate / T stem -->
+  <path d="M512 258V724" stroke="#E8EEF7" stroke-width="64" stroke-linecap="round"/>
+
+  <!-- gate boundary accent -->
+  <path d="M512 250V416" stroke="#59E1C5" stroke-width="64" stroke-linecap="round"/>
+  <rect x="474" y="294" width="76" height="76" rx="16" transform="rotate(45 474 294)" fill="#59E1C5"/>
+
+  <!-- verified path -->
+  <path d="M570 332H724" stroke="#E8EEF7" stroke-width="48" stroke-linecap="round"/>
+
+  <!-- authorization arrow -->
+  <path d="M724 266L814 332L724 398" stroke="#59E1C5" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- subtle separation cue -->
+  <circle cx="512" cy="332" r="19" fill="#0B1020"/>
+</svg>
