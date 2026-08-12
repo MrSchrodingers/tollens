@@ -32,9 +32,21 @@ acidental:
    está distribuído na trajetória inteira: 0.924 excluindo a mensagem de fechamento contra
    0.934 só com ela.
 2. **Verificador determinístico não é verdade** — 18,5% de desacordo com revisão humana em 496
-   tarefas auditadas (`arXiv:2607.02577`, HTML v1) — **mas é o melhor oráculo disponível**:
-   precisão 83,8 contra 69,8 do melhor juiz LLM, e o erro é unilateral. Em 420 avaliações,
-   19 falso-negativos e ZERO falso-positivos. Erra por rejeitar, não por aprovar. Para um portão
+   tarefas auditadas (`arXiv:2607.02577v1`) — **mas é o melhor oráculo disponível**: o avaliador
+   determinístico deles concorda com o julgamento humano em 95,5% (401/420), contra 69,0% do
+   braço que usa juiz LLM (LiveMCPBench) auditado no mesmo estudo, e o erro é unilateral —
+   *"All 19 Tool-Veritas disagreements are false negatives... we observe no false positives"*
+   (verbatim, v1).
+
+   CORRECAO DE ATRIBUIÇÃO, registrada porque foi cometida por quem escreveu este ADR: a versão
+   anterior deste parágrafo dizia "precisão 83,8 contra 69,8 do melhor juiz LLM" e atribuía os
+   dois números a `arXiv:2607.02577`. Eles **não existem** nesse artigo; são de
+   `arXiv:2504.08942v2` (AgentRewardBench), tabela de precisão por avaliador. O relatório que os
+   produziu atribuía corretamente; a fusão dos dois artigos ocorreu ao repassar o resultado sem
+   a fonte, que é exatamente o que `docs/adr/0027` proíbe. Achado por um delegado que fez `grep`
+   no HTML em vez de aceitar o número recebido. A ressalva de calibração também fica: 69,0% é o
+   pior dos dois avaliadores baseados em LLM auditados (o outro, MCP-Atlas, marca 87,0%), sobre
+   conjuntos de tarefas diferentes — o artigo faz o mesmo contraste, mas ele é seletivo. Erra por rejeitar, não por aprovar. Para um portão
    cujo inimigo é o falso sucesso, esse é o modo de falha correto, e a consequência é
    contraintuitiva: recall baixo dá vontade de afrouxar o portão, e afrouxar troca o erro barato
    pelo caro.
