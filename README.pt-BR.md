@@ -1029,7 +1029,7 @@ flowchart TD
     D -->|"satisfazível por diluição<br/>87,8% sozinho vs 88,8% diluído"| E["Fronteira de execução"]
     E -->|"mutante fantasma exige rodar<br/>entrada não confiável; recusado"| F["Limite declarado<br/>NOT_VERIFIED, não PASS fabricado"]
 
-    G["Verificador observável<br/>instalado em CI, manifesto, hooks"] -.->|"qualquer camada acima pode ser<br/>verificada à exaustão e nunca instalada"| A
+    G["Verificador observável<br/>instalado em CI; manifesto e hooks pendentes"] -.->|"qualquer camada acima pode ser<br/>verificada à exaustão e nunca instalada"| A
     G -.->|"155 asserções, 20 mutantes, 83,3% de cobertura de ramo,<br/>zero invocações fora de tests/"| F
 ```
 

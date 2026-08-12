@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: 8b569bbd44838fcaa297bb6bcf80f60b23042dc0
+  subject_snapshot: e3a28c63c89455c6f245cbd26d02e1b9441863a4
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -358,5 +358,29 @@ limitations:
   E o predicado `not all(strict_medidos)`, que trata strict=false em QUALQUER regra aplicavel
   como violacao, permanece [nao verificado]: se o GitHub compoe rulesets aplicaveis pela regra
   MAIS RESTRITIVA, o predicado correto seria `not any(...)` e este seria falso positivo. Nao
-  confirmado em fonte primaria; o predicado NAO foi alterado por intuicao.'
+  confirmado em fonte primaria; o predicado NAO foi alterado por intuicao.
+
+  RETRATACAO (onda 7, commit `14cfe33`, 2026-08-12): a duvida acima foi resolvida, na direcao que
+  o proprio paragrafo ja apontava - este registro nao apaga a passagem original porque ela mostra
+  que a duvida existiu e era legitima antes de ser fechada. Confirmado contra fonte primaria (HTTP
+  200, "About rule layering", https://docs.github.com/en/repositories/configuring-branches-and-
+  merges-in-your-repository/managing-rulesets/about-rulesets, verbatim: "if multiple rulesets
+  target the same branch or tag in a repository, the rules in each of these rulesets are
+  aggregated. If the same rule is defined in different ways across the aggregated rulesets, the
+  most restrictive version of the rule applies."): sob agregacao por regra mais restritiva, uma
+  UNICA regra aplicavel com strict=true basta, e `not all(strict_medidos)` reprovava com uma unica
+  ocorrencia de strict=false mesmo quando outra regra aplicavel exigia strict=true - o falso
+  positivo era real, nao hipotetico. O predicado foi trocado para `strict_medidos and not
+  any(strict_medidos)` (`evidence/probes/github-ruleset.py:734`); o guard `strict_medidos and` e
+  necessario porque `any([])` e vacuamente `False` (logo `not any([])` e `True`), ao contrario de
+  `all([])`, vacuamente `True` - sem o guard, nenhuma regra aplicavel com strict genuinamente
+  medido fabricaria a mesma violacao que este predicado existe para evitar (ver comentario em
+  `evidence/probes/github-ruleset.py:711-733`). LIMITE desta citacao, declarado na propria fonte:
+  a pagina exemplifica o principio de agregacao com `required_approving_review_count`, nao cita
+  `strict_required_status_checks_policy` pelo nome - a aplicacao do MESMO principio a este campo
+  especifico e inferencia de quem fez a correcao, nao afirmacao literal da fonte primaria (a mesma
+  ressalva ja registrada no comentario do codigo). O leitor desta claim ANTES desta correcao teria
+  concluido o OPOSTO do que o codigo faz hoje; o `subject_snapshot` desta claim foi reancorado
+  junto com esta retratacao (ver `scope.subject_snapshot`) exatamente para que essa contradicao
+  nao persista.'
 status: supported-in-tested-domain
