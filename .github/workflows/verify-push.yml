@@ -41,15 +41,19 @@ jobs:
           missing=()
           command -v pdftotext >/dev/null || missing+=(poppler-utils)
           command -v pandoc    >/dev/null || missing+=(pandoc)
+          # ffmpeg entra na onda 10: sem ele o grupo D8 de tests/unit/document-tools.sh mede o
+          # ramo da LACUNA DECLARADA do adaptador de midia, nao o ramo produtivo. Uma suite que
+          # so exercita o caminho de indisponibilidade nao verifica o caminho que se usa.
+          command -v ffmpeg    >/dev/null || missing+=(ffmpeg)
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "instalando: ${missing[*]}"
             sudo timeout 180 apt-get -o Acquire::Retries=3 update -qq
-            sudo timeout 180 apt-get -o Acquire::Retries=3 install -y -qq "${missing[@]}"
+            sudo timeout 300 apt-get -o Acquire::Retries=3 install -y -qq "${missing[@]}"
           else
-            echo "poppler-utils e pandoc ja presentes na imagem; apt nao foi acionado"
+            echo "poppler-utils, pandoc e ffmpeg ja presentes na imagem; apt nao foi acionado"
           fi
           echo "versoes de sistema observadas nesta execucao:"
-          pdftotext -v 2>&1 | head -1; pandoc --version | head -1
+          pdftotext -v 2>&1 | head -1; pandoc --version | head -1; ffmpeg -version | head -1
           ruff --version && node --version && jq --version
       - name: sintaxe de todo hook
         run: |
@@ -131,6 +135,17 @@ jobs:
         run: bash tests/mutation/claims.sh
       - name: validacao por mutacao (capability declarada)
         run: bash tests/mutation/capabilities.sh
+      # ONDA 10. A CI conferia os adaptadores documentais so com `jq -e .` - sintaxe valida. Foi
+      # exatamente por ali que `media.json` atravessou nove ondas declarando `pipeline` onde o
+      # executor exige `plans`, e o caminho sancionado para imagem ficou inutilizavel. Sintaxe
+      # valida nao e conformidade de contrato.
+      - name: conformidade de schema dos adaptadores documentais
+        run: python3 evidence/validate-adapters.py
+      # PASSO DEDICADO, e nao opcional: scripts/status.sh varre tests/mutation/*.sh e publica
+      # "passo dedicado no CI" para cada arnes que encontra. Sem este passo aquela linha seria
+      # uma afirmacao falsa no documento de estado.
+      - name: validacao por mutacao (conformidade de adaptador)
+        run: bash tests/mutation/adaptadores.sh
       - name: cobertura de decisao (mecanismo, evidence/cobertura.sh)
         run: bash tests/unit/cobertura.sh
       # UBUNTU 24.04 RESTRINGE USER NAMESPACE NAO PRIVILEGIADO POR APPARMOR. Tres dos doze
