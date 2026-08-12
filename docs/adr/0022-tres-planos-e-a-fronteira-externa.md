@@ -3,7 +3,7 @@
 - Data: 2026-08-03
 - Status: aceito
 - Corrige: 0010, 0015, 0016, 0020 (todos tratavam `Stop` como portao de conclusao)
-- Renomeia o projeto: `claude-mecanismo` -> `evidence-gate`
+- Renomeia o projeto: `claude-mecanismo` -> `tollens`
 
 ## O achado que subordinou todos os outros
 

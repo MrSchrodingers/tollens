@@ -106,3 +106,9 @@ nao se realizou: bastaria aparecer mais de um `verify-pr`, ou um `verify` remane
   correcao remove a condicao em vez de responder a pergunta; medi-la exigiria empurrar um commit
   vermelho de proposito para o branch protegido.
 - Nada aqui mede eficacia de engenharia. Mede que o portao tem um nome so.
+
+> NOTA DE INTEGRIDADE (2026-08-12): os comandos acima citam `MrSchrodingers/evidence-gate`
+> porque foi contra ESSE nome que eles foram executados. O repositorio passou a se chamar
+> `tollens` depois. A renomeacao automatica reescreveu estas linhas e o `blob_sha` do ledger
+> acusou a divergencia - reescrever comando gravado faz o registro afirmar uma execucao que
+> nunca ocorreu naquela URL, que e falsificacao de evidencia. Restaurado ao que foi rodado.

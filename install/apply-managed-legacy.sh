@@ -47,7 +47,7 @@ if [ -n "$PREFIX" ]; then
   PREFIX="$(realpath -m "$PREFIX" 2>/dev/null || printf '%s' "$PREFIX")"
   PREFIX="${PREFIX%/}"
 fi
-OPT="$PREFIX/opt/evidence-gate"
+OPT="$PREFIX/opt/tollens"
 # RAIZ e a arvore que as funcoes de validacao INSPECIONAM. Em `--verify` e a arvore ativa; no
 # deploy passa a ser a area de staging, e so vira a ativa depois de todo portao ter passado.
 # Sem esta indirecao, validar antes de publicar seria impossivel sem duplicar as funcoes.
@@ -73,8 +73,8 @@ fi
 [ -f "$MAN" ] || { echo "ERRO: $MAN ausente - rode install/manifest.sh" >&2; exit 1; }
 
 # destino de cada componente dentro de $OPT. `hooks/x.sh` fica `hooks/x.sh`; os demais vem com
-# o prefixo `evidence-gate/` do layout de ~/.claude, que aqui e redundante e sai.
-destino_managed(){ printf '%s\n' "${1#evidence-gate/}"; }
+# o prefixo `tollens/` do layout de ~/.claude, que aqui e redundante e sai.
+destino_managed(){ printf '%s\n' "${1#tollens/}"; }
 
 # tipos que compoem a POLITICA. agent e skill ficam de fora por decisao declarada no cabecalho.
 tipos_politica(){ awk -F'\t' '!/^#/ && ($1=="hook" || $1=="adapter" || $1=="doctool")' "$MAN"; }
@@ -152,15 +152,15 @@ if [ "$MODO" = "revert" ]; then
   # `managed-settings.json`, inclusive uma politica corporativa de outra ferramenta - que pode
   # conter `permissions.deny` - sem backup e sem aviso, e sob `sudo`. Promessa em comentario
   # que o codigo nao entrega e o defeito central deste repositorio, aqui no caminho destrutivo.
-  if [ -f "$SETTINGS" ] && ! jq -e '._managed_by == "evidence-gate"' "$SETTINGS" >/dev/null 2>&1; then
+  if [ -f "$SETTINGS" ] && ! jq -e '._managed_by == "tollens"' "$SETTINGS" >/dev/null 2>&1; then
     echo "ERRO: '$SETTINGS' NAO foi escrito por este instalador (falta a marca _managed_by)." >&2
     echo "      Nada foi removido. Se a intencao e descartar essa politica, remova-a a mao" >&2
     echo "      depois de ler o conteudo - este script nao apaga o que nao criou." >&2
     exit 1
   fi
   if [ -f "$SETTINGS" ]; then rm -f "$SETTINGS"; echo "removido: $SETTINGS"; fi
-  if [ -f "$SETTINGS.pre-evidence-gate" ]; then
-    mv -f "$SETTINGS.pre-evidence-gate" "$SETTINGS"; echo "restaurado o managed-settings.json anterior"
+  if [ -f "$SETTINGS.pre-tollens" ]; then
+    mv -f "$SETTINGS.pre-tollens" "$SETTINGS"; echo "restaurado o managed-settings.json anterior"
   fi
   if [ -d "$OPT" ]; then rm -rf "$OPT"; echo "removido: $OPT"; fi
   rmdir "$ETC" 2>/dev/null && echo "removido (vazio): $ETC"
@@ -427,8 +427,8 @@ trap 'rm -rf "$STAGE" "$SET_NOVO" "$SET_ROLLBACK" 2>/dev/null || true' EXIT
 
 if ! jq -n --argjson h "$HOOKS_JSON" --argjson enf "$ENFORCE" --arg rp "$REPO" \
       --arg ad "$OPT/adapters/code" --arg dd "$OPT/adapters/documents" \
-      '{_managed_by:"evidence-gate", allowManagedHooksOnly:$enf, hooks:$h,
-        env:{CLAUDE_ADAPTERS_DIR:$ad, DOC_ADAPTERS_DIR:$dd, EVIDENCE_GATE_REPO:$rp}}' \
+      '{_managed_by:"tollens", allowManagedHooksOnly:$enf, hooks:$h,
+        env:{CLAUDE_ADAPTERS_DIR:$ad, DOC_ADAPTERS_DIR:$dd, TOLLENS_REPO:$rp}}' \
       > "$SET_NOVO" || ! jq -e . "$SET_NOVO" >/dev/null 2>&1; then
   echo "ERRO: managed-settings.json nao pode ser gerado ou nao e JSON valido." >&2
   echo "      NADA foi alterado: nem a arvore ativa, nem a politica." >&2
@@ -439,7 +439,7 @@ if [ "$REAL" -eq 1 ]; then
   chown root:root "$SET_NOVO" || { echo "ERRO: chown da politica nova falhou; nada foi alterado." >&2; exit 1; }
 fi
 
-# COPIA DE ROLLBACK da politica atual. Distinta do backup `.pre-evidence-gate`, que tem outra
+# COPIA DE ROLLBACK da politica atual. Distinta do backup `.pre-tollens`, que tem outra
 # funcao (preservar politica de TERCEIRO, ver MG8/MG12) e outra duracao (permanente). Esta e
 # efemera e existe so para desfazer uma fase de commit que falhou pela metade.
 TEM_ROLLBACK=0
@@ -456,9 +456,9 @@ fi
 # nao ter reversao, porque o operador acredita ter voltado ao estado anterior.
 # A marca `_managed_by` responde "este arquivo e nosso?" sem depender de heuristica.
 FEZ_PRE=0
-if [ -f "$SETTINGS" ] && [ ! -f "$SETTINGS.pre-evidence-gate" ] \
-   && ! jq -e '._managed_by == "evidence-gate"' "$SETTINGS" >/dev/null 2>&1; then
-  cp -f "$SETTINGS" "$SETTINGS.pre-evidence-gate" \
+if [ -f "$SETTINGS" ] && [ ! -f "$SETTINGS.pre-tollens" ] \
+   && ! jq -e '._managed_by == "tollens"' "$SETTINGS" >/dev/null 2>&1; then
+  cp -f "$SETTINGS" "$SETTINGS.pre-tollens" \
     || { echo "ERRO: backup da politica de terceiro falhou; nada mudou." >&2; exit 1; }
   FEZ_PRE=1
 fi
@@ -481,7 +481,7 @@ desfaz(){  # devolve o estado ativo INTEIRO ao que era: arvore E politica
     # nao havia politica antes; o estado anterior e a AUSENCIA dela
     rm -f "$SETTINGS" 2>/dev/null || true
   fi
-  [ "$FEZ_PRE" -eq 1 ] && rm -f "$SETTINGS.pre-evidence-gate" 2>/dev/null || true
+  [ "$FEZ_PRE" -eq 1 ] && rm -f "$SETTINGS.pre-tollens" 2>/dev/null || true
 }
 
 # FAILPOINT - existe SO para teste (tests/unit/managed.sh, MG17/MG18). Sem a variavel definida

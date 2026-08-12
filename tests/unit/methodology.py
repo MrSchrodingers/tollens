@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
-ROOT = Path(os.environ.get("EVIDENCE_GATE_ROOT", DEFAULT_ROOT)).resolve()
+ROOT = Path(os.environ.get("TOLLENS_ROOT", DEFAULT_ROOT)).resolve()
 policy = json.loads((ROOT / "orchestration/skill-policy.json").read_text(encoding="utf-8"))
 protocol = json.loads((ROOT / "orchestration/evaluation-protocol.json").read_text(encoding="utf-8"))
 

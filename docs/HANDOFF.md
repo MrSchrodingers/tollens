@@ -86,7 +86,7 @@ E a distincao que decide como tratar pre-requisito ausente:
 ## 4. Como rodar
 
 ```bash
-cd ~/evidence-gate
+cd ~/tollens
 
 bash scripts/status.sh && cat docs/status.generated.md   # estado por execucao real
 bash install/verify.sh                                    # conformidade repo <-> ~/.claude

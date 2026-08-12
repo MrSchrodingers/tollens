@@ -10,7 +10,7 @@ claim: 'Gate(P,a,r) <=> Applies(P,r) ^ Required(P) ^ not Bypass(a,P) e MEDIDA co
   denunciasse - o defeito era invisivel a uma leitura estatica dos arquivos deste repositorio.'
 type: security-property
 scope:
-  subject_snapshot: 734283eb28af73f346589cc7a152bf88af9d8447
+  subject_snapshot: f54740c6b4fe8aed934508a5cd4b404873295fd5
   # O runner que executa o probe nao entra: ele SOBE o processo, nao decide o que o servidor do
   # GitHub resolve. A decisao sobre quais regras se aplicam e do servidor, nunca do cliente.
   platforms:
@@ -21,13 +21,15 @@ scope:
 evidence:
   regression: [V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15,
                V16, V17, V18, V19, V20, V21, V22, V23, V24, V25, V26, V27, V28,
-               V29, V30, V31]
+               V29, V30, V31, V32, V33, V34, V35, V36, V37, V38, V39, V40, V41,
+               V42, V43, V44]
   mutants: [MV1, MV2, MV3, MV4, MV5, MV6, MV7, MV8, MV9, MV10, MV11, MV12, MV13,
-            MV14, MV15, MV16]
+            MV14, MV15, MV16, MV17, MV18, MV19, MV20, MV21, MV22, MV23, MV24,
+            MV25, MV26, MV27, MV28, MV29, MV30]
   observation:
     command: python3 evidence/probes/github-ruleset.py
     recorded: evidence/observations/2026-08-10-applies-medido-no-servidor.md
-    blob_sha: 2ada94e9b28411b7e75c7f735707cd8009b905c3
+    blob_sha: 4383f74690457aac21a3fdb16bdbf9b6cd2b3712
     line_start: 27
     line_end: 44
 warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-externa.sh` declara
@@ -149,7 +151,7 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   `valida_campo`; V9/MV3 tambem passaram a usar um ESCALAR, nao uma lista, como resposta
   malformada de rulesets/{id} - `valida_campo` usa `nome not in objeto`, que nao estoura para
   lista/string, so para um valor nao iteravel) e ganhou MV8-MV11, um por garantia nova - 11/11
-  mortos no caso certo. O PASS legitimo (repositorio proprio `MrSchrodingers/evidence-gate`,
+  mortos no caso certo. O PASS legitimo (repositorio proprio `MrSchrodingers/tollens`,
   token com `admin: true` sobre o ruleset) foi reexecutado ANTES e DEPOIS desta correcao e
   permanece PASS/exit 0 nos dois commits - a mudanca nao regride o caminho feliz.
 
@@ -206,7 +208,7 @@ warrant: 'O probe foi escrito para medir o lado que `tests/unit/fronteira-extern
   Os cinco pontos foram reproduzidos com o binario `gh` stubado ANTES desta correcao, contra o
   HEAD herdado da onda 4 (`9156bee24894b1fb2224dada69e724cb4666003a`), e as saidas batem
   exatamente com o descrito acima. O PASS
-  legitimo (repositorio proprio `MrSchrodingers/evidence-gate`, token com escopo `repo` e acesso
+  legitimo (repositorio proprio `MrSchrodingers/tollens`, token com escopo `repo` e acesso
   de escrita ao ruleset 20385799) foi reexecutado ANTES e DEPOIS desta correcao e permanece
   PASS/exit 0 nos dois commits.'
 limitations:
@@ -328,5 +330,107 @@ limitations:
   `deletion`/`non_fast_forward` - ja apontado como fora de escopo na limitacao acima) NAO herda
   automaticamente a mesma protecao: exigiria uma chamada a `valida_campo` propria, no ponto onde
   o campo passasse a ser lido. O mecanismo fechou a CLASSE de formas invalidas de um campo ja
-  declarado; nao fecha a classe de "campos que este probe ainda nao le".'
+  declarado; nao fecha a classe de "campos que este probe ainda nao le".
+
+
+  ADENDO DE 2026-08-11 - as duas metades da INVERSAO DE SEVERIDADE. A onda anterior tratou a
+  precedencia num sentido so, e a revisao de codigo independente achou a metade espelhada. As
+  duas estao agora medidas, e o par importa mais que cada uma:
+
+  (i) V32-V34 / MV17-MV19 - uma violacao JA MEDIDA (strict_required_status_checks_policy=false)
+  era descartada por saida precoce quando ruleset_id faltava, virando NOT_VERIFIED. O probe
+  dizia "nao consegui saber" tendo provado que estava errado.
+
+  (ii) V35-V39 / MV20 - o inverso: o container parameters.required_status_checks ausente, nulo
+  ou de tipo errado era coagido em "esta regra nao exige contexto", produzindo FAIL que AFIRMA
+  Required(P) = False sobre um campo que nunca foi lido. Nao e falso-verde (bloqueia), mas e
+  afirmacao positiva sem medicao, e manda o operador corrigir um ruleset que pode estar correto.
+
+  Medido no snapshot deste escopo, com stub, seis cenarios: lista bem-formada com o contexto
+  pedido -> PASS exit 0; container string/ausente/nulo -> NOT_VERIFIED exit 2; lista LEGIVEL sem
+  o contexto pedido -> FAIL exit 1 (a correcao NAO sobre-corrigiu o negativo genuino); strict
+  desligado -> FAIL exit 1.
+
+  LIMITE DESTE ADENDO, declarado. Tres dos achados menores atendidos (a preservacao de
+  nao_medidos no FAIL de ruleset_ids, a preservacao de problemas no FAIL de Required(P), e a
+  rejeicao de bool como ruleset_id) tem regressao red/green mas NAO tem mutante dedicado: so o
+  defeito principal de cada metade tem. Um refactor que os reverta em silencio nao seria pego
+  pela suite de mutacao atual. Isso e divida nomeada, nao garantia.
+
+  E o predicado `not all(strict_medidos)`, que trata strict=false em QUALQUER regra aplicavel
+  como violacao, permanece [nao verificado]: se o GitHub compoe rulesets aplicaveis pela regra
+  MAIS RESTRITIVA, o predicado correto seria `not any(...)` e este seria falso positivo. Nao
+  confirmado em fonte primaria; o predicado NAO foi alterado por intuicao.
+
+  RETRATACAO (onda 7, commit `14cfe33`, 2026-08-12): a duvida acima foi resolvida, na direcao que
+  o proprio paragrafo ja apontava - este registro nao apaga a passagem original porque ela mostra
+  que a duvida existiu e era legitima antes de ser fechada. Confirmado contra fonte primaria (HTTP
+  200, "About rule layering", https://docs.github.com/en/repositories/configuring-branches-and-
+  merges-in-your-repository/managing-rulesets/about-rulesets, verbatim: "if multiple rulesets
+  target the same branch or tag in a repository, the rules in each of these rulesets are
+  aggregated. If the same rule is defined in different ways across the aggregated rulesets, the
+  most restrictive version of the rule applies."): sob agregacao por regra mais restritiva, uma
+  UNICA regra aplicavel com strict=true basta, e `not all(strict_medidos)` reprovava com uma unica
+  ocorrencia de strict=false mesmo quando outra regra aplicavel exigia strict=true - o falso
+  positivo era real, nao hipotetico. O predicado foi trocado para `strict_medidos and not
+  any(strict_medidos)` (`evidence/probes/github-ruleset.py:734`); o guard `strict_medidos and` e
+  necessario porque `any([])` e vacuamente `False` (logo `not any([])` e `True`), ao contrario de
+  `all([])`, vacuamente `True` - sem o guard, nenhuma regra aplicavel com strict genuinamente
+  medido fabricaria a mesma violacao que este predicado existe para evitar (ver comentario em
+  `evidence/probes/github-ruleset.py:711-733`). LIMITE desta citacao, declarado na propria fonte:
+  a pagina exemplifica o principio de agregacao com `required_approving_review_count`, nao cita
+  `strict_required_status_checks_policy` pelo nome - a aplicacao do MESMO principio a este campo
+  especifico e inferencia de quem fez a correcao, nao afirmacao literal da fonte primaria (a mesma
+  ressalva ja registrada no comentario do codigo). O leitor desta claim ANTES desta correcao teria
+  concluido o OPOSTO do que o codigo faz hoje; o `subject_snapshot` desta claim foi reancorado
+  junto com esta retratacao (ver `scope.subject_snapshot`) exatamente para que essa contradicao
+  nao persista.
+
+
+  ADENDO (wave9, commit `f54740c6b4fe8aed934508a5cd4b404873295fd5`): esta reancoragem tambem
+  fecha uma DIVIDA DE CITACAO anterior - as ondas 7 e 8 (V40-V43, MV21-MV29) ja existiam no
+  codigo, mas nunca foram citadas em `evidence.regression`/`evidence.mutants` desta claim; a
+  ultima reancoragem (commit `0104f83`) precedeu a introducao delas. `evidence.regression` e
+  `evidence.mutants` agora citam ate V44/MV30, o conjunto completo presente neste
+  `subject_snapshot`.
+
+  O ACHADO desta onda: uma revisao independente sobre o commit que introduziu O OITAVO DEGRAU
+  mostrou que `current_user_can_bypass`=never e `bypass_actors` respondem perguntas DIFERENTES.
+  `current_user_can_bypass` mede Bypass(token,P) - ESTE ator (o GITHUB_TOKEN que executa o
+  probe) contorna a regra? `bypass_actors` mede exists a. Bypass(a,P) - existe ALGUM ator que
+  contorna a regra? - o quantificador que a formula publicada usa, e que a propria lista de
+  condicoes do docstring do probe ja definia: "bypass_actors nao vazio, ou
+  current_user_can_bypass != never -> FAIL... Bypass(a,P) = True para algum a". A onda 8 tratava
+  a medicao do primeiro termo como SUFICIENTE para o segundo quando `bypass_actors` nao estava
+  disponivel (PASS_PARCIAL, exit 0). Medido com o MESMO stub e o MESMO ruleset, variando so a
+  VISAO do token: visao ADMIN (`bypass_actors` visivel, contendo um ator `OrganizationAdmin`)
+  sai FAIL, exit 1; visao CI/leitura (o MESMO ruleset, campo omitido pela API por falta de
+  acesso de escrita) saia PASS_PARCIAL, exit 0. A DIRECAO estava invertida: reduzir o privilegio
+  do observador AUMENTAVA a aprovacao sobre a MESMA realidade. Contra a API viva (github/docs,
+  ruleset 19633356, token sem acesso de escrita ao ruleset): o probe anterior a onda 8 saia
+  NOT_VERIFIED exit 2; o probe da onda 8 saia PASS_PARCIAL exit 0 - para o MESMO ruleset, sem
+  nenhuma mudanca na configuracao real. Sob o perfil de token que o CI usa (GITHUB_TOKEN,
+  contents:read), o ramo "bypass_actors nao vazio" - a violacao mais grave que este probe existe
+  para pegar - ficava INALCANCAVEL: bypass concedido a `OrganizationAdmin`, a um time ou a uma
+  deploy key saia `PASS_PARCIAL exit=0` para sempre.
+
+  CORRIGIDO: `EXIT[PASS_PARCIAL]` volta a 2, o MESMO de NOT_VERIFIED. O `estado` PASS_PARCIAL
+  PERMANECE distinto de PASS e de NOT_VERIFIED puros - a distincao continua informativa
+  (`motivo` nomeia exatamente qual medicao foi feita, Bypass(token,P)=never, e qual ficou de
+  fora, a lista de outros atores) - so o exit code deixa de tratar essa medicao parcial como
+  aprovacao. `tests/unit/fronteira-viva.sh` ganhou V44: mesmo ruleset de V4, visao ADMIN com
+  `bypass_actors` visivel contendo um ator continua FAIL exit 1 - o CONTROLE que a revisao
+  construiu, provando que ver MENOS nunca aprova MAIS sobre a MESMA realidade.
+  `tests/mutation/fronteira-viva.sh` ganhou MV30, que reverte `EXIT[PASS_PARCIAL]` para 0 e
+  morre em V4.
+
+  LIMITE PERMANENTE E CONHECIDO, acrescentado por esta correcao: sob um token sem acesso de
+  escrita ao ruleset (o perfil de um `GITHUB_TOKEN` de Actions com `contents: read`, o mesmo que
+  a limitacao de execucao agendada abaixo recomenda), `bypass_actors` NAO E OBSERVAVEL por este
+  probe - a API do GitHub nunca devolve essa lista a esse perfil. O termo existencial
+  exists a. Bypass(a,P) NAO E MEDIDO nesse caso, e o probe declara NAO VERIFICADO (exit 2),
+  nunca PASS - mesmo quando `current_user_can_bypass`=never confirma que o proprio ator
+  autenticado nao contorna a regra. Fechar esta lacuna exige rodar o probe com um token que
+  tenha acesso de escrita ao ruleset (nao o GITHUB_TOKEN de execucao agendada); nenhuma
+  heuristica sobre o campo parcial visivel substitui essa medicao.'
 status: supported-in-tested-domain

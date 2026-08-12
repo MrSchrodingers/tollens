@@ -43,6 +43,30 @@
 # silencio qualquer elemento com `type` ausente/nulo/tipo errado, e para a linha seguinte, que
 # crashava com `TypeError` quando `type` ausente coexistia com um `type` presente no mesmo laco.
 #
+# MV17-MV18 fecham a SEXTA onda (2026-08-11, defeito achado pelo portao final da onda 5): um
+# `return NOT_VERIFIED`/`FAIL` DENTRO da propria funcao `probe`, mas ANTES da agregacao de
+# `strict_medidos` em `problemas`, descartava uma violacao de `strict_required_status_checks_policy`
+# JA MEDIDA - a mesma classe de defeito que MV5/MV6 fecharam para o laco de rulesets, agora um
+# passo mais cedo. MV17 reverte o bloco `if not ruleset_ids:` para a forma sem o `if problemas`
+# (o `return NOT_VERIFIED` volta a rodar incondicionalmente). MV18 reverte o bloco `if context not
+# in contextos: if nao_medidos:` da mesma forma. Kill em V32/V33, respectivamente - pontos de
+# codigo DIFERENTES, exigem mutantes proprios pela mesma razao que MV5/MV6 exigiram.
+#
+# MV19 fecha o DEFEITO OPOSTO no mesmo bloco de MV17, achado ao validar por mutacao NESTA sessao:
+# o guard `if problemas` precisa GATEAR de fato no valor de `problemas`, nao so ter sido inserido
+# em algum lugar do bloco. Um mutante que forca `if not ruleset_ids:` a retornar FAIL
+# incondicionalmente (`if True:` no lugar de `if problemas:`) sobrevivia aos 127 casos V1-V33 -
+# nenhum deles alcanca este bloco com `ruleset_ids` vazio E `problemas` genuinamente vazio (sem
+# violacao medida). V34 fecha essa lacuna; kill designado aqui.
+#
+# MV20 fecha D6 (achado de uma revisao independente SEGUINTE, 2026-08-11, wave6b): a metade
+# ESPELHADA de D5 (MV15). D5/MV15 fecharam o CAMPO 'context' de cada ITEM de
+# 'required_status_checks'; o proprio CONTAINER - a lista inteira dentro de 'parameters' - nunca
+# tinha guard. `valida_campo` ja distinguia os quatro estados do container, mas o chamador so
+# ramificava em ITEM_INVALIDO: FALTANTE/NULO/TIPO_INVALIDO caiam num comentario que tratava a
+# forma ilegivel como equivalente a uma lista vazia - falso para os tres, verdadeiro so para a
+# lista vazia genuina. MV20 reverte para esse comentario original. Kill em V35.
+#
 # TROCA POR ARQUIVO, NAO POR ARGUMENTO DE SHELL. Os trechos mutados tem aspas simples e duplas
 # aninhadas (`f"ruleset {rid}: '{cucb}'"`); escrever isso como argumento de shell (single ou
 # double-quoted) obrigaria a escapar aspas dentro de aspas - fragil e ilegivel, e exatamente a
@@ -59,7 +83,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=16
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=30
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -124,9 +148,30 @@ echo "== mutacao: cada guard do bloco ¬Bypass(a,P) removido DEVE reprovar =="
 cat > "$TMP/mv1-de.txt" <<'EOF'
         bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
         if bp_status == FALTANTE:
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
-                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+            # (wave8, O OITAVO DEGRAU) `current_user_can_bypass` e o campo que o SERVIDOR calcula
+            # e devolve PARA O ATOR AUTENTICADO, sem exigir acesso de escrita ao ruleset (ao
+            # contrario de `bypass_actors`, a LISTA completa - ver o docstring desta funcao).
+            # Segunda leitura, PURA, do mesmo `valida_campo` ja chamado abaixo na posicao normal
+            # (sem efeito colateral - so verifica, nao substitui a validacao de baixo): se o
+            # servidor ja confirma 'never' PARA ESTE ator, not Bypass(a,P) foi MEDIDO POR
+            # COMPLETO para ele - MEDICAO PARCIAL DECLARADA, nao lacuna geral (a lacuna que sobra,
+            # bypass concedido a OUTRO ator/role, e nomeada explicitamente, nunca escondida).
+            cucb_pre_status, cucb_pre = valida_campo(detalhe, "current_user_can_bypass", str)
+            if cucb_pre_status is None and cucb_pre == "never":
+                msg = (
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta (a API so devolve este "
+                    f"campo a quem tem acesso de escrita ao ruleset), mas "
+                    f"'current_user_can_bypass'='never' foi medido para o ator autenticado - "
+                    f"MEDICAO PARCIAL DECLARADA de not Bypass(a,P), nao lacuna geral: bypass "
+                    f"concedido a OUTRO ator/role nao pode ser descartado por este probe sob "
+                    f"este token.")
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+            else:
+                nao_medidos.append(
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO "
+                    f"foi medido. A API so devolve este campo a quem tem acesso de escrita ao "
+                    f"ruleset.")
         elif bp_status == NULO:
             # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
             # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
@@ -223,6 +268,30 @@ mutante MV3 "resposta nao-dict de rulesets/{id} crasha com TypeError, nao NOT_VE
 # do primeiro, e que remover so o segundo tambem quebra o veredito.
 cat > "$TMP/mv4-de.txt" <<'EOF'
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -230,7 +299,6 @@ cat > "$TMP/mv4-de.txt" <<'EOF'
             "nao supor: " + "; ".join(nao_medidos),
             {"rules": rules, "rulesets": detalhes_rulesets},
         )
-
 EOF
 : > "$TMP/mv4-para.txt"
 mutante MV4 "deteccao sem efeito: nao_medidos preenchido mas nunca vira NOT_VERIFIED" \
@@ -303,6 +371,30 @@ cat > "$TMP/mv7-de.txt" <<'EOF'
         )
 
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -313,6 +405,30 @@ cat > "$TMP/mv7-de.txt" <<'EOF'
 EOF
 cat > "$TMP/mv7-para.txt" <<'EOF'
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, exit revertido em wave9 - ver docstring, "O NONO DEGRAU") TODA entrada de
+            # `nao_medidos`, sem excecao, e da forma tolerada (`medicao_parcial` e SUBCONJUNTO de
+            # `nao_medidos` por construcao - ver o docstring de `resolve_bypass` - e aqui os dois
+            # tem o MESMO tamanho): nenhuma OUTRA lacuna, de nenhuma origem, permanece.
+            # Bypass(token,P) - o ator autenticado - foi MEDIDO POR COMPLETO em TODOS os rulesets
+            # de origem. O termo que a formula publicada exige, exists a. Bypass(a,P), continua
+            # NAO medido: a LISTA de outros atores com bypass concedido ('bypass_actors') nao foi
+            # divulgada pela API. `estado` PASS_PARCIAL fica DISTINTO de PASS e de NOT_VERIFIED
+            # puros (verificado literalmente pela suite) e a limitacao fica NOMEADA em `motivo` -
+            # mas o exit code e o MESMO de NOT_VERIFIED: exists a. Bypass(a,P) nao observado nunca
+            # decide o portao a favor.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. Bypass(token,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas exists a. Bypass(a,P) - a LISTA completa de atores "
+                f"com bypass concedido ('bypass_actors') - nao foi divulgada pela API (exige "
+                f"acesso de escrita ao ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral, "
+                f"NAO VERIFICADO: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -335,8 +451,16 @@ cat > "$TMP/mv7-para.txt" <<'EOF'
             {"rules": rules, "rulesets": detalhes_rulesets},
         )
 EOF
+# REANCORADO (wave8): o bloco `if nao_medidos:` ganhou o ramo PASS_PARCIAL (ver O OITAVO DEGRAU).
+# Kill originalmente em "NAO relata NOT_VERIFIED" (V15) parou de ser garantia: apos o swap, V15
+# ('strict-false-bypass-ausente' - strict=false JA MEDIDO + bypass_actors ausente COM
+# current_user_can_bypass='never', a mesma forma que agora e MEDICAO PARCIAL) cai no ramo
+# nao_medidos PRIMEIRO e sai PASS_PARCIAL, nao NOT_VERIFIED - o sintoma mudou de forma (o
+# `estado: NOT_VERIFIED` nunca aparece, mas tambem nao deveria), so a asercao de EXIT CODE de V15
+# (que reprova para QUALQUER veredito != FAIL) continua correta sob as duas formas do sintoma;
+# verificado empiricamente (aplicar so este `troca` e rodar a suite) antes de fixar o alvo.
 mutante MV7 "ordem do portao final invertida: nao_medidos passa a vencer problemas" \
-  "  NAO relata NOT_VERIFIED (a lacuna de bypass_actors nao decide aqui)" \
+  "exit code 1 (nao 2 - o campo nao medido nao pode rebaixar uma violacao ja provada)" \
   "$TMP/mv7-de.txt" "$TMP/mv7-para.txt"
 
 echo "== mutacao: schema na fronteira (onda 4, 2026-08-11) - C1/C2/A1/A2 =="
@@ -618,6 +742,10 @@ cat > "$TMP/mv16-de.txt" <<'EOF'
     # pela mesma razao ja documentada para o laco de rulesets abaixo - um `return` descartaria uma
     # violacao de `strict` ja medida numa regra ANTERIOR do mesmo laco.
     problemas = []
+    # (wave8) SUBCONJUNTO de `nao_medidos` - ver o docstring de `resolve_bypass`. Nasce aqui, no
+    # mesmo ponto que `problemas`, porque os dois pontos de chamada de `resolve_bypass` abaixo
+    # (C-1 e o normal) precisam do MESMO acumulador.
+    medicao_parcial = []
     contextos = set()
     strict_medidos = []
     ruleset_ids = set()
@@ -635,12 +763,395 @@ cat > "$TMP/mv16-para.txt" <<'EOF'
 
     problemas = []
     nao_medidos = []
+    medicao_parcial = []
     contextos = set()
     strict_medidos = []
     ruleset_ids = set()
 EOF
 mutante MV16 "'type' ausente/nulo/nao-dict volta a ser descartado em silencio; type misto crasha" \
   "  nao ha traceback do Python em stderr (rsc-vazio-tipo-misto)" "$TMP/mv16-de.txt" "$TMP/mv16-para.txt"
+
+echo "== mutacao: a SEXTA onda (2026-08-11) - precedencia mascarada ANTES do laco de rulesets =="
+
+# MV17 - reverte o bloco `if not ruleset_ids:` para a forma SEM o `if problemas` que a onda 6
+# introduziu: o `return NOT_VERIFIED` volta a rodar incondicionalmente, descartando uma violacao
+# de `strict_required_status_checks_policy` ja medida no laco sobre `rsc`, ANTES deste ponto - o
+# DEFEITO VIVO exato que a onda 6 corrige. Kill em V32.
+cat > "$TMP/mv17-de.txt" <<'EOF'
+    if not ruleset_ids:
+        if problemas:
+            # Mesma precedencia: nenhuma regra aplicavel declarou 'ruleset_id' valido, logo
+            # bypass_actors/enforcement nunca poderiam ser resolvidos - mas isso e irrelevante
+            # quando `problemas` ja prova uma violacao por outro caminho. Neste ponto do laco,
+            # SO `strict_required_status_checks_policy` pode estar em `problemas`: not Bypass(a,P)
+            # (bypass_actors, current_user_can_bypass) e enforcement dependem do laco de rulesets
+            # logo abaixo, que ainda nao rodou - nomear "Bypass(a,P)" aqui seria afirmar uma
+            # medicao que nao aconteceu. `strict` e uma condicao de FAIL DISTINTA de not Bypass(a,P)
+            # (ver docstring), mas ja basta para Gate(P,a,r) = False. O DEFEITO desta rodada era
+            # exatamente este `return NOT_VERIFIED` rodando ANTES da agregacao de `strict_medidos`
+            # (ver comentario acima); com a agregacao movida para antes deste ponto, o `if
+            # problemas` decide primeiro, como em qualquer outro lugar deste arquivo em que FAIL
+            # vence NOT_VERIFIED. (A3) Este `return` tambem preserva `nao_medidos` na mensagem -
+            # antes, so `problemas` era relatado, e a razao pela qual `ruleset_ids` ficou vazio
+            # (a propria entrada de 'ruleset_id' ausente/nulo/invalido) desaparecia do relatorio.
+            return Resultado(
+                FAIL,
+                "Applies(P,r) e Required(P) valem, e a politica de atualizacao "
+                "(strict_required_status_checks_policy) ja medida decide Gate(P,a,r) = False, "
+                "independente de nenhuma regra aplicavel ter declarado 'ruleset_id' valido para "
+                "resolver bypass_actors/enforcement: " + "; ".join(problemas)
+                + ("; " + "; ".join(nao_medidos) if nao_medidos else ""),
+                {"rules": rules},
+            )
+        return Resultado(
+EOF
+cat > "$TMP/mv17-para.txt" <<'EOF'
+    if not ruleset_ids:
+        return Resultado(
+EOF
+mutante MV17 "'ruleset_id' irresolvivel volta a mascarar strict ja medido - NOT_VERIFIED fabricado" \
+  "  NAO relata NOT_VERIFIED (ruleset_id ausente nao rebaixa violacao ja provada)" \
+  "$TMP/mv17-de.txt" "$TMP/mv17-para.txt"
+
+# MV18 - mesma forma, PONTO DE CODIGO DIFERENTE: reverte o bloco `if context not in contextos: if
+# nao_medidos:` para SEM o `if problemas`, descartando a mesma classe de violacao ja medida quando
+# Required(P) fica indeterminado por uma regra ilegivel, em vez de ruleset_id irresolvivel. Kill
+# em V33 - precisa de mutante proprio pela mesma razao que MV5/MV6 precisaram: um unico mutante em
+# um dos dois pontos nao prova que o OUTRO tambem foi corrigido.
+#
+# REANCORADO (wave7, C-1): o `troca` original terminava em "# Sem isto, uma regra aplicavel
+# ILEGIVEL..." - texto que agora fica ATRAS do bloco novo `if ruleset_ids: resolve_bypass(...)`
+# (C-1). O ANCORA foi encurtado para nao incluir esse texto (evita reescrever o bloco C-1 dentro
+# do proprio mutante); o EFEITO do mutante MUDOU e foi RECONFERIDO, nao presumido: sem este guard,
+# V33 (dois `ruleset_id` validos, 501/502) cai no bloco `if ruleset_ids:` novo em vez de retornar
+# direto - ainda chega a FAIL (a violacao de strict sobrevive DENTRO de `problemas`, que o bloco
+# novo tambem consulta), mas so DEPOIS de consultar rulesets/501 e rulesets/502 sem necessidade -
+# a MESMA garantia (strict ja medido nao pode ser descartado) agora se manifesta como uma chamada
+# de rede EVITAVEL, nao mais como NOT_VERIFIED fabricado.
+#
+# REANCORADO OUTRA VEZ (wave8): o kill em "NAO chama o endpoint de ruleset" (V33) media um EFEITO
+# COLATERAL (a chamada de rede evitavel), nao a SEVERIDADE. Medido pelo portao final: V33 usa DOIS
+# `ruleset_id` validos (501/502) - apos esta mutacao, o codigo cai no bloco `if ruleset_ids:` (C-1)
+# e a violacao de strict sobrevive DENTRO de `problemas`, resgatada pelo `if problemas:` que roda
+# DEPOIS de `resolve_bypass` (linha alguns blocos abaixo) - V33 ainda sai `estado: FAIL exit=1`,
+# so com uma chamada de rede a mais e a REDACAO da mensagem trocada (agora cita "Bypass(a,P) ou a
+# politica de atualizacao", a prosa do OUTRO bloco). NENHUM caso da suite ate wave8 isola o
+# sub-caso em que a SEVERIDADE de fato degrada: uma UNICA regra aplicavel, 'ruleset_id' AUSENTE
+# (logo `ruleset_ids` VAZIO - nao ha um segundo ruleset_id valido que resgate via o bloco C-1) +
+# strict=false JA MEDIDO + contexto DIVERGENTE. Sem este guard, o bloco `if ruleset_ids:` (vazio)
+# nunca executa, e o codigo cai direto no `return NOT_VERIFIED` seguinte - a violacao de strict,
+# achada em `problemas`, e SILENCIOSAMENTE descartada: `estado: FAIL exit=1` (probe original) vira
+# `estado: NOT_VERIFIED exit=2` (mutado) - o DEFEITO VIVO exato que esta onda fecha, reproduzido
+# em V43. Kill mudado do efeito colateral (rede) para a SEVERIDADE (exit code); verificado
+# empiricamente (aplicar so este `troca` e rodar a suite) antes de fixar o alvo, nao presumido.
+cat > "$TMP/mv18-de.txt" <<'EOF'
+            if problemas:
+                # Mesma precedencia do portao final (`if problemas` mais abaixo, apos o laco de
+                # rulesets): uma violacao ja PROVADA decide Gate(P,a,r) = False sem depender de
+                # Required(P) ficar determinado. Neste ponto do laco, SO
+                # `strict_required_status_checks_policy` pode estar em `problemas` - bypass_actors/
+                # enforcement/current_user_can_bypass dependem do laco de rulesets, que ainda nao
+                # rodou; nomear "Bypass(a,P)" aqui afirmaria uma medicao que nao aconteceu. As duas
+                # hipoteses para a regra ilegivel levam ao mesmo resultado: se ela NAO exigia
+                # `context`, Required(P) = False ja decide FAIL sozinho; se ela EXIGIA `context`,
+                # Required(P) = True e o strict ja violado decide Gate(P,a,r) = False por si so
+                # (uma condicao de FAIL DISTINTA de not Bypass(a,P), ver docstring), FAIL de novo.
+                # NOT_VERIFIED aqui descreveria uma incerteza que nao existe.
+                return Resultado(
+                    FAIL,
+                    f"Applies(P,r) vale e a politica de atualizacao "
+                    f"(strict_required_status_checks_policy) ja medida decide Gate(P,a,r) = False, "
+                    f"independente de Required(P) para '{context}' ficar "
+                    f"indeterminado (regra required_status_checks aplicavel ilegivel: "
+                    + "; ".join(nao_medidos) + "): " + "; ".join(problemas),
+                    {"rules": rules},
+                )
+EOF
+: > "$TMP/mv18-para.txt"
+mutante MV18 "Required(P) indeterminado volta a exigir consulta evitavel ao ruleset - strict ja medido nao decide mais sozinho" \
+  "exit code 1 (severidade: violacao ja medida nao pode virar NOT_VERIFIED, v43)" \
+  "$TMP/mv18-de.txt" "$TMP/mv18-para.txt"
+
+# MV19 - o DEFEITO OPOSTO de MV17, no MESMO bloco: o guard `if problemas` vira `if True:` - o
+# bloco `if not ruleset_ids:` passa a retornar FAIL SEMPRE, mesmo sem nenhuma violacao medida.
+# Achado ao validar por mutacao NESTA sessao: sobrevivia aos 127 casos V1-V33 ate V34 ser
+# adicionado. Kill em V34.
+cat > "$TMP/mv19-de.txt" <<'EOF'
+    if not ruleset_ids:
+        if problemas:
+EOF
+cat > "$TMP/mv19-para.txt" <<'EOF'
+    if not ruleset_ids:
+        if True:  # MUTANTE: 'ruleset_id' irresolvivel vira FAIL fabricado mesmo sem violacao
+EOF
+mutante MV19 "'ruleset_id' irresolvivel vira FAIL fabricado mesmo SEM violacao medida" \
+  "  NAO relata estado FAIL (sem violacao medida, nao pode fabricar FAIL)" \
+  "$TMP/mv19-de.txt" "$TMP/mv19-para.txt"
+
+echo "== mutacao: D6 (wave6b) - a metade ESPELHADA de D5 removida do container 'required_status_checks' =="
+
+# MV20 - reverte os ramos FALTANTE/NULO/TIPO_INVALIDO do CONTAINER 'required_status_checks' (a
+# lista inteira dentro de 'parameters', nao o elemento) para o comentario original: "apenas
+# significa que esta regra nao contribui contexto algum - a mesma consequencia de uma lista
+# vazia". Container ausente/nulo/tipo errado volta a cair em silencio, sem entrar em
+# `nao_medidos` - o mesmo `Required(P) = False` FABRICADO que D6 fecha. Kill em V35.
+cat > "$TMP/mv20-de.txt" <<'EOF'
+        elif checks_status == ITEM_INVALIDO:
+            idx, item = checks
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks[{idx}]' tem tipo inesperado "
+                f"({type(item).__name__}, esperava objeto) - o contexto desta regra NAO pode "
+                f"ser lido por completo.")
+        elif checks_status == FALTANTE:
+            # (D6, achado C1 da revisao independente, wave6b) a metade ESPELHADA de D5: D5 fechou
+            # o CAMPO 'context' de cada ITEM da lista; o proprio CONTAINER 'required_status_checks'
+            # (a lista em si) nunca tinha guard - ausente/nulo/tipo errado eram tratados como "esta
+            # regra nao contribui contexto algum", a MESMA consequencia de uma lista vazia. Uma
+            # lista vazia E medicao (a regra foi lida por completo e nao exige nada); um container
+            # ausente/nulo/de outro tipo NAO mede nada - a regra PODERIA ter exigido o contexto e
+            # nao foi possivel confirmar nem descartar isso.
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks' ausente de 'parameters' - esta regra NAO "
+                f"pode ser confirmada nem descartada como fonte do contexto exigido.")
+        elif checks_status == NULO:
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks' e null em 'parameters' - mesma doutrina de "
+                f"campo ausente.")
+        elif checks_status == TIPO_INVALIDO:
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks' tem tipo inesperado "
+                f"({type(checks).__name__}, esperava lista) - esta regra NAO pode ser confirmada "
+                f"nem descartada como fonte do contexto exigido.")
+        # Uma LISTA VAZIA (checks_status is None, checks == []) e a UNICA forma que ainda significa
+        # "esta regra nao contribui contexto algum": o `for` acima simplesmente nao itera, e isso E
+        # medicao - a lista existe, e do tipo certo, e nao tem elemento nenhum. O CAMPO 'context' de
+        # cada item da lista passa pela mesma validacao de schema que qualquer outro campo decisivo
+        # (ver acima).
+EOF
+cat > "$TMP/mv20-para.txt" <<'EOF'
+        elif checks_status == ITEM_INVALIDO:
+            idx, item = checks
+            nao_medidos.append(
+                f"{rotulo}: 'required_status_checks[{idx}]' tem tipo inesperado "
+                f"({type(item).__name__}, esperava objeto) - o contexto desta regra NAO pode "
+                f"ser lido por completo.")
+        # FALTANTE/NULO/TIPO_INVALIDO de 'required_status_checks' (a LISTA em si) apenas significa
+        # que esta regra nao contribui contexto algum - a mesma consequencia de uma lista vazia,
+        # que ja nao era um defeito antes desta correcao. O CAMPO 'context' de cada item da lista
+        # passa pela mesma validacao de schema que qualquer outro campo decisivo (ver acima).
+EOF
+mutante MV20 "container 'required_status_checks' ilegivel volta a cair em silencio - FAIL fabricado" \
+  "  motivo cita 'required_status_checks' ausente de 'parameters'" \
+  "$TMP/mv20-de.txt" "$TMP/mv20-para.txt"
+
+echo "== mutacao: A-1 (achado da revisao independente, wave7) - dois mutantes ausentes SOBREVIVIAM =="
+echo "== a suite discriminava so o PAYLOAD ('; '.join(problemas)), nunca a PROSA nem a itemizacao =="
+
+# MV21 - MUT-A1a: reverte a PROSA do bloco `if not ruleset_ids: if problemas:` para a forma
+# GENERICA "Bypass(a,P) ou a politica de atualizacao" - a mesma frase que so e verdadeira DEPOIS
+# que `resolve_bypass` roda. Neste ponto do codigo, `resolve_bypass` NUNCA rodou (ruleset_id nunca
+# foi resolvido) - nomear Bypass(a,P) aqui afirma uma medicao que nao aconteceu. Achado da revisao
+# independente: V32 ja cobria o PAYLOAD (grep por 'strict_required_status_checks_policy', emitido
+# por `problemas` independente da prosa), nunca a prosa - este mutante sobrevivia aos 155 casos
+# anteriores. Kill na asercao NEGATIVA nova de V32.
+cat > "$TMP/mv21-de.txt" <<'EOF'
+                "Applies(P,r) e Required(P) valem, e a politica de atualizacao "
+                "(strict_required_status_checks_policy) ja medida decide Gate(P,a,r) = False, "
+EOF
+cat > "$TMP/mv21-para.txt" <<'EOF'
+                "Applies(P,r) e Required(P) valem, e uma violacao ja medida (Bypass(a,P) ou a "
+                "politica de atualizacao) decide Gate(P,a,r) = False, "
+EOF
+mutante MV21 "prosa do bloco 'ruleset_id irresolvivel' volta a nomear Bypass(a,P) sem te-lo medido" \
+  "  motivo NAO cita 'Bypass(a,P) ou a politica de atualizacao' (nao foi medido neste ponto, v32)" \
+  "$TMP/mv21-de.txt" "$TMP/mv21-para.txt"
+
+# MV22 - MUT-A1b: mesma forma, PONTO DE CODIGO DIFERENTE - o bloco `if context not in contextos:
+# if nao_medidos: if problemas:`. Kill em V33, pela mesma razao que MV17/MV18 (e MV5/MV6) precisam
+# de mutante proprio por ponto de codigo: um unico mutante num dos dois blocos nao prova que o
+# OUTRO tambem nomeia o termo certo.
+cat > "$TMP/mv22-de.txt" <<'EOF'
+                    f"Applies(P,r) vale e a politica de atualizacao "
+                    f"(strict_required_status_checks_policy) ja medida decide Gate(P,a,r) = False, "
+EOF
+cat > "$TMP/mv22-para.txt" <<'EOF'
+                    f"Applies(P,r) vale e uma violacao ja medida (Bypass(a,P) ou a politica de "
+                    f"atualizacao) decide Gate(P,a,r) = False, "
+EOF
+mutante MV22 "prosa do bloco 'Required(P) indeterminado' volta a nomear Bypass(a,P) sem te-lo medido" \
+  "  motivo NAO cita 'Bypass(a,P) ou a politica de atualizacao' (nao foi medido neste ponto, v33)" \
+  "$TMP/mv22-de.txt" "$TMP/mv22-para.txt"
+
+# MV23 - MUT-A3: remove a itemizacao de `nao_medidos` do bloco `if not ruleset_ids: if problemas:`
+# - a razao pela qual 'ruleset_id' ficou vazio desaparece do relatorio, so `problemas` (o strict)
+# fica visivel. Achado da revisao independente: nenhum caso verificava esta itemizacao ate aqui.
+cat > "$TMP/mv23-de.txt" <<'EOF'
+                "resolver bypass_actors/enforcement: " + "; ".join(problemas)
+                + ("; " + "; ".join(nao_medidos) if nao_medidos else ""),
+EOF
+cat > "$TMP/mv23-para.txt" <<'EOF'
+                "resolver bypass_actors/enforcement: " + "; ".join(problemas),
+EOF
+mutante MV23 "itemizacao de nao_medidos desaparece do FAIL - razao do ruleset_id vazio some do relatorio" \
+  "  motivo cita 'ruleset_id' ausente (A3: nao_medidos preservado no FAIL)" \
+  "$TMP/mv23-de.txt" "$TMP/mv23-para.txt"
+
+echo "== mutacao: C-1 (O SETIMO DEGRAU, wave7) - Bypass(a,P) deixa de ser resolvido quando =="
+echo "== Required(P) fica indeterminado, mesmo com ruleset_id resolvivel =="
+
+# MV24 - reverte o NOVO bloco `if ruleset_ids: resolve_bypass(...); if problemas: return FAIL` para
+# nada: o ramo `if context not in contextos: if nao_medidos:` volta a ir direto para NOT_VERIFIED
+# sem NUNCA consultar rulesets/{id}, mesmo com 'ruleset_id' resolvivel - o DEFEITO VIVO exato que
+# esta onda corrige (reproduzido em V40).
+cat > "$TMP/mv24-de.txt" <<'EOF'
+            if ruleset_ids:
+                detalhes_rulesets = resolve_bypass(
+                    owner, repo, ruleset_ids, nao_medidos, problemas, medicao_parcial)
+                if problemas:
+                    return Resultado(
+                        FAIL,
+                        f"Applies(P,r) vale e uma violacao ja medida (Bypass(a,P) ou a politica "
+                        f"de atualizacao) decide Gate(P,a,r) = False, independente de Required(P) "
+                        f"para '{context}' ficar indeterminado (regra required_status_checks "
+                        f"aplicavel ilegivel: " + "; ".join(nao_medidos) + "): "
+                        + "; ".join(problemas),
+                        {"rules": rules, "rulesets": detalhes_rulesets},
+                    )
+EOF
+: > "$TMP/mv24-para.txt"
+mutante MV24 "C-1: NOT_VERIFIED volta a ser devolvido sem NUNCA consultar rulesets/{id}" \
+  "  CHAMA o endpoint de ruleset (a correcao consulta antes de decidir NOT_VERIFIED)" \
+  "$TMP/mv24-de.txt" "$TMP/mv24-para.txt"
+
+echo "== mutacao: A-3 (wave7) - predicado de agregacao de strict, confirmado contra fonte primaria =="
+
+# MV25 - restaura `not all(strict_medidos)`: uma UNICA regra aplicavel com strict=false volta a
+# reprovar mesmo com outra regra aplicavel em strict=true - o FALSO POSITIVO que a fonte primaria
+# ("About rule layering", ver comentario no probe) desmente. Kill em V41 ([True, False]).
+cat > "$TMP/mv25-de.txt" <<'EOF'
+    if strict_medidos and not any(strict_medidos):
+EOF
+cat > "$TMP/mv25-para.txt" <<'EOF'
+    if not all(strict_medidos):
+EOF
+mutante MV25 "predicado volta a 'not all' - strict=false de UMA regra reprova mesmo com outra em true" \
+  "  NAO relata estado FAIL (nao fabrica violacao de strict so por haver um strict=false)" \
+  "$TMP/mv25-de.txt" "$TMP/mv25-para.txt"
+
+# MV26 - remove SO o guard `strict_medidos and`, deixando `not any(strict_medidos)` sozinho. Ao
+# contrario do guard antigo (S3, `all([])` vacuamente `True` - termo morto), este guard NAO e
+# vacuo: `any([])` e vacuamente `False`, entao `not any([])` e `True` sem o guard - fabricaria
+# violacao quando NENHUMA regra aplicavel teve strict genuinamente medido (V23: strict ausente).
+cat > "$TMP/mv26-de.txt" <<'EOF'
+    if strict_medidos and not any(strict_medidos):
+EOF
+cat > "$TMP/mv26-para.txt" <<'EOF'
+    if not any(strict_medidos):
+EOF
+mutante MV26 "guard 'strict_medidos and' removido - lista vazia (nada medido) vira violacao fabricada" \
+  "  NAO relata estado FAIL (guard 'strict_medidos and': lista vazia nao e violacao fabricada)" \
+  "$TMP/mv26-de.txt" "$TMP/mv26-para.txt"
+
+echo "== mutacao: O OITAVO DEGRAU (wave8) - MEDICAO PARCIAL DECLARADA vs lacuna geral =="
+
+# MV27 - remove POR COMPLETO o carve-out de MEDICAO PARCIAL: 'bypass_actors' ausente volta a ser
+# SEMPRE lacuna geral, mesmo quando 'current_user_can_bypass'='never' foi medido para o ator
+# autenticado. Reproduz o defeito VIVO exato que esta onda fecha (o CI nunca ficava verde sob
+# GITHUB_TOKEN/contents:read) - sem este mutante, a distincao entre as duas lacunas poderia ser
+# removida em silencio e a suite continuaria verde.
+cat > "$TMP/mv27-de.txt" <<'EOF'
+        if bp_status == FALTANTE:
+            # (wave8, O OITAVO DEGRAU) `current_user_can_bypass` e o campo que o SERVIDOR calcula
+            # e devolve PARA O ATOR AUTENTICADO, sem exigir acesso de escrita ao ruleset (ao
+            # contrario de `bypass_actors`, a LISTA completa - ver o docstring desta funcao).
+            # Segunda leitura, PURA, do mesmo `valida_campo` ja chamado abaixo na posicao normal
+            # (sem efeito colateral - so verifica, nao substitui a validacao de baixo): se o
+            # servidor ja confirma 'never' PARA ESTE ator, not Bypass(a,P) foi MEDIDO POR
+            # COMPLETO para ele - MEDICAO PARCIAL DECLARADA, nao lacuna geral (a lacuna que sobra,
+            # bypass concedido a OUTRO ator/role, e nomeada explicitamente, nunca escondida).
+            cucb_pre_status, cucb_pre = valida_campo(detalhe, "current_user_can_bypass", str)
+            if cucb_pre_status is None and cucb_pre == "never":
+                msg = (
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta (a API so devolve este "
+                    f"campo a quem tem acesso de escrita ao ruleset), mas "
+                    f"'current_user_can_bypass'='never' foi medido para o ator autenticado - "
+                    f"MEDICAO PARCIAL DECLARADA de not Bypass(a,P), nao lacuna geral: bypass "
+                    f"concedido a OUTRO ator/role nao pode ser descartado por este probe sob "
+                    f"este token.")
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+            else:
+                nao_medidos.append(
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO "
+                    f"foi medido. A API so devolve este campo a quem tem acesso de escrita ao "
+                    f"ruleset.")
+EOF
+cat > "$TMP/mv27-para.txt" <<'EOF'
+        if bp_status == FALTANTE:
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
+                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+EOF
+mutante MV27 "carve-out de MEDICAO PARCIAL removido - bypass_actors ausente volta a ser SEMPRE lacuna geral" \
+  "relata estado PASS_PARCIAL (nunca PASS puro, nunca NOT_VERIFIED)" \
+  "$TMP/mv27-de.txt" "$TMP/mv27-para.txt"
+
+# MV28 - quebra o INVARIANTE de subconjunto (`medicao_parcial` SEMPRE tambem entra em
+# `nao_medidos` - ver o docstring de `resolve_bypass`): a entrada tolerada passa a entrar SO em
+# `medicao_parcial`, nunca em `nao_medidos`. Para V4 (unico ruleset, unica lacuna), isto esvazia
+# `nao_medidos` por completo - o bloco `if nao_medidos:` (que envolve o proprio ramo PASS_PARCIAL)
+# nunca e alcancado, e o probe cai direto no PASS puro incondicional do fim da funcao: a
+# LIMITACAO desaparece do relatorio, exatamente o "PASS silencioso sobre o residuo" que a
+# doutrina do OITAVO DEGRAU proibe.
+cat > "$TMP/mv28-de.txt" <<'EOF'
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+EOF
+cat > "$TMP/mv28-para.txt" <<'EOF'
+                medicao_parcial.append(msg)
+EOF
+mutante MV28 "invariante de subconjunto quebrado - medicao_parcial sem entrada correspondente em nao_medidos vira PASS silencioso" \
+  "  NAO relata estado PASS puro (a limitacao tem de ficar nomeada, nao escondida)" \
+  "$TMP/mv28-de.txt" "$TMP/mv28-para.txt"
+
+# MV29 - enfraquece o guard final de PASS_PARCIAL: `if medicao_parcial:` (removendo a comparacao
+# de tamanho) aceita qualquer traco de medicao parcial, mesmo quando OUTRA lacuna, sem relacao
+# com bypass_actors/current_user_can_bypass (ex.: 'enforcement' ausente, V19), coexiste em
+# `nao_medidos`. Reproduz o defeito OPOSTO de MV27: nao "lacuna vira PASS fabricado por omissao",
+# e sim "lacuna GERAL vira PASS_PARCIAL fabricado por presenca de ALGUM traco tolerado" -
+# precisamente o que a comparacao de tamanho existe para proibir. ALVO reancorado em wave9: desde
+# que EXIT[PASS_PARCIAL] passou a ser 2 (o MESMO de NOT_VERIFIED - ver "O NONO DEGRAU"), o exit
+# code de V19 deixou de discriminar o defeito (PASS_PARCIAL fabricado e NOT_VERIFIED genuino saem
+# exit 2 nos dois casos); o `estado` continua distinguindo os dois, entao o alvo passa a ser a
+# ausencia do rotulo NOT_VERIFIED em V19.
+cat > "$TMP/mv29-de.txt" <<'EOF'
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+EOF
+cat > "$TMP/mv29-para.txt" <<'EOF'
+        if medicao_parcial:
+EOF
+mutante MV29 "guard final enfraquecido - qualquer traco de medicao parcial vira PASS_PARCIAL mesmo com outra lacuna coexistindo" \
+  "relata estado NOT_VERIFIED" \
+  "$TMP/mv29-de.txt" "$TMP/mv29-para.txt"
+
+echo "== mutacao: O NONO DEGRAU (wave9) - PASS_PARCIAL nao pode ser exit 0 =="
+
+# MV30 - O MUTANTE CENTRAL desta onda: reverte `EXIT[PASS_PARCIAL]` para 0, a decisao exata que
+# uma revisao independente refutou (medido com o mesmo stub, mesmo ruleset: visao ADMIN, com
+# 'bypass_actors' visivel contendo um ator, sai FAIL exit 1; visao CI/leitura, MESMO ruleset,
+# campo omitido, saia PASS_PARCIAL exit 0 - a direcao invertida: reduzir o privilegio do
+# observador aumentava a aprovacao sobre a MESMA realidade). Kill em V4: o `estado` PASS_PARCIAL
+# permanece (nao e MV27/MV28, que atacam o CARVE-OUT em si), so o EXIT CODE volta a ser
+# distinguivel de NOT_VERIFIED.
+cat > "$TMP/mv30-de.txt" <<'EOF'
+EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 2}
+EOF
+cat > "$TMP/mv30-para.txt" <<'EOF'
+EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 0}
+EOF
+mutante MV30 "PASS_PARCIAL volta a valer exit 0 - medicao parcial declarada volta a ser aprovacao" \
+  "exit code 2 (wave9: medicao parcial declarada NAO e aprovacao - exists a.Bypass(a,P) nao medido)" \
+  "$TMP/mv30-de.txt" "$TMP/mv30-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo

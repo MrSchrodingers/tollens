@@ -72,6 +72,28 @@ trap 'rm -f "$TMP"' EXIT
   m_cobertura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/cobertura.sh | head -1 | cut -d= -f2)"
   bash tests/mutation/cobertura.sh >/dev/null 2>&1
   printf '| cobertura de decisao | %s | %s |\n' "${m_cobertura:-?}" "$?"
+  # COMPLETUDE, nao lista digitada a mao. As linhas acima tem rotulo curado por arnes; esta
+  # varredura garante que um arnes NOVO nunca nasca fora do relatorio. Foi o que aconteceu com
+  # tests/mutation/fable-guard.sh, escrito na onda 7 (12 mutantes sobre 148 linhas de superficie
+  # de autorizacao) e ausente daqui ate esta correcao - a MESMA classe que a varredura de
+  # completude de ALVOS fechou em evidence/cobertura.sh. Instrumento escrito e nao reportado e
+  # a versao pequena do instrumento escrito e nao executado (ADR 0029).
+  CURADOS='run install fronteira conformidade schedule fronteira-viva literatura claims capabilities cobertura contrato'
+  for _mf in tests/mutation/*.sh; do
+    _b="$(basename "$_mf" .sh)"
+    case " $CURADOS " in *" $_b "*) continue ;; esac
+    _n="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' "$_mf" | head -1 | cut -d= -f2)"
+    # ROTULO CONSTANTE, NAO EXIT CODE MEDIDO. Defeito meu, pago com uma CI vermelha (run
+    # 31607753782): a primeira versao desta varredura EXECUTAVA o arnes e gravava o `$?` no
+    # artefato. `fable-guard.sh` deu 0 nesta maquina e 1 no runner - o ubuntu-24.04 restringe
+    # user namespace nao privilegiado por AppArmor, e 3 dos 12 mutantes dependem de
+    # `unshare --map-root-user` para exercitar posse de root sem sudo. Resultado: o artefato
+    # NUNCA poderia bater nos dois ambientes, e `--check` reprovava para sempre.
+    # E exatamente o que o comentario 30 linhas acima ja explicava sobre `install.sh`, e que eu
+    # li antes de escrever isto. Enunciar a regra nao a executa.
+    # A execucao real acontece no passo dedicado do workflow, que e onde o veredito importa.
+    printf '| %s (auto) | %s | passo dedicado no CI |\n' "$_b" "${_n:-?}"
+  done
 
   printf '\n## Cobertura de decisao (branch), medida via subprocesso instrumentado\n\n'
   printf 'Piso por arquivo (evidence/cobertura.sh --check); ver o script para a mecanica de\n'
@@ -88,7 +110,7 @@ trap 'rm -f "$TMP"' EXIT
   printf '\n## Limites declarados\n\n'
   printf -- '- `allowManagedHooksOnly` continua sendo uma decisao administrativa de deploy; o repositorio nao afirma que esteja ativo em toda instalacao.\n'
   printf -- '- a execucao root do instalador stock agora recusa fonte que nao seja integralmente `root:root`, livre de symlinks e sem escrita de grupo/outros; isso e uma precondicao operacional, nao autenticacao criptografica do release.\n'
-  printf -- '- `EVIDENCE_GATE_REPO`, quando usado por hooks managed para localizar verificadores, continua sendo uma dependencia que deve receber uma fronteira de confianca compativel com o ambiente onde for ativada.\n'
+  printf -- '- `TOLLENS_REPO`, quando usado por hooks managed para localizar verificadores, continua sendo uma dependencia que deve receber uma fronteira de confianca compativel com o ambiente onde for ativada.\n'
   printf -- '- o ambiente de CI e auditavel, nao hermetico: `ubuntu-24.04` fixa a familia da imagem, nao seu digest, e a excecao `apt` permanece declarada.\n'
   printf -- '- sem corpus proprio de desfecho, nao ha claim de superioridade universal de engenharia; a governanca de skills e evidence-gated e falsificavel.\n'
   printf -- '- parsers e adaptadores documentais nao constituem sandbox de sistema operacional.\n'
@@ -99,7 +121,7 @@ trap 'rm -f "$TMP"' EXIT
 
   printf '\n## Propriedades de seguranca medidas\n\n'
   printf -- '- fonte privilegiada user-owned, symlinkada ou group/world-writable e rejeitada antes da delegacao quando o supervisor roda como root na raiz real.\n'
-  printf -- '- `EVIDENCE_GATE_MANAGED_LEGACY` e proibido em execucao root sobre a raiz real; o override permanece apenas para ensaios com `MANAGED_PREFIX`.\n'
+  printf -- '- `TOLLENS_MANAGED_LEGACY` e proibido em execucao root sobre a raiz real; o override permanece apenas para ensaios com `MANAGED_PREFIX`.\n'
   printf -- '- modos esperados sao revalidados apos o deploy (`0755` para diretorios/scripts/document-tools; `0644` para os demais arquivos regulares), e divergencia provoca rollback.\n'
   printf -- '- ownership usa `find ... \\( ! -user root -o ! -group root \\) -print -quit`, evitando o bug de precedencia onde `owner!=root, group=root` podia nao produzir saida.\n'
   printf -- '- confinamento de origem/destino do manifesto, re-hash do staging, restauracao transacional e verificacao de permissao continuam cobertos pelas suites managed existentes.\n'

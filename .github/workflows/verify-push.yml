@@ -7,6 +7,12 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  # DEFEITO PROPRIO, 2026-08-12: aqui foi declarado `administration: read`, que NAO EXISTE
+  # como escopo de permissions do GITHUB_TOKEN. Conferido na fonte primaria depois de quebrar:
+  # a lista valida e actions, attestations, checks, contents, deployments, discussions,
+  # id-token, issues, packages, pages, pull-requests, security-events, statuses. Chave invalida
+  # invalida o WORKFLOW INTEIRO - a execucao morreu sem nenhum job, sem log e sem anotacao, o
+  # que e um modo de falha pior que um passo vermelho. Instrucao nao executada e hipotese.
 jobs:
   verify-push:
     name: verify-push
@@ -121,9 +127,66 @@ jobs:
         run: bash tests/mutation/capabilities.sh
       - name: cobertura de decisao (mecanismo, evidence/cobertura.sh)
         run: bash tests/unit/cobertura.sh
+      # UBUNTU 24.04 RESTRINGE USER NAMESPACE NAO PRIVILEGIADO POR APPARMOR. Tres dos doze
+      # mutantes de fable-guard exercitam POSSE DE ROOT sobre o sentinela usando
+      # `unshare --map-root-user --user`, que mapeia o UID real para 0 num namespace - o
+      # `stat -c %U` reporta root de verdade, nao mock, e nao exige sudo. Sem essa capacidade o
+      # arnes nao consegue MEDIR essas tres garantias. Habilitar e melhor que degradar o teste:
+      # a alternativa seria o arnes declarar NAO MEDIDO em CI para sempre, e uma garantia de
+      # autorizacao permanentemente nao medida no portao e o defeito que este repositorio
+      # existe para impedir. O passo imprime o estado do sysctl ANTES e DEPOIS - se a
+      # habilitacao falhar, isso fica visivel no log em vez de virar um vermelho mudo.
+      - name: capacidade de user namespace (pre-requisito dos mutantes de posse-root)
+        run: |
+          echo "antes: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 'sysctl ausente')"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null 2>&1 || true
+          echo "depois: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 'sysctl ausente')"
+          if unshare --map-root-user --user true 2>/dev/null; then echo "unshare: DISPONIVEL"
+          else echo "unshare: INDISPONIVEL - os 3 mutantes de posse-root sairao NAO MEDIDO"; fi
+      - name: validacao por mutacao (guarda dura do Fable - superficie de autorizacao)
+        run: bash tests/mutation/fable-guard.sh
       - name: validacao por mutacao (cobertura de decisao)
         run: bash tests/mutation/cobertura.sh
       - name: cobertura de decisao (piso por arquivo, evidence/probes|validate-*|schedule.py)
         run: bash evidence/cobertura.sh --check
       - name: suite legada
         run: bash tests/unit/run.sh
+      # POSICAO DELIBERADA - ULTIMO PASSO. E o unico passo que depende de REDE e de permissao de
+      # token. Estava na posicao 23 de 40, e um vermelho ali PULA 17 verificacoes deterministicas
+      # (medido: run 31607753782, 24 passos skipped apos falha no 16). Verificacao que depende de
+      # fator externo vai por ultimo, para que a sua indisponibilidade nunca esconda o resultado
+      # do que nao depende de nada.
+      #
+      # FRONTEIRA VIVA - mede Applies(P,r) e Bypass(a,P) contra o endpoint AUTORITATIVO do
+      # GitHub, nao contra os arquivos de workflow deste repositorio.
+      #
+      # EXIGE SEGREDO, POR MEDICAO. `bypass_actors` responde ao existencial "existe algum ator
+      # que contorna?"; `current_user_can_bypass` responde so "ESTE ator contorna?". A API omite
+      # o primeiro para quem nao tem write no ruleset - medido contra a API viva em 2026-08-12
+      # (github/docs ruleset 19633356: campo ausente). Tratar a ausencia como aprovacao INVERTIA
+      # a direcao: reduzir o privilegio do observador deixava o portao verde sobre o mesmo
+      # ruleset. Com RULESET_READ_TOKEN, mede e BLOQUEIA (exit 1 e 2 reprovam). Sem ele, declara
+      # a lacuna - nunca verde fingido, nunca vermelho permanente.
+      #
+      # A DECISAO ESTA EM BASH, NAO EM `if:` DE PASSO, E ISSO E DELIBERADO. A tentativa anterior
+      # usou `if: ${{ secrets.X == '' }}` e invalidou o workflow INTEIRO - execucao 31626367844
+      # saiu failure com ZERO jobs, sem log e sem anotacao. Segunda vez nesta serie que uma
+      # expressao de configuracao foi publicada sem nunca ter sido executada; a primeira foi um
+      # escopo de `permissions` inexistente. Em bash a condicao e testavel antes de subir.
+      - name: fronteira viva CONTRA A API REAL do GitHub - Applies(P,r) e Bypass(a,P)
+        env:
+          GH_TOKEN: ${{ secrets.RULESET_READ_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "NAO VERIFICADO: RULESET_READ_TOKEN ausente."
+            echo "  O termo existencial de Bypass(a,P) NAO foi medido nesta execucao."
+            echo "  GITHUB_TOKEN nao recebe 'bypass_actors' da API - medido, nao suposto."
+            echo "  LACUNA DECLARADA, nao aprovacao. Ver evidence/claims/C-018.yaml."
+            echo "::warning title=fronteira viva nao medida::Bypass(a,P) exige RULESET_READ_TOKEN"
+            exit 0
+          fi
+          python3 evidence/probes/github-ruleset.py \
+            --owner "${GITHUB_REPOSITORY%%/*}" \
+            --repo  "${GITHUB_REPOSITORY##*/}" \
+            --branch main \
+            --context verify-pr

@@ -34,9 +34,9 @@ deny() { printf '%s\n' "$*" >&2; exit 2; }
 # adaptadores de documento eram especificacao versionada que nenhum executor consumia - o
 # defeito que o ADR 0022 declarou e que a Fase D1 fecha. Havendo adaptador para a extensao,
 # a receita passa a ser o executor, que devolve evidence pack ancorado em vez de texto solto.
-DOCTOOL="${DOCTOOL_BIN:-$HOME/.claude/evidence-gate/document-tools/doctool.sh}"
+DOCTOOL="${DOCTOOL_BIN:-$HOME/.claude/tollens/document-tools/doctool.sh}"
 [ -x "$DOCTOOL" ] || DOCTOOL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../document-tools" 2>/dev/null && pwd)/doctool.sh"
-DOCREG="${DOC_ADAPTERS_DIR:-$HOME/.claude/evidence-gate/adapters/documents}"
+DOCREG="${DOC_ADAPTERS_DIR:-$HOME/.claude/tollens/adapters/documents}"
 [ -d "$DOCREG" ] || DOCREG="$(cd "$(dirname "${BASH_SOURCE[0]}")/../adapters/documents" 2>/dev/null && pwd)"
 if [ -x "$DOCTOOL" ] && [ -d "$DOCREG" ] && has jq; then
   for _a in "$DOCREG"/*.json; do
