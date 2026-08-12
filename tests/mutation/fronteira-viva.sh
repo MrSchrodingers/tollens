@@ -83,7 +83,7 @@ REG="tests/unit/fronteira-viva.sh"
 # exatamente este idioma - ver docs/adr/0020 e o incidente que o motivou em tests/mutation/run.sh).
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.py" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.py"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=26
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=29
 
 command -v python3 >/dev/null 2>&1 || { echo "NAO VERIFICADO: python3 ausente - a mutacao nao pode ser avaliada." >&2; exit 2; }
 
@@ -148,9 +148,30 @@ echo "== mutacao: cada guard do bloco ¬Bypass(a,P) removido DEVE reprovar =="
 cat > "$TMP/mv1-de.txt" <<'EOF'
         bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
         if bp_status == FALTANTE:
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
-                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+            # (wave8, O OITAVO DEGRAU) `current_user_can_bypass` e o campo que o SERVIDOR calcula
+            # e devolve PARA O ATOR AUTENTICADO, sem exigir acesso de escrita ao ruleset (ao
+            # contrario de `bypass_actors`, a LISTA completa - ver o docstring desta funcao).
+            # Segunda leitura, PURA, do mesmo `valida_campo` ja chamado abaixo na posicao normal
+            # (sem efeito colateral - so verifica, nao substitui a validacao de baixo): se o
+            # servidor ja confirma 'never' PARA ESTE ator, not Bypass(a,P) foi MEDIDO POR
+            # COMPLETO para ele - MEDICAO PARCIAL DECLARADA, nao lacuna geral (a lacuna que sobra,
+            # bypass concedido a OUTRO ator/role, e nomeada explicitamente, nunca escondida).
+            cucb_pre_status, cucb_pre = valida_campo(detalhe, "current_user_can_bypass", str)
+            if cucb_pre_status is None and cucb_pre == "never":
+                msg = (
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta (a API so devolve este "
+                    f"campo a quem tem acesso de escrita ao ruleset), mas "
+                    f"'current_user_can_bypass'='never' foi medido para o ator autenticado - "
+                    f"MEDICAO PARCIAL DECLARADA de not Bypass(a,P), nao lacuna geral: bypass "
+                    f"concedido a OUTRO ator/role nao pode ser descartado por este probe sob "
+                    f"este token.")
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+            else:
+                nao_medidos.append(
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO "
+                    f"foi medido. A API so devolve este campo a quem tem acesso de escrita ao "
+                    f"ruleset.")
         elif bp_status == NULO:
             # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
             # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
@@ -247,6 +268,27 @@ mutante MV3 "resposta nao-dict de rulesets/{id} crasha com TypeError, nao NOT_VE
 # do primeiro, e que remover so o segundo tambem quebra o veredito.
 cat > "$TMP/mv4-de.txt" <<'EOF'
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
+            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
+            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
+            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
+            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
+            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
+            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
+            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
+            # o residuo que sobra.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
+                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
+                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -254,7 +296,6 @@ cat > "$TMP/mv4-de.txt" <<'EOF'
             "nao supor: " + "; ".join(nao_medidos),
             {"rules": rules, "rulesets": detalhes_rulesets},
         )
-
 EOF
 : > "$TMP/mv4-para.txt"
 mutante MV4 "deteccao sem efeito: nao_medidos preenchido mas nunca vira NOT_VERIFIED" \
@@ -327,6 +368,27 @@ cat > "$TMP/mv7-de.txt" <<'EOF'
         )
 
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
+            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
+            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
+            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
+            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
+            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
+            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
+            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
+            # o residuo que sobra.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
+                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
+                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -337,6 +399,27 @@ cat > "$TMP/mv7-de.txt" <<'EOF'
 EOF
 cat > "$TMP/mv7-para.txt" <<'EOF'
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
+            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
+            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
+            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
+            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
+            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
+            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
+            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
+            # o residuo que sobra.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
+                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
+                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -359,8 +442,16 @@ cat > "$TMP/mv7-para.txt" <<'EOF'
             {"rules": rules, "rulesets": detalhes_rulesets},
         )
 EOF
+# REANCORADO (wave8): o bloco `if nao_medidos:` ganhou o ramo PASS_PARCIAL (ver O OITAVO DEGRAU).
+# Kill originalmente em "NAO relata NOT_VERIFIED" (V15) parou de ser garantia: apos o swap, V15
+# ('strict-false-bypass-ausente' - strict=false JA MEDIDO + bypass_actors ausente COM
+# current_user_can_bypass='never', a mesma forma que agora e MEDICAO PARCIAL) cai no ramo
+# nao_medidos PRIMEIRO e sai PASS_PARCIAL, nao NOT_VERIFIED - o sintoma mudou de forma (o
+# `estado: NOT_VERIFIED` nunca aparece, mas tambem nao deveria), so a asercao de EXIT CODE de V15
+# (que reprova para QUALQUER veredito != FAIL) continua correta sob as duas formas do sintoma;
+# verificado empiricamente (aplicar so este `troca` e rodar a suite) antes de fixar o alvo.
 mutante MV7 "ordem do portao final invertida: nao_medidos passa a vencer problemas" \
-  "  NAO relata NOT_VERIFIED (a lacuna de bypass_actors nao decide aqui)" \
+  "exit code 1 (nao 2 - o campo nao medido nao pode rebaixar uma violacao ja provada)" \
   "$TMP/mv7-de.txt" "$TMP/mv7-para.txt"
 
 echo "== mutacao: schema na fronteira (onda 4, 2026-08-11) - C1/C2/A1/A2 =="
@@ -642,6 +733,10 @@ cat > "$TMP/mv16-de.txt" <<'EOF'
     # pela mesma razao ja documentada para o laco de rulesets abaixo - um `return` descartaria uma
     # violacao de `strict` ja medida numa regra ANTERIOR do mesmo laco.
     problemas = []
+    # (wave8) SUBCONJUNTO de `nao_medidos` - ver o docstring de `resolve_bypass`. Nasce aqui, no
+    # mesmo ponto que `problemas`, porque os dois pontos de chamada de `resolve_bypass` abaixo
+    # (C-1 e o normal) precisam do MESMO acumulador.
+    medicao_parcial = []
     contextos = set()
     strict_medidos = []
     ruleset_ids = set()
@@ -659,6 +754,7 @@ cat > "$TMP/mv16-para.txt" <<'EOF'
 
     problemas = []
     nao_medidos = []
+    medicao_parcial = []
     contextos = set()
     strict_medidos = []
     ruleset_ids = set()
@@ -722,9 +818,23 @@ mutante MV17 "'ruleset_id' irresolvivel volta a mascarar strict ja medido - NOT_
 # direto - ainda chega a FAIL (a violacao de strict sobrevive DENTRO de `problemas`, que o bloco
 # novo tambem consulta), mas so DEPOIS de consultar rulesets/501 e rulesets/502 sem necessidade -
 # a MESMA garantia (strict ja medido nao pode ser descartado) agora se manifesta como uma chamada
-# de rede EVITAVEL, nao mais como NOT_VERIFIED fabricado. Kill mudado para a asercao que observa
-# exatamente isso; verificado empiricamente (aplicar so este `troca` e rodar a suite) antes de
-# fixar o alvo, nao presumido.
+# de rede EVITAVEL, nao mais como NOT_VERIFIED fabricado.
+#
+# REANCORADO OUTRA VEZ (wave8): o kill em "NAO chama o endpoint de ruleset" (V33) media um EFEITO
+# COLATERAL (a chamada de rede evitavel), nao a SEVERIDADE. Medido pelo portao final: V33 usa DOIS
+# `ruleset_id` validos (501/502) - apos esta mutacao, o codigo cai no bloco `if ruleset_ids:` (C-1)
+# e a violacao de strict sobrevive DENTRO de `problemas`, resgatada pelo `if problemas:` que roda
+# DEPOIS de `resolve_bypass` (linha alguns blocos abaixo) - V33 ainda sai `estado: FAIL exit=1`,
+# so com uma chamada de rede a mais e a REDACAO da mensagem trocada (agora cita "Bypass(a,P) ou a
+# politica de atualizacao", a prosa do OUTRO bloco). NENHUM caso da suite ate wave8 isola o
+# sub-caso em que a SEVERIDADE de fato degrada: uma UNICA regra aplicavel, 'ruleset_id' AUSENTE
+# (logo `ruleset_ids` VAZIO - nao ha um segundo ruleset_id valido que resgate via o bloco C-1) +
+# strict=false JA MEDIDO + contexto DIVERGENTE. Sem este guard, o bloco `if ruleset_ids:` (vazio)
+# nunca executa, e o codigo cai direto no `return NOT_VERIFIED` seguinte - a violacao de strict,
+# achada em `problemas`, e SILENCIOSAMENTE descartada: `estado: FAIL exit=1` (probe original) vira
+# `estado: NOT_VERIFIED exit=2` (mutado) - o DEFEITO VIVO exato que esta onda fecha, reproduzido
+# em V43. Kill mudado do efeito colateral (rede) para a SEVERIDADE (exit code); verificado
+# empiricamente (aplicar so este `troca` e rodar a suite) antes de fixar o alvo, nao presumido.
 cat > "$TMP/mv18-de.txt" <<'EOF'
             if problemas:
                 # Mesma precedencia do portao final (`if problemas` mais abaixo, apos o laco de
@@ -750,7 +860,7 @@ cat > "$TMP/mv18-de.txt" <<'EOF'
 EOF
 : > "$TMP/mv18-para.txt"
 mutante MV18 "Required(P) indeterminado volta a exigir consulta evitavel ao ruleset - strict ja medido nao decide mais sozinho" \
-  "  NAO chama o endpoint de ruleset (retorno antes do laco que resolve bypass)" \
+  "exit code 1 (severidade: violacao ja medida nao pode virar NOT_VERIFIED, v43)" \
   "$TMP/mv18-de.txt" "$TMP/mv18-para.txt"
 
 # MV19 - o DEFEITO OPOSTO de MV17, no MESMO bloco: o guard `if problemas` vira `if True:` - o
@@ -886,7 +996,8 @@ echo "== Required(P) fica indeterminado, mesmo com ruleset_id resolvivel =="
 # esta onda corrige (reproduzido em V40).
 cat > "$TMP/mv24-de.txt" <<'EOF'
             if ruleset_ids:
-                detalhes_rulesets = resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas)
+                detalhes_rulesets = resolve_bypass(
+                    owner, repo, ruleset_ids, nao_medidos, problemas, medicao_parcial)
                 if problemas:
                     return Resultado(
                         FAIL,
@@ -931,6 +1042,84 @@ EOF
 mutante MV26 "guard 'strict_medidos and' removido - lista vazia (nada medido) vira violacao fabricada" \
   "  NAO relata estado FAIL (guard 'strict_medidos and': lista vazia nao e violacao fabricada)" \
   "$TMP/mv26-de.txt" "$TMP/mv26-para.txt"
+
+echo "== mutacao: O OITAVO DEGRAU (wave8) - MEDICAO PARCIAL DECLARADA vs lacuna geral =="
+
+# MV27 - remove POR COMPLETO o carve-out de MEDICAO PARCIAL: 'bypass_actors' ausente volta a ser
+# SEMPRE lacuna geral, mesmo quando 'current_user_can_bypass'='never' foi medido para o ator
+# autenticado. Reproduz o defeito VIVO exato que esta onda fecha (o CI nunca ficava verde sob
+# GITHUB_TOKEN/contents:read) - sem este mutante, a distincao entre as duas lacunas poderia ser
+# removida em silencio e a suite continuaria verde.
+cat > "$TMP/mv27-de.txt" <<'EOF'
+        if bp_status == FALTANTE:
+            # (wave8, O OITAVO DEGRAU) `current_user_can_bypass` e o campo que o SERVIDOR calcula
+            # e devolve PARA O ATOR AUTENTICADO, sem exigir acesso de escrita ao ruleset (ao
+            # contrario de `bypass_actors`, a LISTA completa - ver o docstring desta funcao).
+            # Segunda leitura, PURA, do mesmo `valida_campo` ja chamado abaixo na posicao normal
+            # (sem efeito colateral - so verifica, nao substitui a validacao de baixo): se o
+            # servidor ja confirma 'never' PARA ESTE ator, not Bypass(a,P) foi MEDIDO POR
+            # COMPLETO para ele - MEDICAO PARCIAL DECLARADA, nao lacuna geral (a lacuna que sobra,
+            # bypass concedido a OUTRO ator/role, e nomeada explicitamente, nunca escondida).
+            cucb_pre_status, cucb_pre = valida_campo(detalhe, "current_user_can_bypass", str)
+            if cucb_pre_status is None and cucb_pre == "never":
+                msg = (
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta (a API so devolve este "
+                    f"campo a quem tem acesso de escrita ao ruleset), mas "
+                    f"'current_user_can_bypass'='never' foi medido para o ator autenticado - "
+                    f"MEDICAO PARCIAL DECLARADA de not Bypass(a,P), nao lacuna geral: bypass "
+                    f"concedido a OUTRO ator/role nao pode ser descartado por este probe sob "
+                    f"este token.")
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+            else:
+                nao_medidos.append(
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO "
+                    f"foi medido. A API so devolve este campo a quem tem acesso de escrita ao "
+                    f"ruleset.")
+EOF
+cat > "$TMP/mv27-para.txt" <<'EOF'
+        if bp_status == FALTANTE:
+            nao_medidos.append(
+                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
+                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+EOF
+mutante MV27 "carve-out de MEDICAO PARCIAL removido - bypass_actors ausente volta a ser SEMPRE lacuna geral" \
+  "relata estado PASS_PARCIAL (nunca PASS puro, nunca NOT_VERIFIED)" \
+  "$TMP/mv27-de.txt" "$TMP/mv27-para.txt"
+
+# MV28 - quebra o INVARIANTE de subconjunto (`medicao_parcial` SEMPRE tambem entra em
+# `nao_medidos` - ver o docstring de `resolve_bypass`): a entrada tolerada passa a entrar SO em
+# `medicao_parcial`, nunca em `nao_medidos`. Para V4 (unico ruleset, unica lacuna), isto esvazia
+# `nao_medidos` por completo - o bloco `if nao_medidos:` (que envolve o proprio ramo PASS_PARCIAL)
+# nunca e alcancado, e o probe cai direto no PASS puro incondicional do fim da funcao: a
+# LIMITACAO desaparece do relatorio, exatamente o "PASS silencioso sobre o residuo" que a
+# doutrina do OITAVO DEGRAU proibe.
+cat > "$TMP/mv28-de.txt" <<'EOF'
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+EOF
+cat > "$TMP/mv28-para.txt" <<'EOF'
+                medicao_parcial.append(msg)
+EOF
+mutante MV28 "invariante de subconjunto quebrado - medicao_parcial sem entrada correspondente em nao_medidos vira PASS silencioso" \
+  "  NAO relata estado PASS puro (a limitacao tem de ficar nomeada, nao escondida)" \
+  "$TMP/mv28-de.txt" "$TMP/mv28-para.txt"
+
+# MV29 - enfraquece o guard final de PASS_PARCIAL: `if medicao_parcial:` (removendo a comparacao
+# de tamanho) aceita qualquer traco de medicao parcial, mesmo quando OUTRA lacuna, sem relacao
+# com bypass_actors/current_user_can_bypass (ex.: 'enforcement' ausente, V19), coexiste em
+# `nao_medidos`. Reproduz o defeito OPOSTO de MV27: nao "lacuna vira PASS fabricado por omissao",
+# e sim "lacuna GERAL vira PASS_PARCIAL fabricado por presenca de ALGUM traco tolerado" -
+# precisamente o que a comparacao de tamanho existe para proibir.
+cat > "$TMP/mv29-de.txt" <<'EOF'
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+EOF
+cat > "$TMP/mv29-para.txt" <<'EOF'
+        if medicao_parcial:
+EOF
+mutante MV29 "guard final enfraquecido - qualquer traco de medicao parcial vira PASS_PARCIAL mesmo com outra lacuna coexistindo" \
+  "exit code 2 (nao 1 - a ausencia nao e mais coagida em violacao)" \
+  "$TMP/mv29-de.txt" "$TMP/mv29-para.txt"
 
 cp -f "$TMP/orig.py" "$ORIG"
 echo
