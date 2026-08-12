@@ -23,7 +23,7 @@ touch '$MARK'
 exit 0
 SH
 chmod +x "$T/fake-repo/install/"*.sh
-sudo -n env -u MANAGED_PREFIX -u EVIDENCE_GATE_MANAGED_LEGACY \
+sudo -n env -u MANAGED_PREFIX -u TOLLENS_MANAGED_LEGACY \
   "$T/fake-repo/install/apply-managed.sh" --dry-run >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 78 ] && [ ! -e "$MARK" ]; then pass user-owned-source-rejected; else fail user-owned-source-rejected; fi
@@ -38,20 +38,20 @@ exit 0
 SH"
 sudo chown -R root:root "$T.root"
 sudo chmod 0755 "$T.root" "$ROOT_COPY" "$ROOT_COPY/install" "$ROOT_COPY/install/"*.sh
-sudo -n env -u MANAGED_PREFIX -u EVIDENCE_GATE_MANAGED_LEGACY \
+sudo -n env -u MANAGED_PREFIX -u TOLLENS_MANAGED_LEGACY \
   "$ROOT_COPY/install/apply-managed.sh" --dry-run >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then pass root-owned-source-accepted; else fail root-owned-source-accepted; fi
 
 # 3. Privileged helper overrides are forbidden on the real root.
-sudo -n env -u MANAGED_PREFIX EVIDENCE_GATE_MANAGED_LEGACY="$ROOT_COPY/install/apply-managed-legacy.sh" \
+sudo -n env -u MANAGED_PREFIX TOLLENS_MANAGED_LEGACY="$ROOT_COPY/install/apply-managed-legacy.sh" \
   "$ROOT_COPY/install/apply-managed.sh" --dry-run >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 78 ]; then pass privileged-override-rejected; else fail privileged-override-rejected; fi
 
 # 4. Any symlink inside the privileged source closure invalidates the snapshot.
 sudo ln -s /etc/passwd "$ROOT_COPY/forbidden-link"
-sudo -n env -u MANAGED_PREFIX -u EVIDENCE_GATE_MANAGED_LEGACY \
+sudo -n env -u MANAGED_PREFIX -u TOLLENS_MANAGED_LEGACY \
   "$ROOT_COPY/install/apply-managed.sh" --dry-run >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 78 ]; then pass source-symlink-rejected; else fail source-symlink-rejected; fi
@@ -59,7 +59,7 @@ sudo rm -f "$ROOT_COPY/forbidden-link"
 
 # 5. Group/world-writable source material invalidates the privileged snapshot.
 sudo chmod 0775 "$ROOT_COPY/install"
-sudo -n env -u MANAGED_PREFIX -u EVIDENCE_GATE_MANAGED_LEGACY \
+sudo -n env -u MANAGED_PREFIX -u TOLLENS_MANAGED_LEGACY \
   "$ROOT_COPY/install/apply-managed.sh" --dry-run >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 78 ]; then pass writable-source-rejected; else fail writable-source-rejected; fi
@@ -70,20 +70,20 @@ sudo chmod 0755 "$ROOT_COPY/install"
 sudo sh -c "cat > '$ROOT_COPY/install/fake-owner.sh' <<'SH'
 #!/usr/bin/env bash
 p=\"\${MANAGED_PREFIX}\"
-mkdir -p \"\$p/opt/evidence-gate\" \"\$p/etc/claude-code\"
-echo x > \"\$p/opt/evidence-gate/x\"
+mkdir -p \"\$p/opt/tollens\" \"\$p/etc/claude-code\"
+echo x > \"\$p/opt/tollens/x\"
 echo '{}' > \"\$p/etc/claude-code/managed-settings.json\"
-chmod 0755 \"\$p/opt/evidence-gate\"
-chmod 0644 \"\$p/opt/evidence-gate/x\"
-chown nobody:root \"\$p/opt/evidence-gate/x\"
+chmod 0755 \"\$p/opt/tollens\"
+chmod 0644 \"\$p/opt/tollens/x\"
+chown nobody:root \"\$p/opt/tollens/x\"
 SH
 chmod 0755 '$ROOT_COPY/install/fake-owner.sh'
 chown root:root '$ROOT_COPY/install/fake-owner.sh'"
 PFX="$T.root/prefix-owner"
-sudo -n env MANAGED_PREFIX="$PFX" EVIDENCE_GATE_MANAGED_LEGACY="$ROOT_COPY/install/fake-owner.sh" \
+sudo -n env MANAGED_PREFIX="$PFX" TOLLENS_MANAGED_LEGACY="$ROOT_COPY/install/fake-owner.sh" \
   "$ROOT_COPY/install/apply-managed.sh" >/dev/null 2>&1
 rc=$?
-if [ "$rc" -eq 1 ] && sudo test ! -e "$PFX/opt/evidence-gate"; then pass wrong-owner-rejected; else fail wrong-owner-rejected; fi
+if [ "$rc" -eq 1 ] && sudo test ! -e "$PFX/opt/tollens"; then pass wrong-owner-rejected; else fail wrong-owner-rejected; fi
 
 echo "PASS=$P FAIL=$F"
 [ "$F" -eq 0 ]

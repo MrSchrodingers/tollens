@@ -46,7 +46,7 @@ Xu & Yan (arXiv:2602.12430) tratam skills como camada de capacidade com riscos p
 
 ## O que a literatura não prova sobre este repositório
 
-Nenhum desses trabalhos demonstra que o `evidence-gate` melhora qualidade, segurança ou custo. Eles fundamentam decisões de desenho e desenho experimental. A eficácia deste harness continua uma hipótese até existir corpus próprio com baseline, trials repetidos, verificadores independentes e análise de incerteza.
+Nenhum desses trabalhos demonstra que o `tollens` melhora qualidade, segurança ou custo. Eles fundamentam decisões de desenho e desenho experimental. A eficácia deste harness continua uma hipótese até existir corpus próprio com baseline, trials repetidos, verificadores independentes e análise de incerteza.
 
 ## Critérios adotados para claims
 

@@ -2,14 +2,14 @@
 # CONFORMIDADE DE DOIS ESCOPOS.
 #
 # Defeito medido em 2026-08-10, numa maquina com o deploy managed ATIVO: o banner de
-# SessionStart dizia "48/49 ok | 1 divergentes" enquanto /opt/evidence-gate carregava DUAS
+# SessionStart dizia "48/49 ok | 1 divergentes" enquanto /opt/tollens carregava DUAS
 # divergencias que ninguem reportava. `install/verify.sh` le apenas $HOME/.claude; ele nao
 # conhece a arvore root-owned. O instrumento que existe para responder "o que roda e o que o
 # repositorio declara?" era cego para metade do que roda - e cego justamente para a metade que
 # deveria ser a raiz de confianca.
 #
 # O verificador managed JA EXISTIA (`install/apply-managed.sh --verify`, exit 1 em drift) e JA
-# detectava (`DIVERGE /opt/evidence-gate/hooks/verify-gate.sh`). Nao faltava mecanismo: faltava
+# detectava (`DIVERGE /opt/tollens/hooks/verify-gate.sh`). Nao faltava mecanismo: faltava
 # o hook chama-lo. Por isso os casos abaixo testam a INTEGRACAO (o hook invoca e reporta), e
 # nao a deteccao - que `tests/unit/managed.sh` ja cobre com 65 assercoes.
 #
@@ -45,7 +45,7 @@ EOF
 #!/usr/bin/env bash
 [ "\$1" = "--verify" ] || { echo "STUB: invocado SEM --verify (args: \$*)"; exit 9; }
 echo "managed: 30 componentes | $([ "$3" -eq 0 ] && echo 0 || echo 2) divergentes | 0 com dono errado | 0 gravaveis pelo ator"
-[ "$3" -ne 0 ] && echo "  DIVERGE  /opt/evidence-gate/hooks/verify-gate.sh"
+[ "$3" -ne 0 ] && echo "  DIVERGE  /opt/tollens/hooks/verify-gate.sh"
 exit $3
 EOF
   chmod +x "$d/install/verify.sh" "$d/install/apply-managed.sh"
@@ -55,14 +55,14 @@ EOF
 # Roda o hook com HOME e prefixo managed isolados. Devolve o additionalContext (vazio = calou).
 roda(){ # $1=repo  $2=home  $3=managed_prefix
   printf '{"hook_event_name":"SessionStart"}' \
-    | EVIDENCE_GATE_REPO="$1" HOME="$2" MANAGED_PREFIX="$3" bash "$HOOK" 2>/dev/null \
+    | TOLLENS_REPO="$1" HOME="$2" MANAGED_PREFIX="$3" bash "$HOOK" 2>/dev/null \
     | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
 }
 
 echo "== CM1. escopo managed divergente com escopo de usuario CONFORME =="
 # O caso central. Antes desta correcao o hook saia 0 calado na linha 47 (`[ "$RC" -eq 0 ] && exit 0`)
 # e a divergencia da arvore root-owned nunca chegava ao modelo.
-R="$TMP/r1"; H="$TMP/h1"; PFX="$TMP/p1"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+R="$TMP/r1"; H="$TMP/h1"; PFX="$TMP/p1"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/opt/tollens"
 OUT="$(roda "$R" "$H" "$PFX")"
 [ -n "$OUT" ]; chk "hook NAO se cala quando so o escopo managed diverge" $? 0
 printf '%s' "$OUT" | grep -q "^managed:"; chk "  o resumo managed chega ao modelo" $? 0
@@ -86,18 +86,18 @@ OUT="$(roda "$R" "$H" "$PFX")"
 chk "  heartbeat distingue 'absent' de 'conformant'" $? 0
 
 echo "== CM4. regressao: escopo de usuario divergente continua reportando =="
-R="$TMP/r3"; H="$TMP/h3"; PFX="$TMP/p3"; monta "$R" 1 0; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+R="$TMP/r3"; H="$TMP/h3"; PFX="$TMP/p3"; monta "$R" 1 0; mkdir -p "$H/.claude" "$PFX/opt/tollens"
 OUT="$(roda "$R" "$H" "$PFX")"
 printf '%s' "$OUT" | grep -q "^conformidade:"; chk "resumo do escopo de usuario preservado" $? 0
 
 echo "== CM5. os DOIS divergentes: nenhum resumo engole o outro =="
-R="$TMP/r4"; H="$TMP/h4"; PFX="$TMP/p4"; monta "$R" 1 1; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+R="$TMP/r4"; H="$TMP/h4"; PFX="$TMP/p4"; monta "$R" 1 1; mkdir -p "$H/.claude" "$PFX/opt/tollens"
 OUT="$(roda "$R" "$H" "$PFX")"
 printf '%s' "$OUT" | grep -q "^conformidade:"; chk "resumo de usuario presente" $? 0
 printf '%s' "$OUT" | grep -q "^managed:"; chk "resumo managed presente" $? 0
 
 echo "== CM6. tudo conforme: silencio (higiene de contexto) =="
-R="$TMP/r5"; H="$TMP/h5"; PFX="$TMP/p5"; monta "$R" 0 0; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+R="$TMP/r5"; H="$TMP/h5"; PFX="$TMP/p5"; monta "$R" 0 0; mkdir -p "$H/.claude" "$PFX/opt/tollens"
 OUT="$(roda "$R" "$H" "$PFX")"
 [ -z "$OUT" ]; chk "nenhum ruido quando os dois escopos conferem" $? 0
 [ "$(jq -r '.managed' "$H/.claude/evidence/session-integrity.jsonl" | tail -1)" = "conformant" ]
@@ -106,7 +106,7 @@ chk "  heartbeat prova que a verificacao managed RODOU (liveness)" $? 0
 echo "== CM7. politica VIVA com a arvore APAGADA e o pior drift, nao 'absent' =="
 # Achado critico da revisao independente. O verificador julga DUAS metades; a guarda testava
 # UMA. Estado real: SIGKILL entre os dois renames (documentado em apply-managed-legacy.sh:254),
-# ou `rm -rf /opt/evidence-gate`. Com allowManagedHooksOnly=true e o mecanismo inteiro desligado
+# ou `rm -rf /opt/tollens`. Com allowManagedHooksOnly=true e o mecanismo inteiro desligado
 # apontando para caminhos inexistentes - e era reportado como conformidade silenciosa.
 R="$TMP/r6"; H="$TMP/h6"; PFX="$TMP/p6"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/etc/claude-code"
 echo '{}' > "$PFX/etc/claude-code/managed-settings.json"   # politica presente, arvore NAO
@@ -118,10 +118,10 @@ chk "  heartbeat marca drift, nao absent" $? 0
 echo "== CM8. recusa de verificar e NOT_VERIFIED, nao divergencia medida =="
 # `apply-managed.sh` sai 2/64/77/78 quando RECUSA verificar. Coagir isso para `drift` produzia
 # um alerta afirmando divergencia com resumo verde e zero evidencia - alerta sem referente.
-R="$TMP/r7"; H="$TMP/h7"; PFX="$TMP/p7"; monta "$R" 0 0; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+R="$TMP/r7"; H="$TMP/h7"; PFX="$TMP/p7"; monta "$R" 0 0; mkdir -p "$H/.claude" "$PFX/opt/tollens"
 cat > "$R/install/apply-managed.sh" <<'EOF'
 #!/usr/bin/env bash
-echo "ERRO: fonte privilegiada nao confiavel: /home/x/evidence-gate" >&2
+echo "ERRO: fonte privilegiada nao confiavel: /home/x/tollens" >&2
 exit 78
 EOF
 chmod +x "$R/install/apply-managed.sh"
@@ -135,7 +135,7 @@ printf '%s' "$OUT" | grep -q "fonte privilegiada nao confiavel"; chk "  a CAUSA 
 
 echo "== CM9. verificador sem bit de execucao ainda e verificado (e chamado com bash) =="
 # Guarda `-x` sobre arquivo invocado com `bash` era fail-open: um cp sem -p desligava tudo.
-R="$TMP/r8"; H="$TMP/h8"; PFX="$TMP/p8"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/opt/evidence-gate"
+R="$TMP/r8"; H="$TMP/h8"; PFX="$TMP/p8"; monta "$R" 0 1; mkdir -p "$H/.claude" "$PFX/opt/tollens"
 chmod -x "$R/install/apply-managed.sh" "$R/install/verify.sh"
 OUT="$(roda "$R" "$H" "$PFX")"
 [ -n "$OUT" ]; chk "sem bit +x, a verificacao NAO e pulada em silencio" $? 0

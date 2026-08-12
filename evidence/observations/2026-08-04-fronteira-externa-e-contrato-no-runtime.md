@@ -1,7 +1,7 @@
 # Observacao - a fronteira externa impoe, e o runtime honra `exit 2`
 
 - Data: 2026-08-04
-- Ambiente: Linux, `claude-code 2.1.220`; GitHub `MrSchrodingers/evidence-gate`
+- Ambiente: Linux, `claude-code 2.1.220`; GitHub `MrSchrodingers/tollens`
 - Fecha: P1 do `docs/HANDOFF.md`, e a lacuna de teste E2E da regra de metodo 3 (CLAUDE.md 6.3)
 
 ---
@@ -18,7 +18,7 @@ inteiro. Em rulesets o bypass so existe por concessao explicita; administrador N
 por ser administrador, ao contrario da branch protection classica, onde isso e uma flag.
 
 ```
-gh api -X POST repos/MrSchrodingers/evidence-gate/rulesets --input ruleset.json
+gh api -X POST repos/MrSchrodingers/tollens/rulesets --input ruleset.json
 -> id 20385799, enforcement "active", bypass_actors []
 ```
 
@@ -104,7 +104,7 @@ coladas:
 
 ```
 - Comando: `wc -l /home/ti/evidence-gate/install/verify.sh` -> saida
-  `71 /home/ti/evidence-gate/install/verify.sh`, exit code `0`.
+  `71 /home/ti/evidence-gate/install/verify.sh`, exit code `0`. (caminho HISTORICO: o repositorio se chamava evidence-gate quando esta observacao foi gravada; reescrever o caminho falsificaria o registro de uma execucao real)
 ```
 
 Causa, isolada alternativa por alternativa e confirmada em nivel de byte:

@@ -24,7 +24,7 @@ DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
 # voltou ao estado anterior. Agora tudo que escreve fica DEPOIS deste bloco.
 if [ "$DRY" -eq 1 ]; then
   echo "== plano (nada sera escrito) =="
-  LOCK_D="$DEST/evidence-gate/managed-files.lock"
+  LOCK_D="$DEST/tollens/managed-files.lock"
   NOVO_D="$(awk -F"\t" '!/^#/{print $3}' "$MAN")"
   n=0
   while IFS=$'\t' read -r tipo origem destino digest; do
@@ -95,7 +95,7 @@ echo "componentes instalados: $N"
 # componente removido do manifesto continuava instalado e ativo, e rodar apply de novo NAO
 # resolvia o drift que o verify apontava. Remove apenas o que ESTE instalador gerenciou antes -
 # nunca arquivo desconhecido em ~/.claude, que pode pertencer a outro sistema.
-LOCK="$DEST/evidence-gate/managed-files.lock"
+LOCK="$DEST/tollens/managed-files.lock"
 NOVO="$(awk -F"\t" '!/^#/{print $3}' "$MAN")"
 if [ -f "$LOCK" ]; then
   while IFS= read -r antigo; do
@@ -116,9 +116,9 @@ HOOKS_JSON="$(bash "$(dirname "$0")/hooks-spec.sh" '$HOME/.claude/hooks')" || {
   echo "ERRO: nao foi possivel gerar a especificacao de hooks"; exit 1; }
 TMPS="$(mktemp)"
 if jq --argjson h "$HOOKS_JSON" \
-      --arg ad "$DEST/evidence-gate/adapters/code" --arg dd "$DEST/evidence-gate/adapters/documents" \
+      --arg ad "$DEST/tollens/adapters/code" --arg dd "$DEST/tollens/adapters/documents" \
       --arg rp "$REPO" \
-      '.hooks=$h | .env=((.env//{}) + {CLAUDE_ADAPTERS_DIR:$ad, DOC_ADAPTERS_DIR:$dd, EVIDENCE_GATE_REPO:$rp})' \
+      '.hooks=$h | .env=((.env//{}) + {CLAUDE_ADAPTERS_DIR:$ad, DOC_ADAPTERS_DIR:$dd, TOLLENS_REPO:$rp})' \
       "$S" > "$TMPS" 2>/dev/null && jq -e . "$TMPS" >/dev/null 2>&1; then
   mv "$TMPS" "$S"; echo "settings.json: hooks registrados, demais chaves preservadas"
 else

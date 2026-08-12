@@ -42,7 +42,7 @@ repositorio, se foi medido num scaffold e dominio diferentes - caso de SWE-Skill
 (Claude Code + Claude Haiku 4.5 unicos) contra um harness que roda Claude Code E Codex. E o
 inverso tambem vale: um pre-print pode ter applicability alta quando mede exatamente a classe
 de artefato que uma politica deste repositorio trata - caso dos dois estudos de seguranca de
-marketplace de skill (`arxiv-2601.10338`, `arxiv-2602.06547`): nao avaliam `evidence-gate`, mas
+marketplace de skill (`arxiv-2601.10338`, `arxiv-2602.06547`): nao avaliam `tollens`, mas
 medem risco na MESMA classe de artefato (skills) que a politica de quarentena deste
 repositorio governa.
 

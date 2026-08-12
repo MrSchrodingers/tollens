@@ -9,7 +9,7 @@
 # arquivavel em log de CI. Sem suite alguma, nada discriminava essa mentira de saida.
 #
 # ISOLAMENTO: o script sob teste le TRES arvores via variavel de ambiente
-# (EVIDENCE_GATE_ROOT/execution/agents, EVIDENCE_GATE_ROOT/.claude/agents, CLAUDE_HOME/agents) -
+# (TOLLENS_ROOT/execution/agents, TOLLENS_ROOT/.claude/agents, CLAUDE_HOME/agents) -
 # por isso toda fixture desta suite vive em diretorio descartavel, nunca em execution/agents/ ou
 # .claude/agents/ deste repositorio (que sao o DADO que o probe observa - mutar o dado para o
 # probe passar seria fraude, nao teste).
@@ -94,7 +94,7 @@ agente(){  # $1=caminho do .md  $2=spec
 
 rodar(){  # $1=ROOT  $2=HOME  $3...=argumentos extras do probe
   local root="$1" home="$2"; shift 2
-  EVIDENCE_GATE_ROOT="$root" CLAUDE_HOME="$home" python3 "$PROBE" "$@" >"$T/out" 2>"$T/err"
+  TOLLENS_ROOT="$root" CLAUDE_HOME="$home" python3 "$PROBE" "$@" >"$T/out" 2>"$T/err"
   echo $?
 }
 

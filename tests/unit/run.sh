@@ -281,7 +281,7 @@ chk "  barra retorno sem evidencia" "$R" 2
 # nunca fora exercitado. Positivo sem negativo correspondente nao mede oraculo, mede presenca.
 REAL='RESULTADO: o arquivo tem 71 linhas.
 EVIDENCIA:
-- Comando: `wc -l /home/ti/evidence-gate/install/verify.sh` -> saida `71 /home/ti/evidence-gate/install/verify.sh`, exit code `0`.
+- Comando: `wc -l /home/ti/evidence-gate/install/verify.sh` -> saida `71 /home/ti/evidence-gate/install/verify.sh`, exit code `0`. (caminho HISTORICO: o repositorio se chamava evidence-gate quando esta observacao foi gravada; reescrever o caminho falsificaria o registro de uma execucao real)
 RISCOS / PENDENCIAS: nenhum.
 PROPAGACAO: nenhuma.'
 R=$(run "$(jq -nc --arg m "$REAL" '{hook_event_name:"SubagentStop",agent_type:"refutador",last_assistant_message:$m}')" "$S")

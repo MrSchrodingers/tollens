@@ -45,7 +45,7 @@ prepara_copia(){ # $1 = diretorio destino - COPIA descartavel de tudo que o par 
   cp -f evidence/cobertura.sh          "$d/evidence/cobertura.sh"
   cp -f orchestration/schedule.py      "$d/orchestration/schedule.py"
   # orchestration/schedule.py resolve a RAIZ pelo proprio `__file__` (nao por $PWD/cwd) quando
-  # EVIDENCE_GATE_ROOT nao esta setado - o grupo "os TRES workflows reais" de schedule.sh chama
+  # TOLLENS_ROOT nao esta setado - o grupo "os TRES workflows reais" de schedule.sh chama
   # o validador SEM override, entao a copia precisa dos dados de producao tambem, ou aquele grupo
   # reprova por dado ausente (NAO pelo piso) e a suite falha antes do que queremos medir.
   cp -f orchestration/registry.json          "$d/orchestration/registry.json"

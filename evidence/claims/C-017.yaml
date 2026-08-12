@@ -16,7 +16,7 @@ evidence:
   regression: [FE1, FE2, FE3, FE4]
   mutants: [MF1, MF2, MF3, MF4]
   observation:
-    command: gh api repos/MrSchrodingers/evidence-gate/commits/8f7b543/check-runs --jq '.total_count, (.check_runs[]|.name)'
+    command: gh api repos/MrSchrodingers/tollens/commits/8f7b543/check-runs --jq '.total_count, (.check_runs[]|.name)'
     recorded: evidence/observations/2026-08-04-contexto-unico-do-required-check.md
     blob_sha: d0488c3ef0b79ebf66d302cecbb3532470ac54f6
     line_start: 61

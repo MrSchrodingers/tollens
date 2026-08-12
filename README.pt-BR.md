@@ -1,10 +1,10 @@
-# evidence-gate
+# tollens
 
 > **Orquestração multirruntime, governada por evidência, para Claude Code Desktop/CLI e OpenAI Codex.**
 >
-> O `evidence-gate` trata o resultado de um agente como **candidato**, não como verdade certificada. A integração só é autorizada depois que evidência executável, vinculada ao snapshot avaliado, é aprovada em uma fronteira externa do repositório.
+> O `tollens` trata o resultado de um agente como **candidato**, não como verdade certificada. A integração só é autorizada depois que evidência executável, vinculada ao snapshot avaliado, é aprovada em uma fronteira externa do repositório.
 
-[![verify-pr](https://github.com/MrSchrodingers/evidence-gate/actions/workflows/verify-pr.yml/badge.svg)](https://github.com/MrSchrodingers/evidence-gate/actions/workflows/verify-pr.yml)
+[![verify-pr](https://github.com/MrSchrodingers/tollens/actions/workflows/verify-pr.yml/badge.svg)](https://github.com/MrSchrodingers/tollens/actions/workflows/verify-pr.yml)
 [![Licença: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md) · **Português (Brasil)**
@@ -13,7 +13,7 @@
 
 ## Resumo
 
-`evidence-gate` é um harness experimental de engenharia de software para agentes de programação baseados em IA. O projeto fornece:
+`tollens` é um harness experimental de engenharia de software para agentes de programação baseados em IA. O projeto fornece:
 
 - registry canônico de orquestração;
 - projeções verificadas de agentes para Claude Code e Codex;
@@ -126,7 +126,7 @@ com
 
 O modelo contribui com inferência probabilística. O harness controla contexto observável, ferramentas, autoridade, orquestração, critérios de aceitação e verificação externa.
 
-Essa distinção importa porque o desempenho medido de um agente não é propriedade exclusiva do modelo-base. SWE-agent mostra que a interface agente-computador pode alterar materialmente o desempenho em engenharia de software [2]. Por isso, `evidence-gate` trata **modelo**, **scaffold**, **tarefa** e **condição de skill** como variáveis experimentais distintas.
+Essa distinção importa porque o desempenho medido de um agente não é propriedade exclusiva do modelo-base. SWE-agent mostra que a interface agente-computador pode alterar materialmente o desempenho em engenharia de software [2]. Por isso, `tollens` trata **modelo**, **scaffold**, **tarefa** e **condição de skill** como variáveis experimentais distintas.
 
 ### 2.2 Proposta não é verificação
 
@@ -683,7 +683,7 @@ Cada garantia rastreada em `evidence/claims/*.yaml` resolve sua evidência de su
 
 Hooks locais são mecanismos úteis de feedback, mas executam dentro de uma fronteira gravável ou contornável pelo ator local. Portanto, não constituem a autoridade final de integração.
 
-A documentação do Claude Code apresenta hooks como automação determinística do ciclo de vida [14]. `evidence-gate` usa essa capacidade para controles locais enquanto reserva certificação à fronteira do repositório.
+A documentação do Claude Code apresenta hooks como automação determinística do ciclo de vida [14]. `tollens` usa essa capacidade para controles locais enquanto reserva certificação à fronteira do repositório.
 
 ### 9.2 Contexto required
 
@@ -965,7 +965,7 @@ O projeto deve, portanto, ser descrito como **harness experimental orientado por
 
 ### 15.1 Avaliação em repositórios reais
 
-SWE-bench consolidou resolução de issues em repositórios reais como problema representativo de avaliação em engenharia de software [1]. `evidence-gate` segue a mesma preferência geral por avaliação executável e ancorada no repositório, em vez de depender apenas de snippets ou julgamento narrativo.
+SWE-bench consolidou resolução de issues em repositórios reais como problema representativo de avaliação em engenharia de software [1]. `tollens` segue a mesma preferência geral por avaliação executável e ancorada no repositório, em vez de depender apenas de snippets ou julgamento narrativo.
 
 ### 15.2 Efeito do scaffold
 
@@ -973,7 +973,7 @@ SWE-agent mostra que a interface agente-computador pode afetar materialmente o d
 
 ### 15.3 Verificação externa
 
-LLM-Modulo defende combinar modelos generativos com verificadores externos em vez de depender de autoverificação não assistida [3]. `evidence-gate` aplica a mesma separação na fronteira de governança da engenharia de software.
+LLM-Modulo defende combinar modelos generativos com verificadores externos em vez de depender de autoverificação não assistida [3]. `tollens` aplica a mesma separação na fronteira de governança da engenharia de software.
 
 ### 15.4 Heterogeneidade e interferência de skills
 
@@ -988,7 +988,7 @@ Esses resultados motivam:
 - publicação de resultados negativos;
 - medição separada de correção e custo de tokens.
 
-Eles **não** provam que a política atual de `evidence-gate` seja ótima. Isso permanece hipótese empírica.
+Eles **não** provam que a política atual de `tollens` seja ótima. Isso permanece hipótese empírica.
 
 ### 15.5 Mutation testing
 

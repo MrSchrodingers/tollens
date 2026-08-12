@@ -1,1 +1,1 @@
-{"description":"evidence-gate project hooks","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash evidence/hooks/verify-gate.sh","commandWindows":"powershell.exe -NoProfile -Command \"bash evidence/hooks/verify-gate.sh\""}]}]}}
+{"description":"tollens project hooks","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash evidence/hooks/verify-gate.sh","commandWindows":"powershell.exe -NoProfile -Command \"bash evidence/hooks/verify-gate.sh\""}]}]}}

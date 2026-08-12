@@ -1,7 +1,7 @@
 # Observacao - Applies(P,r) medido contra o endpoint autoritativo do GitHub
 
 - Data: 2026-08-10
-- Ambiente: Linux, `gh version 2.96.0 (2026-07-02)`; GitHub `MrSchrodingers/evidence-gate`
+- Ambiente: Linux, `gh version 2.96.0 (2026-07-02)`; GitHub `MrSchrodingers/tollens`
 - Fecha: o quantificador ausente da formula publicada (ver `docs/HANDOFF.md` e a delegacao que
   originou `evidence/probes/github-ruleset.py`)
 
@@ -14,7 +14,7 @@ exigindo `verify-pr` com `strict_required_status_checks_policy: true` - e
 `conditions.ref_name.include` era `[]`, isto e, a regra se aplicava a ZERO refs. A formula
 publicada, `ExternalGate(P,a) <=> RequiredCheck(P) ^ not Bypass(a,P)`, ficava SATISFEITA
 enquanto o portao nao valia para ref nenhuma: faltava o termo de aplicabilidade. Provas
-independentes registradas na delegacao: `gh api repos/MrSchrodingers/evidence-gate/rules/branches/main`
+independentes registradas na delegacao: `gh api repos/MrSchrodingers/tollens/rules/branches/main`
 retornava `[]`, e o commit `8d76a93` entrou direto na `main` sem PR, 15 minutos depois do ultimo
 update do ruleset. Corrigido para `include: ["~DEFAULT_BRANCH"]` antes desta observacao.
 
@@ -28,7 +28,7 @@ servidor. A propriedade correta:
 
 ```
 $ python3 evidence/probes/github-ruleset.py
-alvo: MrSchrodingers/evidence-gate@main  contexto exigido: verify-pr
+alvo: MrSchrodingers/tollens@main  contexto exigido: verify-pr
 estado: PASS
 motivo: Gate(P,a,r) satisfeita para 'main': contexto 'verify-pr' e exigido por regra ativa
 aplicavel, strict_required_status_checks_policy=true, bypass_actors=[] em todos os rulesets de
@@ -38,7 +38,7 @@ exit=0
 
 Corrobora, via `GET /repos/.../rules/branches/main` (autoritativo) e
 `GET /repos/.../rulesets/20385799` (bypass/enforcement), o mesmo estado que a auditoria manual
-desta sessao ja tinha lido em `gh api repos/MrSchrodingers/evidence-gate/rulesets/20385799`:
+desta sessao ja tinha lido em `gh api repos/MrSchrodingers/tollens/rulesets/20385799`:
 `enforcement: "active"`, `bypass_actors: []`, `current_user_can_bypass: "never"`,
 `conditions.ref_name.include: ["~DEFAULT_BRANCH"]`.
 
@@ -46,7 +46,7 @@ desta sessao ja tinha lido em `gh api repos/MrSchrodingers/evidence-gate/ruleset
 
 ```
 $ python3 evidence/probes/github-ruleset.py --branch nao-existe-nunca-xyz
-alvo: MrSchrodingers/evidence-gate@nao-existe-nunca-xyz  contexto exigido: verify-pr
+alvo: MrSchrodingers/tollens@nao-existe-nunca-xyz  contexto exigido: verify-pr
 estado: FAIL
 motivo: Applies(P,r) = False: nenhuma regra ativa se aplica a ref 'nao-existe-nunca-xyz'.
 Resposta vazia do endpoint autoritativo - a mesma forma do defeito medido em 2026-08-10
@@ -153,7 +153,7 @@ campo, ao contrario de `bypass_actors`, nao exigiu acesso de escrita nesta medic
 corrigido trata a ausencia de QUALQUER um dos dois com a mesma doutrina, por defesa em
 profundidade, mesmo sem evidencia de que `current_user_can_bypass` tambem dependa de escrita.
 
-CONTROLE, o mesmo repositorio onde o token E admin do ruleset (`MrSchrodingers/evidence-gate`,
+CONTROLE, o mesmo repositorio onde o token E admin do ruleset (`MrSchrodingers/tollens`,
 ruleset `20385799`): `bypass_actors` presente (`[]`), `current_user_can_bypass` presente
 (`"never"`) - o caso que a observacao original mediu, e o unico caso em que a frase corrigida
 era, coincidentemente, verdadeira sobre o ESTADO, ainda que falsa sobre o CODIGO.
@@ -177,6 +177,6 @@ origem ([20385799]).
 exit=0
 ```
 
-Contra `MrSchrodingers/evidence-gate`, onde o campo E genuinamente medido (token com write no
+Contra `MrSchrodingers/tollens`, onde o campo E genuinamente medido (token com write no
 ruleset), o resultado nao muda: PASS continua PASS, porque agora e uma afirmacao MEDIDA, nao
 suposta por omissao.

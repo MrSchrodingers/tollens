@@ -8,7 +8,7 @@
 # REPROVAR. Um teste que sobrevive ao mutante nao testa a garantia.
 #
 # O caso concreto que originou isto: o banner anunciava "48/49 ok | 1 divergentes" com DUAS
-# divergencias vivas em /opt/evidence-gate. O comparador managed existia e acertava; o hook
+# divergencias vivas em /opt/tollens. O comparador managed existia e acertava; o hook
 # nao o chamava. A suite nova precisa ser sensivel a reintroducao exata desse silencio.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
