@@ -1029,7 +1029,7 @@ flowchart TD
     D -->|"satisfiable by dilution<br/>87.8% alone vs 88.8% diluted"| E["Execution boundary"]
     E -->|"phantom mutant needs running<br/>untrusted input; declined"| F["Declared limit<br/>NOT_VERIFIED, not a fabricated PASS"]
 
-    G["Observable verifier<br/>wired into CI, manifest, hooks"] -.->|"any layer above can be verified<br/>to exhaustion and never installed"| A
+    G["Observable verifier<br/>wired into CI; manifest, hooks pending"] -.->|"any layer above can be verified<br/>to exhaustion and never installed"| A
     G -.->|"155 assertions, 20 mutants, 83.3% branch coverage,<br/>zero invocations outside tests/"| F
 ```
 
