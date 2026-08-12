@@ -2,7 +2,7 @@
 
 ## Escopo
 
-O `evidence-gate` executa hooks, verificadores, adaptadores e instaladores. Falhas que permitam contornar autorização, escapar de diretórios gerenciados, executar conteúdo não confiável com autoridade excessiva, adulterar evidência ou deixar um deploy privilegiado em estado inconsistente são consideradas vulnerabilidades de segurança.
+O `tollens` executa hooks, verificadores, adaptadores e instaladores. Falhas que permitam contornar autorização, escapar de diretórios gerenciados, executar conteúdo não confiável com autoridade excessiva, adulterar evidência ou deixar um deploy privilegiado em estado inconsistente são consideradas vulnerabilidades de segurança.
 
 O projeto é experimental. Ele não fornece, por si só, sandbox, isolamento de sistema operacional, atestação externa independente ou proteção contra um administrador que possa alterar a política do repositório.
 

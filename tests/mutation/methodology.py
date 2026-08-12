@@ -47,13 +47,13 @@ for name, target, path, value in MUTANTS:
     protocol = copy.deepcopy(PROTOCOL)
     set_path(policy if target == "policy" else protocol, path, value)
 
-    with tempfile.TemporaryDirectory(prefix="evidence-gate-method-") as raw:
+    with tempfile.TemporaryDirectory(prefix="tollens-method-") as raw:
         root = Path(raw)
         (root / "orchestration").mkdir()
         (root / "orchestration/skill-policy.json").write_text(json.dumps(policy), encoding="utf-8")
         (root / "orchestration/evaluation-protocol.json").write_text(json.dumps(protocol), encoding="utf-8")
         env = os.environ.copy()
-        env["EVIDENCE_GATE_ROOT"] = str(root)
+        env["TOLLENS_ROOT"] = str(root)
         result = subprocess.run(
             [sys.executable, str(TESTER)],
             env=env,

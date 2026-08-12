@@ -16,8 +16,8 @@ set -uo pipefail
 command -v jq >/dev/null 2>&1 || exit 0
 cat >/dev/null 2>&1 || true   # drena stdin
 
-REPO="${EVIDENCE_GATE_REPO:-$HOME/claude-mecanismo}"
-[ -d "$REPO" ] || REPO="$HOME/evidence-gate"
+REPO="${TOLLENS_REPO:-$HOME/claude-mecanismo}"
+[ -d "$REPO" ] || REPO="$HOME/tollens"
 # `-f`, nao `-x`: a chamada e `bash install/verify.sh`. Exigir o bit de execucao numa guarda
 # que a chamada nao exige e fail-open - perder o bit desligava o comparador em silencio.
 [ -f "$REPO/install/verify.sh" ] || exit 0
@@ -28,7 +28,7 @@ OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 #
 # `install/verify.sh` le apenas $HOME/.claude. Numa maquina com a fase managed ativa isso e
 # METADE do que roda, e e a metade que deveria ser a raiz de confianca. Medido em 2026-08-10:
-# o banner anunciava "48/49 ok | 1 divergentes" enquanto /opt/evidence-gate carregava duas
+# o banner anunciava "48/49 ok | 1 divergentes" enquanto /opt/tollens carregava duas
 # divergencias - entre elas o proprio verify-gate, uma versao atras. O comparador existia e
 # acertava (`apply-managed.sh --verify`, exit 1); ninguem o chamava. Este hook e escrito para
 # ser o comparador, e nao pode declarar conformidade sobre um escopo que nao olhou.
@@ -54,7 +54,7 @@ OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 # para o heartbeat em `managed_prefix`, abaixo. Silencio sobre qual arvore foi olhada seria o
 # mesmo defeito que este arquivo corrige, um nivel acima.
 MPFX="${MANAGED_PREFIX:-}"
-MTREE="$MPFX/opt/evidence-gate"
+MTREE="$MPFX/opt/tollens"
 MSET="$MPFX/etc/claude-code/managed-settings.json"
 MOUT=""; MRC=0; MSTATE="absent"
 if { [ -d "$MTREE" ] || [ -f "$MSET" ]; } && [ -f "$REPO/install/apply-managed.sh" ]; then

@@ -180,3 +180,9 @@ exit=0
 Contra `MrSchrodingers/evidence-gate`, onde o campo E genuinamente medido (token com write no
 ruleset), o resultado nao muda: PASS continua PASS, porque agora e uma afirmacao MEDIDA, nao
 suposta por omissao.
+
+> NOTA DE INTEGRIDADE (2026-08-12): os comandos acima citam `MrSchrodingers/evidence-gate`
+> porque foi contra ESSE nome que eles foram executados. O repositorio passou a se chamar
+> `tollens` depois. A renomeacao automatica reescreveu estas linhas e o `blob_sha` do ledger
+> acusou a divergencia - reescrever comando gravado faz o registro afirmar uma execucao que
+> nunca ocorreu naquela URL, que e falsificacao de evidencia. Restaurado ao que foi rodado.

@@ -35,21 +35,29 @@ for bin in coverage python3 jq; do
   }
 done
 
+prepara_copia(){ # $1 = diretorio destino - COPIA descartavel de tudo que o par mais rapido
+  # dos cinco alvos (orchestration/schedule.py + tests/unit/schedule.sh) precisa para rodar
+  # isolado. Fatorado para servir aos casos novos (CB-FROUXA em diante) sem repetir os sete
+  # `cp -f` tres vezes.
+  local d="$1"
+  mkdir -p "$d/evidence" "$d/orchestration/workflows" "$d/orchestration/schedule" \
+           "$d/tests/unit" "$d/tests/lib"
+  cp -f evidence/cobertura.sh          "$d/evidence/cobertura.sh"
+  cp -f orchestration/schedule.py      "$d/orchestration/schedule.py"
+  # orchestration/schedule.py resolve a RAIZ pelo proprio `__file__` (nao por $PWD/cwd) quando
+  # TOLLENS_ROOT nao esta setado - o grupo "os TRES workflows reais" de schedule.sh chama
+  # o validador SEM override, entao a copia precisa dos dados de producao tambem, ou aquele grupo
+  # reprova por dado ausente (NAO pelo piso) e a suite falha antes do que queremos medir.
+  cp -f orchestration/registry.json          "$d/orchestration/registry.json"
+  cp -f orchestration/workflows/*.json       "$d/orchestration/workflows/"
+  cp -f orchestration/schedule/*.json        "$d/orchestration/schedule/"
+  cp -f tests/unit/schedule.sh         "$d/tests/unit/schedule.sh"
+  cp -f tests/lib/lock.sh              "$d/tests/lib/lock.sh"
+  chmod +x "$d/evidence/cobertura.sh"
+}
+
 SCRATCH="$(mktemp -d)"; trap 'rm -rf "$SCRATCH"' EXIT
-mkdir -p "$SCRATCH/evidence" "$SCRATCH/orchestration/workflows" "$SCRATCH/orchestration/schedule" \
-         "$SCRATCH/tests/unit" "$SCRATCH/tests/lib"
-cp -f evidence/cobertura.sh          "$SCRATCH/evidence/cobertura.sh"
-cp -f orchestration/schedule.py      "$SCRATCH/orchestration/schedule.py"
-# orchestration/schedule.py resolve a RAIZ pelo proprio `__file__` (nao por $PWD/cwd) quando
-# EVIDENCE_GATE_ROOT nao esta setado - o grupo "os TRES workflows reais" de schedule.sh chama
-# o validador SEM override, entao a copia precisa dos dados de producao tambem, ou aquele grupo
-# reprova por dado ausente (NAO pelo piso) e o suite falha antes do que queremos medir.
-cp -f orchestration/registry.json          "$SCRATCH/orchestration/registry.json"
-cp -f orchestration/workflows/*.json       "$SCRATCH/orchestration/workflows/"
-cp -f orchestration/schedule/*.json        "$SCRATCH/orchestration/schedule/"
-cp -f tests/unit/schedule.sh         "$SCRATCH/tests/unit/schedule.sh"
-cp -f tests/lib/lock.sh              "$SCRATCH/tests/lib/lock.sh"
-chmod +x "$SCRATCH/evidence/cobertura.sh"
+prepara_copia "$SCRATCH"
 
 # `medido()`: roda a copia em modo relatorio (piso 0 - nunca reprova por si) e devolve o
 # percentual MEDIDO (ja arredondado para baixo a 1 casa, a mesma unidade que --check compara).
@@ -80,6 +88,20 @@ COBERTURA_SUITES="tests/unit/schedule.sh" \
 RC_ACIMA=$?
 echo "  (rc observado: $RC_ACIMA)"
 chk "piso acima do medido reprova mesmo sem mutacao" "$RC_ACIMA" 1
+
+echo
+echo "== CB-FROUXA. piso 0.1 ABAIXO do medido, sem tocar nada (catraca frouxa - fato (3) do "
+echo "prompt: dois commits subiram a cobertura sem reapertar o piso e o antigo 'medido >= piso' "
+echo "deixava passar): --check tem que REPROVAR, nao passar em silencio =="
+ABAIXO="$(python3 -c "print(round($BASE - 0.1, 1))")"
+COBERTURA_ALVOS="orchestration/schedule.py:$ABAIXO" \
+COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH/evidence/cobertura.sh" --check >"$SCRATCH/check-frouxa.log" 2>&1
+RC_FROUXA=$?
+echo "  (rc observado: $RC_FROUXA)"
+chk "piso abaixo do medido (catraca frouxa) reprova - o antigo '>=' deixava passar" "$RC_FROUXA" 1
+grep -qF "CATRACA FROUXA" "$SCRATCH/check-frouxa.log"
+chk "  CB-FROUXA rotula como CATRACA FROUXA (pede reaperto), nao como ABAIXO DO PISO" $? 0
 
 echo
 echo "== mutacao (em COPIA): remove o UNICO caso que exercita 'ciclo detectado' (F12) =="
@@ -148,8 +170,152 @@ grep -qF "NAO VERIFICADO" "$SCRATCH/c7.log"
 chk "  CB7 rotula a lacuna como NAO VERIFICADO, nao como reprovacao" $? 0
 
 echo
+echo "== CB-ABS. camada 2 (predicado absoluto sobre ramos/linhas) - fato (1) do prompt: um ramo "
+echo "novo nao exercitado tem que reprovar mesmo com o piso percentual EXATO no numero novo "
+echo "(reaperto preguicoso que so copia o percentual sem olhar o diff de cobertura) =="
+SCRATCH2="$SCRATCH/dilui"
+prepara_copia "$SCRATCH2"
+python3 - "$SCRATCH2/orchestration/schedule.py" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+anchor = 'if __name__ == "__main__":\n    raise SystemExit(main())\n'
+if not s.endswith(anchor):
+    print("ANCORA_AUSENTE", file=sys.stderr)
+    sys.exit(1)
+extra = "\n".join(f"_REPRO_ABS_{i} = 1" for i in range(1, 31))
+ramo = f'''{extra}
+
+
+def _repro_fato1_ramo_nao_exercitado() -> bool:
+    """Fixture de teste do mecanismo (CB-ABS): um ramo nao exercitado por nenhum caso da
+    suite, mais 30 statements cobertos ao lado - a MESMA forma do fato (1) medido no prompt
+    desta tarefa (o denominador dilui o mesmo ramo nao coberto). Inserido no FIM do arquivo,
+    depois da ultima linha que ISENCOES referencia, para nao deslocar os numeros de linha
+    das 35 entradas ja isentas - a mutacao precisa introduzir UM gap novo, nao invalidar os
+    antigos por acidente de posicionamento."""
+    se_debug = os.environ.get("SCHEDULE_DEBUG_REPRO_ABS")
+    if se_debug:
+        print("ramo nunca exercitado por teste algum")
+        return True
+    return False
+
+
+_repro_fato1_ramo_nao_exercitado()
+
+
+'''
+s = s[: -len(anchor)] + ramo + anchor
+open(p, "w", encoding="utf-8").write(s)
+PY
+chk "CB-ABS: ramo + 30 statements inseridos no fim da copia (sem deslocar as isencoes)" $? 0
+
+DILUI_MEDIDO="$(COBERTURA_ALVOS="orchestration/schedule.py:0.0" \
+COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH2/evidence/cobertura.sh" 2>/dev/null | awk -F'\t' '$1=="COBFILE"{print $3}')"
+[ -n "$DILUI_MEDIDO" ]; chk "CB-ABS: copia diluida mede um numero" $? 0
+
+echo
+echo "== CB-ABS1. piso reapertado (preguicosamente) para o numero diluido: a camada 1 "
+echo "(percentual) fica OK, mas o ramo novo continua sem isencao - a camada 2 tem que reprovar "
+echo "sozinha, mesmo com a camada 1 satisfeita =="
+COBERTURA_ALVOS="orchestration/schedule.py:$DILUI_MEDIDO" \
+COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH2/evidence/cobertura.sh" --check >"$SCRATCH2/check-abs1.log" 2>&1
+RC_ABS1=$?
+chk "CB-ABS1: --check reprova mesmo com o piso percentual exato (reaperto preguicoso nao basta)" "$RC_ABS1" 1
+grep -qF "COBFILE	orchestration/schedule.py	$DILUI_MEDIDO	$DILUI_MEDIDO	OK" "$SCRATCH2/check-abs1.log"
+chk "  CB-ABS1: a camada 1 (percentual) de fato deu OK - quem reprova e so a camada 2" $? 0
+grep -qF "NAO JUSTIFICADO" "$SCRATCH2/check-abs1.log"
+chk "  CB-ABS1: a saida rotula o ramo/linha novo como NAO JUSTIFICADO" $? 0
+
+FALTAS="$(grep 'ramos/linhas: NAO JUSTIFICADO:' "$SCRATCH2/check-abs1.log" | sed 's/.*NAO JUSTIFICADO: //')"
+[ -n "$FALTAS" ]; chk "CB-ABS1: a lista de faltas foi capturada para o controle CB-ABS2" $? 0
+
+echo
+echo "== CB-ABS2. controle: os MESMOS itens, agora com isencao declarada (motivo escrito, na "
+echo "PROPRIA copia - nao um override de teste) - --check tem que PASSAR (a camada 2 respeita "
+echo "isencao real, nao reprova as cegas so por existir ramo novo) =="
+python3 - "$SCRATCH2/evidence/cobertura.sh" "$FALTAS" <<'PY'
+import sys
+p, faltas = sys.argv[1], sys.argv[2]
+s = open(p, encoding="utf-8").read()
+ancora = "orchestration/schedule.py|ramo|388->-1|heranca-piso-absoluto-2026-08-11\nEOF"
+if ancora not in s:
+    print("ANCORA_ISENCOES_AUSENTE", file=sys.stderr)
+    sys.exit(1)
+novas = []
+for item in faltas.split(", "):
+    if item.startswith("linha "):
+        novas.append(f"orchestration/schedule.py|linha|{item[6:]}|teste-cb-abs2-justificado")
+    elif item.startswith("ramo "):
+        novas.append(f"orchestration/schedule.py|ramo|{item[5:]}|teste-cb-abs2-justificado")
+    else:
+        print(f"ITEM_INESPERADO {item!r}", file=sys.stderr)
+        sys.exit(1)
+substituto = ("orchestration/schedule.py|ramo|388->-1|heranca-piso-absoluto-2026-08-11\n"
+              + "\n".join(novas) + "\nEOF")
+s = s.replace(ancora, substituto, 1)
+open(p, "w", encoding="utf-8").write(s)
+PY
+chk "CB-ABS2: isencao dos itens novos inserida na copia do mecanismo" $? 0
+
+COBERTURA_ALVOS="orchestration/schedule.py:$DILUI_MEDIDO" \
+COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH2/evidence/cobertura.sh" --check >"$SCRATCH2/check-abs2.log" 2>&1
+RC_ABS2=$?
+chk "CB-ABS2: com isencao escrita para o ramo novo, --check passa" "$RC_ABS2" 0
+
+echo
+echo "== CB-COMPL. completude de ALVOS - COPIA PRISTINA PROPRIA (SCRATCH3, nao a mutada por "
+echo "F12 acima): reusar \$SCRATCH aqui deixaria \$BASE desalinhado do medido real (a suite ja "
+echo "foi mutada para CB3-CB6) e a camada 1 reprovaria por SI, mascarando o que a completude "
+echo "(camada 3) de fato contribui - o RC deixaria de ser atribuivel, a mesma classe de defeito "
+echo "que este mecanismo existe para fechar. Isolar em copia propria, com piso exato medido "
+echo "nela, torna a completude a UNICA variavel possivel no RC abaixo =="
+SCRATCH3="$SCRATCH/completude"
+prepara_copia "$SCRATCH3"
+BASE3="$(COBERTURA_ALVOS="orchestration/schedule.py:0.0" COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH3/evidence/cobertura.sh" 2>/dev/null | awk -F'\t' '$1=="COBFILE"{print $3}')"
+[ -n "$BASE3" ]; chk "CB-COMPL: copia propria mede um numero" $? 0
+
+echo
+echo "== CB-COMPL1. a copia intacta (so schedule.py em orchestration/), piso exato: nao acusa "
+echo "candidato sem piso =="
+COBERTURA_ALVOS="orchestration/schedule.py:$BASE3" \
+COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH3/evidence/cobertura.sh" --check >"$SCRATCH3/compl1.log" 2>&1
+RC_COMPL1=$?
+chk "CB-COMPL1: --check passa na copia intacta com piso exato (nada mais divergente)" "$RC_COMPL1" 0
+grep -qF "todo candidato varrido esta em ALVOS ou em EXCLUSOES" "$SCRATCH3/compl1.log"
+chk "  CB-COMPL1: nenhum candidato novo na copia intacta" $? 0
+! grep -qF "COBCOMPL" "$SCRATCH3/compl1.log"
+chk "  CB-COMPL1: nenhuma linha COBCOMPL emitida" $? 0
+
+echo
+echo "== CB-COMPL2. um probe NOVO (com guarda __main__, sem piso nem exclusao) nasce em "
+echo "silencio - a completude tem que acusar, --check tem que reprovar (fato: ALVOS e digitada "
+echo "a mao, sem checagem). Piso continua o MESMO exato de CB-COMPL1 - a UNICA mudanca e o "
+echo "arquivo novo, entao a reprovacao so pode ser atribuida a camada 3 =="
+cat > "$SCRATCH3/orchestration/probe_orfao.py" <<'PY'
+#!/usr/bin/env python3
+"""Fixture CB-COMPL2: probe novo, nunca declarado em ALVOS nem em EXCLUSOES."""
+if __name__ == "__main__":
+    raise SystemExit(0)
+PY
+COBERTURA_ALVOS="orchestration/schedule.py:$BASE3" \
+COBERTURA_SUITES="tests/unit/schedule.sh" \
+  bash "$SCRATCH3/evidence/cobertura.sh" --check >"$SCRATCH3/compl2.log" 2>&1
+RC_COMPL2=$?
+chk "CB-COMPL2: --check reprova com um candidato nao contabilizado" "$RC_COMPL2" 1
+grep -qF "COBFILE	orchestration/schedule.py	$BASE3	$BASE3	OK" "$SCRATCH3/compl2.log"
+chk "  CB-COMPL2: a camada 1 (percentual) de fato deu OK - so a completude mudou" $? 0
+grep -qF "COBCOMPL	orchestration/probe_orfao.py" "$SCRATCH3/compl2.log"
+chk "  CB-COMPL2: a saida nomeia o arquivo orfao especifico" $? 0
+
+echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=11
+EXPECTED=28
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

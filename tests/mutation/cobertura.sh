@@ -2,11 +2,21 @@
 # VALIDACAO POR MUTACAO - o proprio piso de cobertura de decisao (evidence/cobertura.sh).
 #
 # Regra de metodo 2 (ADR 0020): garantia de seguranca so vale se, ao remove-la, o teste
-# REPROVA. Os dois mutantes abaixo sao os dois modos OBVIOS de o mecanismo virar decoracao,
-# citados na propria delegacao desta mudanca:
-#   MCB1 - o piso vai a ZERO (todo alvo passa, qualquer que seja a cobertura real).
-#   MCB2 - `--check` DEIXA DE COMPARAR com o piso (a violacao e detectada e impressa, mas nunca
-#         vira reprovacao - o passo de CI ficaria sempre verde).
+# REPROVA. Cinco mutantes, um por garantia introduzida ou preservada nesta correcao da folga
+# estrutural apontada pelo portao final da onda 5 (piso ABSOLUTO == medido, predicado
+# absoluto sobre ramos/linhas com isencao, e completude de ALVOS):
+#   MCB1 - `float(piso)` lido de ALVOS e descartado em favor de 0.0 na leitura da CLI (a
+#         garantia de que o piso DECLARADO e o que de fato entra na comparacao).
+#   MCB2 - `--check` DEIXA DE COMPARAR (a violacao e detectada e impressa, mas nunca vira
+#         reprovacao - o passo de CI ficaria sempre verde).
+#   MCB3 - camada 1 (piso exato) para de reprovar quando o piso esta FROUXO (medido > piso,
+#         catraca nao reapertada apos melhora de cobertura) - fato (3) do prompt desta
+#         tarefa: dois commits subiram a cobertura sem reapertar o piso e nada notou.
+#   MCB4 - camada 2 (predicado absoluto sobre ramos/linhas) para de reprovar um ramo novo sem
+#         isencao - fato (1) do prompt: o mesmo ramo nao exercitado, diluido por statements
+#         cobertos ao lado, teria que reprovar por FORA do percentual.
+#   MCB5 - camada 3 (completude de ALVOS) para de reprovar um candidato novo sem piso nem
+#         exclusao - um probe nasce sem cobertura, em silencio.
 # tests/unit/cobertura.sh (REG) e quem precisa morder cada um: ele ja teve motivo pra existir
 # (a mesma suite discrimina o mutante de CONTEUDO em orchestration/schedule.py - ver CB3/CB4
 # daquele arquivo); aqui o alvo sob mutacao e o MECANISMO, nao o conteudo medido por ele.
@@ -17,7 +27,7 @@ ORIG="evidence/cobertura.sh"
 REG="tests/unit/cobertura.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 cp -f "$ORIG" "$TMP/orig.sh"
-P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=2
+P=0; F=0; BASELINE=nao; EXPECTED_MUTANTS=5
 
 echo "== baseline: tests/unit/cobertura.sh precisa passar ANTES de qualquer mutacao =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  baseline verde"; BASELINE=ok
@@ -63,23 +73,54 @@ mutante(){ # $1=nome $2=descricao $3=caso-alvo $4..=comando
 
 echo "== mutacao: cada garantia removida DEVE fazer tests/unit/cobertura.sh reprovar =="
 
-# MCB1 - o piso vai a zero: todo `float(piso)` lido do arquivo de alvos e descartado em favor de
-# 0.0. Com piso=0.0, `medido >= piso` e sempre verdadeiro para qualquer percentual medido -
-# --check nunca mais reprova nada, qualquer que seja a regressao de cobertura.
+# MCB1 - o piso declarado e descartado em favor de 0.0 na leitura de ALVOS. Com piso=0.0 para
+# TODO alvo, a comparacao exata (camada 1) nunca mais bate com o que foi de fato declarado -
+# CB1 (piso == medido nao reprova) e quem prova isso primeiro na saida.
 mutante MCB1 "o piso e MEDIDO/comparado - nao pode ir a zero por baixo do CLI" \
-  "piso antigo agora reprova apos remover o caso que o sustentava" \
+  "piso igual ao medido nao reprova" \
   troca 'alvos.append((caminho, float(piso)))' \
         'alvos.append((caminho, 0.0))'
 
 # MCB2 - `--check` deixa de comparar com o piso: a violacao ainda e IMPRESSA (abaixo continua
 # populado), mas o exit code nunca reflete isso - o passo de CI ficaria sempre verde, tornando
 # o piso decoracao (o mesmo defeito, na FERRAMENTA, que motivou esta ferramenta sobre o probe).
-mutante MCB2 "'--check' reprova (exit 1) quando ha alvo abaixo do piso" \
+mutante MCB2 "'--check' reprova (exit 1) quando ha item divergente" \
   "piso acima do medido reprova mesmo sem mutacao" \
   troca '    if check:
         sys.exit(1)' \
         '    if False:
         sys.exit(1)'
+
+# MCB3 - camada 1 (piso EXATO): a direcao "catraca frouxa" (medido > piso, cobertura subiu e
+# ninguem reapertou o piso) para de contar como problema. Esta e a forma PRECISA do fato (3)
+# do prompt - `medido >= piso` (o desenho antigo) deixava passar exatamente este caso.
+mutante MCB3 "medido > piso (catraca frouxa) tem que reprovar, nao so medido < piso" \
+  "piso abaixo do medido (catraca frouxa) reprova - o antigo '>=' deixava passar" \
+  troca '        status_piso = f"CATRACA FROUXA (reapertar para {medido:.1f})"
+        problema = True' \
+        '        status_piso = f"CATRACA FROUXA (reapertar para {medido:.1f})"
+        problema = problema'
+
+# MCB4 - camada 2 (predicado absoluto sobre ramos/linhas): um ramo/linha ausente e sem isencao
+# e detectado (a mensagem NAO JUSTIFICADO ainda e impressa) mas para de contar como motivo de
+# reprovacao - a forma exata do fato (1) do prompt sobrevivendo a um reaperto que so copiou o
+# percentual novo sem olhar o diff de cobertura.
+mutante MCB4 "ramo/linha sem isencao tem que reprovar mesmo com o piso percentual OK" \
+  "CB-ABS1: --check reprova mesmo com o piso percentual exato (reaperto preguicoso nao basta)" \
+  troca '            status_abs = "NAO JUSTIFICADO: " + ", ".join(faltas)
+            problema = True' \
+        '            status_abs = "NAO JUSTIFICADO: " + ", ".join(faltas)
+            problema = problema'
+
+# MCB5 - camada 3 (completude de ALVOS): um candidato sem piso e sem exclusao e listado
+# (COBCOMPL ainda e impresso) mas para de contar como motivo de reprovacao - o probe novo
+# nasceria medido em 0% e no relatorio, mas `--check` sairia verde do mesmo jeito.
+mutante MCB5 "candidato nao contabilizado tem que reprovar, nao so aparecer no relatorio" \
+  "CB-COMPL2: --check reprova com um candidato nao contabilizado" \
+  troca '    problema = True
+    print("completude de ALVOS: candidato(s) sem piso e sem exclusao (aparece em silencio):")' \
+        '    problema = problema
+    print("completude de ALVOS: candidato(s) sem piso e sem exclusao (aparece em silencio):")'
 
 cp -f "$TMP/orig.sh" "$ORIG"
 echo

@@ -49,8 +49,19 @@ bad=0
 # (`install.sh` restaura DOIS e ficava de fora em silencio). Arquivo novo com trap ruim entrava
 # pela mesma porta. Agora o conjunto e descoberto e a checagem ignora comentario, como AM1.
 while IFS= read -r f; do
-  grep -v "^[[:space:]]*#" "$f" | grep -q "trap 'cp -f \"\$TMP/orig" \
-    || { echo "    idioma inesperado: $f"; bad=1; }
+  # SEM PIPE. `grep -q` sai no primeiro casamento e fecha o pipe; sob `set -o pipefail` o
+  # `grep -v` a montante leva SIGPIPE (141) e o pipefail propaga isso como falha do PIPELINE,
+  # mesmo tendo o casamento ocorrido. Medido em 2026-08-12: 7 de 8 execucoes do pipeline
+  # devolveram 141 sobre este mesmo arquivo, e a suite reprovava de forma intermitente
+  # (exit 1 / 0 / 1 em tres execucoes seguidas, arvore limpa) citando SEMPRE
+  # tests/mutation/fronteira-viva.sh - o maior dos arnesses, e por isso o mais provavel de
+  # ainda estar sendo escrito quando o consumidor ja terminou.
+  # Era o ORACULO reprovando por corrida propria, nao o objeto medido estando errado - a
+  # forma mais cara de falso vermelho, porque acusa o arquivo certo pelo motivo errado.
+  # Substituicao de processo em vez de pipe: nao ha upstream para receber SIGPIPE.
+  if ! grep -q "trap 'cp -f \"\$TMP/orig" < <(grep -v "^[[:space:]]*#" "$f"); then
+    echo "    idioma inesperado: $f"; bad=1
+  fi
 done < <(grep -l 'cp -f "\$TMP/orig' tests/mutation/*.sh)
 chk "run/contrato/conformidade usam o idioma restaura-entao-remove" "$bad" 0
 
@@ -62,7 +73,7 @@ if ! git diff --quiet -- "$ALVO"; then
   exit 2
 fi
 # Nao ha deadlock aqui: `tests/lib/lock.sh` e re-entrante por variavel EXPORTADA
-# (EVIDENCE_GATE_LOCK=held), justamente porque os runners de mutacao invocam as suites de
+# (TOLLENS_LOCK=held), justamente porque os runners de mutacao invocam as suites de
 # regressao. O filho herda a marca e nao tenta tomar o lock de novo.
 #
 # DUAS PRECAUCOES, ambas pagas por uma CI vermelha (run 31397403110):
@@ -70,7 +81,7 @@ fi
 # `9>&-` FECHA O FD DO LOCK NO FILHO. `tests/lib/lock.sh` segura a exclusao com
 # `exec 9>arquivo; flock -n 9`. O flock vive na descricao de arquivo ABERTA, nao no processo:
 # qualquer filho que herde o fd mantem o lock vivo depois que este script sair. O filho aqui
-# nem usa o lock (herda EVIDENCE_GATE_LOCK=held e pula a secao), mas herdava o fd - e um neto
+# nem usa o lock (herda TOLLENS_LOCK=held e pula a secao), mas herdava o fd - e um neto
 # orfao segurava o lock para sempre. Medido: o passo seguinte da CI, `regressao do gate`,
 # abortou com exit 3 "ja ha uma suite em execucao".
 #
@@ -79,7 +90,15 @@ fi
 setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
 CHILD=$!
 MUTOU=nao
-for _ in $(seq 1 400); do   # ate ~20s
+# ORCAMENTO RECALIBRADO EM 2026-08-12, com medicao. O valor anterior era 400 x 0.05s (~20s) e
+# produzia moeda: 0/2/0/2 em execucoes seguidas, com a arvore limpa. Medi o instante em que
+# a PRIMEIRA mutacao se torna observavel neste HEAD: 16663 ms. A margem era de ~3s, e a
+# suite cresceu ao longo do dia (o arnes roda mais verificacao antes de mutar), entao o
+# orcamento fora dimensionado contra uma versao anterior de si mesma.
+# 1800 x 0.05s = ~90s da folga de ~5x sobre o medido. O NOT_VERIFIED continua existindo e
+# continua sendo exit 2 - o que muda e que ele passa a significar 'a corrida realmente nao
+# aconteceu', e nao 'o orcamento acabou antes de a corrida comecar'.
+for _ in $(seq 1 1800); do   # ate ~90s (medido: 1a mutacao aos ~16.7s neste HEAD)
   sleep 0.05
   [ "$(sha256sum "$ALVO" 2>/dev/null | cut -d' ' -f1)" != "$ORIG_SHA" ] && { MUTOU=sim; break; }
   kill -0 "$CHILD" 2>/dev/null || break

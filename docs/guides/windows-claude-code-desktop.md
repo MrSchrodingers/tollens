@@ -1,4 +1,4 @@
-# Windows: configurar o evidence-gate no Claude Code Desktop
+# Windows: configurar o tollens no Claude Code Desktop
 
 ## Pré-requisitos
 
@@ -7,8 +7,8 @@ Claude Desktop atualizado, Git for Windows com Git Bash, Python 3, `jq` e o repo
 ## Validar
 
 ```powershell
-git clone https://github.com/MrSchrodingers/evidence-gate.git
-Set-Location evidence-gate
+git clone https://github.com/MrSchrodingers/tollens.git
+Set-Location tollens
 python .\orchestration\render.py --check
 ```
 

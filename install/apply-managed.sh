@@ -10,7 +10,7 @@ case "$RAW_PREFIX" in
   ""|/) PREFIX="" ;;
   *) PREFIX="${RAW_PREFIX%/}" ;;
 esac
-OPT="${PREFIX}/opt/evidence-gate"
+OPT="${PREFIX}/opt/tollens"
 SETTINGS="${PREFIX}/etc/claude-code/managed-settings.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1
 
@@ -19,10 +19,10 @@ REAL=0; [ -z "$PREFIX" ] && REAL=1
 # actor. This check covers the entire repository because apply-managed-legacy.sh executes
 # install/hooks-spec.sh today and future privileged helpers must inherit the same invariant.
 # Symlinks are rejected as well: ownership of the link does not establish ownership of its
-# target. EVIDENCE_GATE_MANAGED_LEGACY remains available only for prefixed, non-production tests.
+# target. TOLLENS_MANAGED_LEGACY remains available only for prefixed, non-production tests.
 if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
-  if [ -n "${EVIDENCE_GATE_MANAGED_LEGACY:-}" ]; then
-    echo "ERRO: override EVIDENCE_GATE_MANAGED_LEGACY e proibido em execucao root sobre a raiz real." >&2
+  if [ -n "${TOLLENS_MANAGED_LEGACY:-}" ]; then
+    echo "ERRO: override TOLLENS_MANAGED_LEGACY e proibido em execucao root sobre a raiz real." >&2
     exit 78
   fi
   trust_bad="$(find "$REPO" -xdev \( -type l -o \! -user root -o \! -group root -o -perm /022 \) -print -quit 2>/dev/null || true)"
@@ -34,7 +34,7 @@ if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
   fi
 fi
 
-LEGACY="${EVIDENCE_GATE_MANAGED_LEGACY:-$DEFAULT_LEGACY}"
+LEGACY="${TOLLENS_MANAGED_LEGACY:-$DEFAULT_LEGACY}"
 [ -x "$LEGACY" ] || { echo "NOT_VERIFIED: instalador legado ausente" >&2; exit 2; }
 
 case "${1:-}" in
@@ -43,7 +43,7 @@ case "${1:-}" in
     ;;
 esac
 
-REC="$(mktemp -d "${TMPDIR:-/tmp}/evidence-gate-recovery.XXXXXX")" || exit 1
+REC="$(mktemp -d "${TMPDIR:-/tmp}/tollens-recovery.XXXXXX")" || exit 1
 cleanup(){ rm -rf "$REC" 2>/dev/null || true; }
 trap cleanup EXIT
 

@@ -82,7 +82,7 @@ except ImportError:
     sys.exit(EXIT_NAO_VERIFICADO)
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
-ROOT = Path(os.environ.get("EVIDENCE_GATE_ROOT", DEFAULT_ROOT)).resolve()
+ROOT = Path(os.environ.get("TOLLENS_ROOT", DEFAULT_ROOT)).resolve()
 CLAUDE_HOME = Path(os.environ.get("CLAUDE_HOME", Path.home() / ".claude")).resolve()
 
 ROTULO_PROJECAO = "projecao do repo (.claude/agents)"

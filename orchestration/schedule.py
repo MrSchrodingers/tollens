@@ -82,7 +82,7 @@ import posixpath
 from collections import defaultdict, deque
 
 DEFAULT_ROOT = pathlib.Path(__file__).resolve().parents[1]
-ROOT = pathlib.Path(os.environ.get("EVIDENCE_GATE_ROOT", DEFAULT_ROOT)).resolve()
+ROOT = pathlib.Path(os.environ.get("TOLLENS_ROOT", DEFAULT_ROOT)).resolve()
 
 REQUIRED_NODE_KEYS = {"actor", "isolation", "holds_suite_lock", "reads", "writes", "produces"}
 VALID_ISOLATION = {"shared", "worktree"}

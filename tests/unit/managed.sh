@@ -32,7 +32,7 @@ echo "== MG1. a especificacao de hooks tem FONTE UNICA =="
 # Duas copias da mesma lista divergem em silencio: e o defeito que originou este repositorio.
 A="$T/user.json"; B="$T/managed.json"
 bash install/hooks-spec.sh '$HOME/.claude/hooks' > "$A"
-bash install/hooks-spec.sh '/opt/evidence-gate/hooks' > "$B"
+bash install/hooks-spec.sh '/opt/tollens/hooks' > "$B"
 chk "o spec e JSON valido nos dois escopos" \
     "$(jq -e . "$A" >/dev/null 2>&1 && jq -e . "$B" >/dev/null 2>&1 && echo sim || echo nao)" "sim"
 est(){ jq -S '[paths(scalars) as $p | [$p|map(tostring)|join(".")]] | flatten | sort' "$1"; }
@@ -58,11 +58,11 @@ echo "== MG3. deploy instala a POLITICA inteira, nao so os hooks =="
 # o ator desligaria o gate pela tabela, sem tocar no hook.
 rc=$(MANAGED_PREFIX="$FK" bash "$AM" >/dev/null 2>&1; echo $?)
 chk "deploy executa (exit 0)" "$rc" 0
-N=$(find "$FK/opt/evidence-gate" -type f 2>/dev/null | wc -l | tr -d ' ')
+N=$(find "$FK/opt/tollens" -type f 2>/dev/null | wc -l | tr -d ' ')
 ESPERADO=$(awk -F'\t' '!/^#/ && ($1=="hook"||$1=="adapter"||$1=="doctool")' install/manifest.lock | wc -l | tr -d ' ')
 chk "  todos os $ESPERADO componentes de politica no disco" "$N" "$ESPERADO"
 chk "  ha hook, adaptador E doctool (nao so hook)" \
-    "$([ -d "$FK/opt/evidence-gate/hooks" ] && [ -d "$FK/opt/evidence-gate/adapters" ] && [ -d "$FK/opt/evidence-gate/document-tools" ] && echo sim || echo nao)" "sim"
+    "$([ -d "$FK/opt/tollens/hooks" ] && [ -d "$FK/opt/tollens/adapters" ] && [ -d "$FK/opt/tollens/document-tools" ] && echo sim || echo nao)" "sim"
 rc=$(MANAGED_PREFIX="$FK" bash "$AM" --verify >/dev/null 2>&1; echo $?)
 chk "  --verify aprova o estado recem-instalado" "$rc" 0
 chk "  allowManagedHooksOnly nasce FALSE (deploy nao ativa)" \
@@ -78,7 +78,7 @@ done < <(jq -r '[.hooks|..|objects|select(has("command"))|.command]|unique[]' "$
 chk "nenhum caminho declarado aponta para o vazio" "$MISS" "0"
 
 echo "== MG5. adulteracao de UM byte reprova a conformidade =="
-printf '\n# adulterado\n' >> "$FK/opt/evidence-gate/hooks/verify-gate.sh"
+printf '\n# adulterado\n' >> "$FK/opt/tollens/hooks/verify-gate.sh"
 rc=$(MANAGED_PREFIX="$FK" bash "$AM" --verify >/dev/null 2>&1; echo $?)
 chk "--verify REPROVA politica adulterada" "$rc" 1
 MANAGED_PREFIX="$FK" bash "$AM" >/dev/null 2>&1
@@ -110,13 +110,13 @@ echo "== MG8. --revert desfaz por completo =="
 rc=$(MANAGED_PREFIX="$FK" bash "$AM" --revert >/dev/null 2>&1; echo $?)
 chk "--revert executa (exit 0)" "$rc" 0
 chk "  a politica saiu do disco" \
-    "$([ -e "$FK/opt/evidence-gate" ] || [ -e "$FK/etc/claude-code/managed-settings.json" ] && echo sobrou || echo limpo)" "limpo"
-# DEFEITO ENCONTRADO POR ESTE CASO: o backup `pre-evidence-gate` era criado mesmo quando o
+    "$([ -e "$FK/opt/tollens" ] || [ -e "$FK/etc/claude-code/managed-settings.json" ] && echo sobrou || echo limpo)" "limpo"
+# DEFEITO ENCONTRADO POR ESTE CASO: o backup `pre-tollens` era criado mesmo quando o
 # arquivo existente havia sido escrito pelo PROPRIO instalador (deploy seguido de --enforce).
 # O --revert entao restaurava esse "backup" e RECRIAVA a politica. Reversao que nao reverte e
 # pior que ausencia de reversao: o operador acredita ter voltado ao estado anterior.
 chk "  e nao sobrou backup espurio do proprio instalador" \
-    "$([ -e "$FK/etc/claude-code/managed-settings.json.pre-evidence-gate" ] && echo sobrou || echo limpo)" "limpo"
+    "$([ -e "$FK/etc/claude-code/managed-settings.json.pre-tollens" ] && echo sobrou || echo limpo)" "limpo"
 
 echo "== MG9. manifesto com caminho hostil e REJEITADO, sem escrever nada =="
 # ACHADO DE AUDITORIA, com PoC executada: o manifesto e arquivo do REPOSITORIO, isto e, esta no
@@ -215,7 +215,7 @@ chk "o modo de ensaio declara NAO VERIFICADO em vez de 0" \
 chk "  e NAO afirma 'fora do espaco de escrita do ator'" \
     "$(printf '%s' "$SAIDA" | grep -q 'ESTADO: politica fora do espaco' && echo afirma || echo nao-afirma)" "nao-afirma"
 chk "  os arquivos sob ensaio sao mesmo gravaveis (a garantia NAO vale ali)" \
-    "$([ -w "$FK8/opt/evidence-gate/hooks/verify-gate.sh" ] && echo gravavel || echo protegido)" "gravavel"
+    "$([ -w "$FK8/opt/tollens/hooks/verify-gate.sh" ] && echo gravavel || echo protegido)" "gravavel"
 
 echo "== MG14. politica que declara hook AUSENTE nao pode ser ativada =="
 # PORTAO FINAL, 2026-08-04. O portao de populacao era TAUTOLOGICO: comparava `n` (conformes)
@@ -259,7 +259,7 @@ arvore_digest(){ # $1 = raiz; "" se nao existe
 FK15="$T/raiz15"; mkdir -p "$FK15"
 rc=$(MANAGED_PREFIX="$FK15" bash "$AM" >/dev/null 2>&1; echo $?)
 chk "deploy inicial instala (o caso precisa de uma arvore ativa para proteger)" "$rc" 0
-ATIVA15="$FK15/opt/evidence-gate"
+ATIVA15="$FK15/opt/tollens"
 ANTES15="$(arvore_digest "$ATIVA15")"
 chk "  a arvore ativa existe e tem digest (senao nao ha o que preservar)" \
     "$([ "$ANTES15" != "AUSENTE" ] && [ -n "$ANTES15" ] && echo sim || echo nao)" "sim"
@@ -287,9 +287,9 @@ echo "== MG16. deploy reprovado nao deixa area de staging orfa =="
 # Staging orfa sob /opt seria lixo root-owned acumulando a cada tentativa falha - e, pior, um
 # diretorio com os hooks completos fora de qualquer inspecao do --verify.
 chk "nenhum diretorio *.stage.* remanescente" \
-    "$(find "$FK15/opt" -maxdepth 1 -name 'evidence-gate.stage.*' 2>/dev/null | wc -l | tr -d ' ')" "0"
+    "$(find "$FK15/opt" -maxdepth 1 -name 'tollens.stage.*' 2>/dev/null | wc -l | tr -d ' ')" "0"
 chk "  nem *.anterior.* (a troca limpa o que afastou)" \
-    "$(find "$FK15/opt" -maxdepth 1 -name 'evidence-gate.anterior.*' 2>/dev/null | wc -l | tr -d ' ')" "0"
+    "$(find "$FK15/opt" -maxdepth 1 -name 'tollens.anterior.*' 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo "== MG17. falha APOS a publicacao devolve o estado ativo INTEIRO =="
 # SEGUNDO ACHADO SOBRE ESTE MESMO CODIGO (revisao independente do PR #5). MG15 so provoca falha
@@ -310,8 +310,8 @@ echo "== MG17. falha APOS a publicacao devolve o estado ativo INTEIRO =="
 #      menos (muda a arvore). As duas metades do estado mudariam se o rollback falhasse.
 estado_ativo(){ # $1 = prefixo; ecoa "digest_arvore|digest_politica"
   local a p
-  if [ -d "$1/opt/evidence-gate" ]; then
-    a="$(cd "$1/opt/evidence-gate" && find . -type f -exec sha256sum {} + 2>/dev/null \
+  if [ -d "$1/opt/tollens" ]; then
+    a="$(cd "$1/opt/tollens" && find . -type f -exec sha256sum {} + 2>/dev/null \
          | LC_ALL=C sort -k2 | sha256sum | cut -d' ' -f1)"
   else a="ARVORE_AUSENTE"; fi
   if [ -f "$1/etc/claude-code/managed-settings.json" ]; then
@@ -362,8 +362,8 @@ chk "  a politica no disco reflete o modo pedido (--enforce)" \
     "$(jq -r '.allowManagedHooksOnly' "$FK17/etc/claude-code/managed-settings.json" 2>/dev/null)" "true"
 chk "  e nao restou material de rollback" \
     "$(find "$FK17/etc/claude-code" "$FK17/opt" -maxdepth 1 \
-       \( -name '.managed-settings.json.*' -o -name 'evidence-gate.anterior.*' \
-          -o -name 'evidence-gate.stage.*' \) 2>/dev/null | wc -l | tr -d ' ')" "0"
+       \( -name '.managed-settings.json.*' -o -name 'tollens.anterior.*' \
+          -o -name 'tollens.stage.*' \) 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"

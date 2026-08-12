@@ -158,7 +158,7 @@ echo "== G10. --dry-run do instalador NAO altera estado (byte a byte) =="
 DH="$TMP/dryhome/.claude"; mkdir -p "$DH"
 ( cd "$REPO_ROOT" && CLAUDE_HOME="$DH" bash install/apply.sh >/dev/null 2>&1 )
 echo "orfao" > "$DH/hooks/saiu.sh"
-printf 'hooks/saiu.sh\n' >> "$DH/evidence-gate/managed-files.lock"
+printf 'hooks/saiu.sh\n' >> "$DH/tollens/managed-files.lock"
 dig(){ find "$1" -type f ! -path '*/backups/*' -exec sha256sum {} + 2>/dev/null | sed "s|$1||" | LC_ALL=C sort -k2 | sha256sum | cut -c1-32; }
 rm -rf "$DH/backups"      # o backup existente veio do apply que preparou o cenario
 ANTES=$(dig "$DH")
@@ -289,12 +289,118 @@ chk "o comando do projeto executou (ecossistema reivindicado)" \
     "$([ -f "$MARK13" ] && echo sim || echo nao)" "sim"
 chk "  e o JS quebrado AINDA barra (cobertura nao reivindicada permanece)" "$RC15" "2"
 
+echo "== G16. per_file com ZERO arquivos casados presentes vira LACUNA, nunca aprovacao =="
+# DEFEITO REPRODUZIDO antes da correcao: o laco per_file so roda para arquivos de CHANGED que
+# ainda existem (`[ -f "$ROOT/$f" ] || continue`). Se apagar o UNICO arquivo casado, o laco
+# nunca roda, RC fica no valor de inicializacao (0), e o adaptador contava como APROVADO sem
+# examinar nada. Medido: repo so com o .sh apagado -> exit 0, saida vazia.
+novo_repo g16
+printf 'echo ok\n' > script.sh; git add -A; git commit -qm base_sh
+git rm -q script.sh
+rc=$(gate false)
+chk "apagar o UNICO .sh casado nao aprova em silencio" "$rc" 2
+chk "  declara LACUNA, nao FALHA de codigo" \
+    "$(grep -q 'LACUNA DE COBERTURA' "$TMP/err" && ! grep -q 'VERIFICACAO FALHOU' "$TMP/err" \
+       && echo sim || echo nao)" "sim"
+chk "  nomeia zero unidades examinadas" \
+    "$(grep -q 'zero unidades examinadas' "$TMP/err" && echo sim || echo nao)" "sim"
+
+echo "== G17. per_file com AO MENOS UM arquivo casado presente examina normalmente =="
+# Sem este caso, a correcao de G16 poderia ter transformado toda delecao em lacuna - o defeito
+# OPOSTO (um commit que so apaga arquivo, quando ha outro do mesmo tipo NO MESMO CHANGED, e
+# legitimo e deve continuar sendo verificado pelo que sobrou). O per_file so examina o que esta
+# em CHANGED (nao a arvore inteira) - por isso os DOIS arquivos precisam estar no diff: um
+# MODIFICADO (presente) e um APAGADO (ausente), no mesmo turno.
+novo_repo g17
+printf 'echo ok\n' > fica.sh
+printf 'echo also\n' > vai.sh
+git add -A; git commit -qm base_sh2
+printf 'echo ok2\n' >> fica.sh   # entra em CHANGED por modificacao, nao so por criacao
+git add -A
+git rm -q vai.sh                 # apagado, no MESMO turno de fica.sh modificado
+rc=$(gate false)
+chk "um .sh some, o outro MUDOU e esta no CHANGED: passa (nao vira lacuna a toa)" "$rc" 0
+
+echo "== G18. renomear com conteudo divergente (derrota deteccao de similaridade) tambem vira LACUNA =="
+# Segunda rota para zero-unidades-examinadas: git diff --name-only sem deteccao de rename lista
+# o caminho ANTIGO como apagado quando o conteudo mudou o suficiente. O caminho antigo casa a
+# extensao do adaptador e nao existe mais no disco - mesmo mecanismo de G16.
+novo_repo g18
+printf '#!/bin/sh\necho a\n' > mover.sh; git add -A; git commit -qm base_mv
+git mv mover.sh mover.txt
+python3 -c "import random; random.seed(2); print(''.join(chr(random.randint(65,90)) for _ in range(9000)))" > mover.txt
+git add -A
+rc=$(gate false)
+chk "rename+reescrita deixa o caminho .sh antigo como apagado: vira LACUNA" "$rc" 2
+chk "  ainda nomeia zero unidades examinadas" \
+    "$(grep -q 'zero unidades examinadas' "$TMP/err" && echo sim || echo nao)" "sim"
+
+echo "== G19. symlink quebrado casando a extensao tambem vira LACUNA (nao e regular file) =="
+# Terceira rota: `[ -f ]` so aceita arquivo regular (segue o link). Um symlink cujo alvo nao
+# existe casa a extensao em CHANGED mas nunca passa no teste `-f` - mesmo mecanismo de G16.
+novo_repo g19
+ln -s /alvo/que/nao/existe.sh quebrado-link.sh
+git add -A
+rc=$(gate false)
+chk "symlink quebrado casando .sh vira LACUNA (zero unidades)" "$rc" 2
+chk "  nao passa em silencio (ha saida)" \
+    "$([ -s "$TMP/out" ] || [ -s "$TMP/err" ] && echo tem-saida || echo silencioso)" "tem-saida"
+
+echo "== G20. adaptador de ARVORE INTEIRA (nao per_file) com ecossistema ausente da arvore vira LACUNA =="
+# GENERALIZACAO (Correcao 2): o mesmo defeito tem uma segunda forma. Um adaptador nao-per_file
+# roda sobre TODA a arvore (nao so CHANGED); normalmente apagar um arquivo nao esvazia o
+# ecossistema inteiro, mas quando o apagado era o ULTIMO do ecossistema, a ferramenta roda sobre
+# uma arvore vazia. Medido: `ruff check .` sem nenhum .py imprime "No Python files found" e sai
+# 0 - aprovacao sobre nada, sem depender de RC (que a ferramenta zera por conta propria).
+novo_repo g20
+git rm -q base.py
+rc=$(gate false)
+chk "apagar o UNICO .py do repo nao aprova em silencio" "$rc" 2
+chk "  declara LACUNA nomeando o ecossistema ausente" \
+    "$(grep -q 'nenhum arquivo do ecossistema python existe mais na arvore' "$TMP/err" && echo sim || echo nao)" "sim"
+
+echo "== G21. arvore inteira com OUTRO arquivo do ecossistema presente examina normalmente =="
+novo_repo g21
+printf 'y = 2\n' > outro.py; git add -A; git commit -qm outro
+git rm -q base.py
+rc=$(gate false)
+chk "apagar um .py mas outro .py limpo permanece: passa (nao vira lacuna a toa)" "$rc" 0
+
+echo "== G22 (SONDA DE ACAO-NULA). para CADA adaptador da tabela, a acao nula nao aprova em silencio =="
+# A classe do defeito: um verificador que aprova sobre nada nao e oraculo de coisa alguma. Para
+# cada adaptador declarado em execution/adapters/code, monta um repo minimo cujo UNICO arquivo
+# casa a primeira extensao do adaptador, commita, e apaga esse arquivo como UNICA mudanca - a
+# acao nula do ecossistema. Tres desfechos sao legitimos e distintos de aprovacao vacua:
+#   1. LACUNA DE COBERTURA nomeando o adaptador (a correcao de G16/G20);
+#   2. LACUNA DE COBERTURA por G10 - adaptador que executa codigo do repo nunca roda sozinho
+#      (dotnet-analyzer cai aqui, por mecanismo DIFERENTE, ja coberto por G7);
+#   3. bloqueio com saida nao vazia (a ferramenta reprovou de verdade sobre outra coisa).
+# Binario ausente vira LACUNA DECLARADA nomeada, nunca pulo silencioso.
+for AJ in "$CLAUDE_ADAPTERS_DIR"/*.json; do
+  AID="$(jq -r '.id' "$AJ")"; AECO="$(jq -r '.ecosystem' "$AJ")"
+  AEXT="$(jq -r '.extensions[0]' "$AJ")"; ACMD="$(jq -r '.exec.command' "$AJ")"
+  AEXEC_REPO="$(jq -r '.declared_effects.executes_repository_code // false' "$AJ")"
+  if [ "$AEXEC_REPO" != "true" ] && ! command -v "$ACMD" >/dev/null 2>&1; then
+    echo "  LACUNA DECLARADA: $AID - '$ACMD' nao esta no PATH deste ambiente; sonda nao executada."
+    continue
+  fi
+  novo_repo "sonda-$(basename "$AJ" .json)"
+  git rm -q base.py; git commit -qm "remove semente"   # a sonda quer o ecossistema ISOLADO
+  printf 'x\n' > "unidade${AEXT}"
+  git add -A; git commit -qm "unidade $AECO"
+  git rm -q "unidade${AEXT}"
+  rc=$(gate false)
+  VAZIO="nao"; [ ! -s "$TMP/out" ] && [ ! -s "$TMP/err" ] && VAZIO="sim"
+  RESULTADO="nao-vacuo"; [ "$rc" = "0" ] && [ "$VAZIO" = "sim" ] && RESULTADO="vacuo"
+  chk "  $AID: acao nula (apagar unico $AEXT) nao aprova em silencio (rc=$rc)" "$RESULTADO" "nao-vacuo"
+done
+
 cd /
 echo
 echo "================ PASS=$P  FAIL=$F ================"
 # CONTAGEM E INVARIANTE, nao descricao. Sem isto, apagar cinco casos deixa PASS=15/FAIL=0 e a
 # suite segue verde - o numero no relatorio viraria documentacao, nao garantia.
-EXPECTED=41
+EXPECTED=59
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

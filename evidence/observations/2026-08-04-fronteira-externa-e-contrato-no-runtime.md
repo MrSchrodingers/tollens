@@ -104,7 +104,7 @@ coladas:
 
 ```
 - Comando: `wc -l /home/ti/evidence-gate/install/verify.sh` -> saida
-  `71 /home/ti/evidence-gate/install/verify.sh`, exit code `0`.
+  `71 /home/ti/evidence-gate/install/verify.sh`, exit code `0`. (caminho HISTORICO: o repositorio se chamava evidence-gate quando esta observacao foi gravada; reescrever o caminho falsificaria o registro de uma execucao real)
 ```
 
 Causa, isolada alternativa por alternativa e confirmada em nivel de byte:
@@ -187,3 +187,9 @@ o erro simetrico do que este repositorio persegue, e igualmente caro. O primeiro
 sessao (recusa com GH013) e este (aceite) diferem em UMA variavel: a existencia de um PR
 satisfeito. Sem variar essa variavel de proposito, qualquer um dos dois resultados sozinho
 autorizaria a conclusao errada.
+
+> NOTA DE INTEGRIDADE (2026-08-12): os comandos acima citam `MrSchrodingers/evidence-gate`
+> porque foi contra ESSE nome que eles foram executados. O repositorio passou a se chamar
+> `tollens` depois. A renomeacao automatica reescreveu estas linhas e o `blob_sha` do ledger
+> acusou a divergencia - reescrever comando gravado faz o registro afirmar uma execucao que
+> nunca ocorreu naquela URL, que e falsificacao de evidencia. Restaurado ao que foi rodado.
