@@ -192,6 +192,55 @@ A-3 - `if not all(strict_medidos)` reprovava com QUALQUER regra aplicavel de str
       - um ruleset nao-ativo alcancando `resolve_bypass` e sempre uma anomalia, nunca o resultado
       esperado de "rule layering" (que agrega VALORES de regra entre rulesets JA ativos, nao
       decide quais rulesets entram na agregacao).
+
+O OITAVO DEGRAU (wave8, 2026-08-12) - duas lacunas de not Bypass(a,P) que o codigo tratava como
+uma so, e o passo de CI que nao podia jamais ficar verde sob o proprio perfil de token recomendado
+-----------------------------------------------------------------------------------------------
+Medido pelo portao final contra a API VIVA: um GITHUB_TOKEN de Actions com `contents: read` (o
+perfil que este arquivo, algumas secoes acima, ja declarava incapaz de ver `bypass_actors`)
+rodando contra um ruleset PERFEITAMENTE configurado (Applies+Required+strict=true+
+enforcement=active+current_user_can_bypass=never) saia `estado: NOT_VERIFIED exit=2` - SEMPRE,
+sob QUALQUER configuracao do ruleset, porque a API nunca devolve `bypass_actors` a quem nao tem
+escrita no ruleset. O passo de CI que instala este probe (verify-pr.yml/verify-push.yml,
+GH_TOKEN=secrets.GITHUB_TOKEN) nao podia jamais ficar verde sob o proprio perfil que o recomenda -
+instalado um instrumento cujo docstring ja confessava, por escrito, que ele nao passa naquele
+perfil.
+
+A CORRECAO nao afrouxa "bypass_actors ausente = medido: []" (o defeito ORIGINAL que este arquivo
+existe para proibir, MV1 - `atores = detalhe.get("bypass_actors") or []` continua tao errado
+quanto sempre foi). Ela distingue DUAS FORMAS de "not Bypass(a,P) nao foi medido por completo",
+que o codigo ate aqui tratava como a MESMA lacuna:
+
+  (i) MEDICAO PARCIAL DECLARADA: `bypass_actors` ausente da resposta de UM `rulesets/{id}` (a API
+      nao devolve a LISTA de atores com bypass concedido a quem nao tem escrita no ruleset) **E**
+      `current_user_can_bypass`, NESSE MESMO ruleset, presente e igual a `'never'` (o campo que o
+      SERVIDOR calcula e devolve PARA O ATOR AUTENTICADO, sem exigir acesso de escrita). Isto NAO
+      e "nada medido": o servidor confirma que o proprio ator que executa o probe nao pode
+      contornar a regra. O que permanece nao observavel e bypass concedido a OUTRO ator/role (ex.:
+      `OrganizationAdmin` em `bypass_actors`, que um admin real veria e o GITHUB_TOKEN de Actions
+      nao ve) - um residuo REAL, nomeado explicitamente na saida (`motivo` e o stderr de `main`),
+      nunca escondido atras de um PASS silencioso. So classifica como (i) quando `nao_medidos`,
+      NO TOTAL (nao so a entrada de um ruleset isolado), nao tem NENHUMA outra lacuna - qualquer
+      OUTRO campo nao medido, de qualquer origem (`enforcement`, `ruleset_id`, um segundo ruleset
+      ilegivel, uma regra `required_status_checks` ilegivel), bloqueia a classificacao.
+  (ii) LACUNA GERAL: qualquer outra forma - `bypass_actors` ausente/nulo/tipo-errado SEM
+      `current_user_can_bypass` medido como `'never'` no MESMO ruleset (ausente, nulo, tipo
+      errado - um valor presente e DIFERENTE de 'never' ja e uma VIOLACAO PROVADA pelo
+      `elif cucb != "never":` pre-existente, nunca uma lacuna), OU qualquer outro campo decisivo
+      nao medido coexistindo com a forma (i). Continua NOT_VERIFIED, exit 2 - a lacuna aqui e
+      genuinamente indeterminada, sem outro campo do servidor que a resolva.
+
+EXIT CODE de (i): 0, mesmo numero de PASS, mas com um `estado` DISTINTO (`PASS_PARCIAL`, nunca
+`PASS` puro) e a limitacao NOMEADA em `motivo`. A alternativa (um exit != 0 e != 2, ex. 3) foi
+avaliada e REJEITADA: o passo de CI que consome este probe (ver os workflows citados acima) trata
+QUALQUER exit != 0 como falha do step - um novo exit code manteria o CI vermelho para sempre sob
+o perfil recomendado, o MESMO problema que esta correcao existe para resolver, so deslocado de
+"exit 2" para "exit 3". A garantia que nao pode se perder: (i) nunca pode ser confundido com PASS
+puro por quem le so o exit code (dai o `estado` distinto, verificado literalmente pela suite,
+nunca so a prosa de `motivo`) nem pode mascarar uma lacuna genuinamente indeterminada que
+coexista com ela (dai a comparacao `len(nao_medidos) == len(medicao_parcial)` em `probe`, nao
+"algo tolerado foi encontrado": QUALQUER outra entrada em `nao_medidos`, de qualquer origem,
+bloqueia a classificacao como MEDICAO PARCIAL e preserva NOT_VERIFIED).
 """
 from __future__ import annotations
 
@@ -202,7 +251,13 @@ import subprocess
 import sys
 
 PASS, FAIL, NOT_VERIFIED = "PASS", "FAIL", "NOT_VERIFIED"
-EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2}
+# (wave8) MEDICAO PARCIAL DECLARADA: not Bypass(a,P) medido POR COMPLETO para o ator autenticado
+# ('current_user_can_bypass'='never'), mas a LISTA de atores com bypass concedido
+# ('bypass_actors') nao foi divulgada pela API (falta de acesso de escrita ao ruleset) - ver
+# docstring, secao "O OITAVO DEGRAU". Exit 0 (o portao pode ficar verde), `estado` DISTINTO de
+# PASS puro - nunca confundido com "tudo medido, nada encontrado" por quem le so o exit code.
+PASS_PARCIAL = "PASS_PARCIAL"
+EXIT = {PASS: 0, FAIL: 1, NOT_VERIFIED: 2, PASS_PARCIAL: 0}
 
 # Formato de owner/repo do GitHub: nunca comeca com '-' (evitaria que um valor externo fosse
 # lido como opcao por `gh`), e so os caracteres que o GitHub aceita em login/nome de repo.
@@ -319,12 +374,21 @@ def resolve_owner_repo(explicit_owner, explicit_repo):
     return m.group(1), m.group(2), None
 
 
-def resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas):
+def resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas, medicao_parcial):
     """Consulta `rulesets/{id}` para cada id em `ruleset_ids` e resolve enforcement,
-    bypass_actors e current_user_can_bypass - o termo not Bypass(a,P). Muta `nao_medidos` e
-    `problemas` (listas do chamador `probe`) em vez de devolve-los: os dois acumuladores sao
-    compartilhados com o resto de `probe`, que decide FAIL vs NOT_VERIFIED depois que esta funcao
-    volta. Devolve `detalhes_rulesets` (dict rid -> resposta) para a evidencia do `Resultado`.
+    bypass_actors e current_user_can_bypass - o termo not Bypass(a,P). Muta `nao_medidos`,
+    `problemas` e `medicao_parcial` (listas do chamador `probe`) em vez de devolve-los: os tres
+    acumuladores sao compartilhados com o resto de `probe`, que decide FAIL vs NOT_VERIFIED vs
+    PASS_PARCIAL depois que esta funcao volta. Devolve `detalhes_rulesets` (dict rid -> resposta)
+    para a evidencia do `Resultado`.
+
+    `medicao_parcial` (wave8, O OITAVO DEGRAU): SUBCONJUNTO de `nao_medidos` - toda entrada
+    adicionada a `medicao_parcial` e SEMPRE tambem adicionada a `nao_medidos` (nunca ao
+    contrario). `probe` usa essa relacao de subconjunto para decidir PASS_PARCIAL: quando
+    `len(nao_medidos) == len(medicao_parcial)`, TODA lacuna acumulada em `nao_medidos` (nao so a
+    de um ruleset isolado) e da forma tolerada - nenhuma OUTRA lacuna, de nenhuma origem
+    (`enforcement`, `ruleset_id`, `required_status_checks`, um segundo ruleset ilegivel, etc.),
+    permanece. Ver o docstring do modulo para a distincao completa entre as duas lacunas.
 
     CHAMADA DE DOIS PONTOS DE `probe` (wave7, C-1): o ponto "normal" (Required(P) confirmado,
     `ruleset_ids` resolvido) e o ponto NOVO, dentro de `if context not in contextos: if
@@ -412,9 +476,30 @@ def resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas):
 
         bp_status, bp_valor = valida_campo(detalhe, "bypass_actors", list, tipo_item=dict)
         if bp_status == FALTANTE:
-            nao_medidos.append(
-                f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO foi "
-                f"medido. A API so devolve este campo a quem tem acesso de escrita ao ruleset.")
+            # (wave8, O OITAVO DEGRAU) `current_user_can_bypass` e o campo que o SERVIDOR calcula
+            # e devolve PARA O ATOR AUTENTICADO, sem exigir acesso de escrita ao ruleset (ao
+            # contrario de `bypass_actors`, a LISTA completa - ver o docstring desta funcao).
+            # Segunda leitura, PURA, do mesmo `valida_campo` ja chamado abaixo na posicao normal
+            # (sem efeito colateral - so verifica, nao substitui a validacao de baixo): se o
+            # servidor ja confirma 'never' PARA ESTE ator, not Bypass(a,P) foi MEDIDO POR
+            # COMPLETO para ele - MEDICAO PARCIAL DECLARADA, nao lacuna geral (a lacuna que sobra,
+            # bypass concedido a OUTRO ator/role, e nomeada explicitamente, nunca escondida).
+            cucb_pre_status, cucb_pre = valida_campo(detalhe, "current_user_can_bypass", str)
+            if cucb_pre_status is None and cucb_pre == "never":
+                msg = (
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta (a API so devolve este "
+                    f"campo a quem tem acesso de escrita ao ruleset), mas "
+                    f"'current_user_can_bypass'='never' foi medido para o ator autenticado - "
+                    f"MEDICAO PARCIAL DECLARADA de not Bypass(a,P), nao lacuna geral: bypass "
+                    f"concedido a OUTRO ator/role nao pode ser descartado por este probe sob "
+                    f"este token.")
+                nao_medidos.append(msg)
+                medicao_parcial.append(msg)
+            else:
+                nao_medidos.append(
+                    f"ruleset {rid}: 'bypass_actors' ausente da resposta - not Bypass(a,P) NAO "
+                    f"foi medido. A API so devolve este campo a quem tem acesso de escrita ao "
+                    f"ruleset.")
         elif bp_status == NULO:
             # Mesma doutrina da chave ausente, um passo adiante: um valor `null` EXPLICITO
             # tambem nao e "medido: []". `atores = detalhe["bypass_actors"] or []` colapsava os
@@ -569,6 +654,10 @@ def probe(owner, repo, branch, context):
     # pela mesma razao ja documentada para o laco de rulesets abaixo - um `return` descartaria uma
     # violacao de `strict` ja medida numa regra ANTERIOR do mesmo laco.
     problemas = []
+    # (wave8) SUBCONJUNTO de `nao_medidos` - ver o docstring de `resolve_bypass`. Nasce aqui, no
+    # mesmo ponto que `problemas`, porque os dois pontos de chamada de `resolve_bypass` abaixo
+    # (C-1 e o normal) precisam do MESMO acumulador.
+    medicao_parcial = []
     contextos = set()
     strict_medidos = []
     ruleset_ids = set()
@@ -776,7 +865,8 @@ def probe(owner, repo, branch, context):
             # INVERSO, NOT_VERIFIED por lacuna de consulta nunca feita, sobre uma violacao que
             # UMA CHAMADA DE API JA DISPONIVEL (ruleset_id valido) teria revelado.
             if ruleset_ids:
-                detalhes_rulesets = resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas)
+                detalhes_rulesets = resolve_bypass(
+                    owner, repo, ruleset_ids, nao_medidos, problemas, medicao_parcial)
                 if problemas:
                     return Resultado(
                         FAIL,
@@ -787,6 +877,14 @@ def probe(owner, repo, branch, context):
                         + "; ".join(problemas),
                         {"rules": rules, "rulesets": detalhes_rulesets},
                     )
+                # (wave8) `medicao_parcial` pode ter sido populado por `resolve_bypass` acima, mas
+                # este ramo (Required(P) INDETERMINADO por uma regra ilegivel - o guard `if
+                # nao_medidos:` que envolve este bloco inteiro) NUNCA pode classificar como
+                # PASS_PARCIAL: `nao_medidos` ja continha, ANTES desta chamada, a entrada da regra
+                # ilegivel (a razao de estarmos neste ramo) - uma lacuna SEM relacao com
+                # bypass_actors/current_user_can_bypass. `len(nao_medidos) == len(medicao_parcial)`
+                # (o guard usado no ramo normal, abaixo) e por construcao FALSO aqui: a lacuna de
+                # Required(P) permanece, e o `return NOT_VERIFIED` logo abaixo e o correto.
             # Sem isto, uma regra aplicavel ILEGIVEL (C1/A1 acima) que PODERIA ter exigido
             # `context` faria este ramo declarar `Required(P) = False` por omissao - a mesma
             # coercao de ausencia em conclusao que A2 fecha para bypass/enforcement, agora para
@@ -856,7 +954,8 @@ def probe(owner, repo, branch, context):
     # estabelecidos pelos dois blocos acima - e o ponto "normal", mutuamente exclusivo com o novo
     # ponto de chamada em `if context not in contextos: if nao_medidos: if ruleset_ids:` (C-1,
     # wave7, ver comentario la).
-    detalhes_rulesets = resolve_bypass(owner, repo, ruleset_ids, nao_medidos, problemas)
+    detalhes_rulesets = resolve_bypass(
+        owner, repo, ruleset_ids, nao_medidos, problemas, medicao_parcial)
 
     if problemas:
         # FAIL vence sobre "nao medido": uma violacao ja PROVADA (bypass_actors nao vazio,
@@ -873,6 +972,27 @@ def probe(owner, repo, branch, context):
         )
 
     if nao_medidos:
+        if medicao_parcial and len(nao_medidos) == len(medicao_parcial):
+            # (wave8, O OITAVO DEGRAU) TODA entrada de `nao_medidos`, sem excecao, e da forma
+            # tolerada (`medicao_parcial` e SUBCONJUNTO de `nao_medidos` por construcao - ver o
+            # docstring de `resolve_bypass` - e aqui os dois tem o MESMO tamanho): nenhuma OUTRA
+            # lacuna, de nenhuma origem, permanece. not Bypass(a,P) foi MEDIDO POR COMPLETO para o
+            # ator autenticado em TODOS os rulesets de origem - a unica coisa que falta e a LISTA
+            # de outros atores com bypass concedido, que este token nao tem permissao de ler.
+            # PASS_PARCIAL, nao PASS: `estado` fica DISTINTO de PASS puro (verificado literalmente
+            # pela suite), e a limitacao fica NOMEADA em `motivo` - nunca um PASS silencioso sobre
+            # o residuo que sobra.
+            return Resultado(
+                PASS_PARCIAL,
+                f"Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
+                f"medidos. not Bypass(a,P) foi MEDIDO POR COMPLETO para o ator autenticado "
+                f"('current_user_can_bypass'='never' em todos os rulesets de origem "
+                f"{sorted(ruleset_ids)}), mas a LISTA completa de atores com bypass concedido "
+                f"('bypass_actors') nao foi divulgada pela API (exige acesso de escrita ao "
+                f"ruleset) - MEDICAO PARCIAL DECLARADA, nao lacuna geral: "
+                + "; ".join(medicao_parcial),
+                {"rules": rules, "rulesets": detalhes_rulesets},
+            )
         return Resultado(
             NOT_VERIFIED,
             "Applies(P,r) e Required(P) valem e nenhuma violacao foi encontrada nos campos "
@@ -919,6 +1039,13 @@ def main(argv):
     if r.estado == NOT_VERIFIED:
         print("Estado: NAO VERIFICADO - a lacuna de oraculo (rede/token/API) impede o veredito. "
               "Nao declare PASS nem FAIL por auto-avaliacao.", file=sys.stderr)
+    elif r.estado == PASS_PARCIAL:
+        # (wave8) exit 0 (o step de CI passa), mas a limitacao fica nomeada no canal que o
+        # operador le - nunca so no `motivo` de stdout, que costuma ser resumido em dashboards.
+        print("Estado: PASS COM MEDICAO PARCIAL - 'bypass_actors' nao foi divulgado pela API "
+              "(falta de acesso de escrita ao ruleset); 'current_user_can_bypass'='never' foi "
+              "medido para o ator autenticado. Bypass concedido a outro ator/role nao e "
+              "observavel por este probe sob este token.", file=sys.stderr)
     return r.exit_code
 
 

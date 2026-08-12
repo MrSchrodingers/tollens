@@ -172,7 +172,7 @@ case "$REQ" in
       empty) echo '[]' ;;
       # As variantes abaixo so divergem no que rulesets/{id} devolve: a resposta de
       # rules/branches e a mesma "regra aplicavel, contexto verify-pr presente" de `pass`.
-      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado|enforcement-nao-active|cucb-nao-never)
+      pass|bypass-ausente|bypass-nao-vazio|cucb-ausente|resposta-nao-dict|bypass-null|bypass-tipo-errado|enforcement-nao-active|cucb-nao-never|bypass-ausente-cucb-ausente)
         cat <<'JSON'
 [
   {"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"stub/repo","ruleset_id":999},
@@ -206,6 +206,24 @@ JSON
    "parameters":{"strict_required_status_checks_policy":false,
    "do_not_enforce_on_create":false,
    "required_status_checks":[{"context":"verify-pr","integration_id":15368}]}}
+]
+JSON
+        ;;
+      strict-false-rid-ausente-contexto-fora)
+        # (wave8, V43, CONTROLE de MV18) MESMA regra UNICA de strict-false-ruleset-id-ausente
+        # (V32: sem 'ruleset_id', strict=false JA MEDIDO), mas o CONTEXTO da propria regra e
+        # DIVERGENTE do exigido ('outro-check', nao 'verify-pr') - Required(P) fica indeterminado
+        # pela MESMA regra que tambem deixa 'ruleset_ids' VAZIO (nao ha uma segunda regra com
+        # 'ruleset_id' valido, ao contrario de V33/501-502). Isola o bloco `if context not in
+        # contextos: if nao_medidos: if problemas:` com 'ruleset_ids' vazio - o sub-caso que a
+        # asercao antiga de MV18 (chamada de rede) nao cobre, porque nunca ha ruleset_id
+        # resolvivel para consultar, mutado ou nao.
+        cat <<'JSON'
+[
+  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"stub/repo",
+   "parameters":{"strict_required_status_checks_policy":false,
+   "do_not_enforce_on_create":false,
+   "required_status_checks":[{"context":"outro-check","integration_id":15368}]}}
 ]
 JSON
         ;;
@@ -566,7 +584,15 @@ JSON
       bypass-ausente)
         # Achado CRITICO: a API so devolve `bypass_actors` a quem tem write no ruleset. Um
         # GITHUB_TOKEN de Actions com `contents: read` recebe a resposta sem essa chave.
+        # (wave8, V4) 'current_user_can_bypass'='never' AO LADO da ausencia - MEDICAO PARCIAL
+        # DECLARADA, nao lacuna geral (ver docstring do probe, "O OITAVO DEGRAU").
         echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never"}' ;;
+      bypass-ausente-cucb-ausente)
+        # (wave8, V42, CONTROLE de V4) MESMA ausencia de 'bypass_actors', mas SEM
+        # 'current_user_can_bypass' medido como 'never' - a forma que continua sendo LACUNA
+        # GERAL, nao a medicao parcial tolerada. 'enforcement' fica presente e limpo para isolar
+        # o predicado (nenhuma outra lacuna alem das duas de bypass).
+        echo '{"id":999,"enforcement":"active"}' ;;
       bypass-nao-vazio)
         echo '{"id":999,"enforcement":"active","current_user_can_bypass":"never",
                "bypass_actors":[{"actor_type":"Team","actor_id":42,"bypass_mode":"always"}]}' ;;
@@ -706,21 +732,36 @@ RC2=$(PATH="$NOBIN" "$PYBIN" "$PROBE" --owner stub --repo repo --branch main --c
 chk "  'gh' ausente do PATH tambem e NOT_VERIFIED (mesma doutrina, outra causa)" "$RC2" 2
 chk "  e nomeia a dependencia ausente" "$(grep -q "'gh'" "$T/out2" && echo sim || echo nao)" "sim"
 
-echo "== V4. 'bypass_actors' AUSENTE da resposta do ruleset -> NOT_VERIFIED (achado CRITICO) =="
-# O defeito que esta rodada de correcao existe para fechar: antes, 'or []' sobre um campo NAO
-# DEVOLVIDO (por falta de acesso de escrita ao ruleset - o caso de um GITHUB_TOKEN de Actions com
-# `contents: read`) virava "medido: []" e o probe saia PASS. Reproduzido contra o servidor real
-# em github/docs (ver evidence/observations); aqui a mesma forma, stubada e deterministica.
+echo "== V4. (wave8, redefinido) 'bypass_actors' AUSENTE + 'current_user_can_bypass'='never' =="
+echo "==     -> PASS_PARCIAL, exit 0 (MEDICAO PARCIAL DECLARADA, nao lacuna geral) =="
+# ATE wave7, este caso saia NOT_VERIFIED exit 2 - o defeito que a onda 4 fechou (achado CRITICO:
+# 'or []' sobre um campo NAO DEVOLVIDO por falta de acesso de escrita ao ruleset virava "medido:
+# []" e o probe saia PASS fabricado; reproduzido contra o servidor real em github/docs). Mas
+# medido nesta sessao (wave8) contra a API VIVA, com o MESMO perfil de token que o CI usa
+# (GITHUB_TOKEN, contents:read) e um ruleset PERFEITAMENTE configurado: o probe saia NOT_VERIFIED
+# exit 2 SEMPRE, porque a API nunca devolve 'bypass_actors' a esse perfil - o passo de CI que
+# instala este probe nao podia jamais ficar verde. 'current_user_can_bypass'='never' (devolvido
+# PARA O ATOR AUTENTICADO, sem exigir escrita) e uma medicao REAL e SUFICIENTE para o proprio
+# ator do probe - MEDICAO PARCIAL DECLARADA, nao a mesma lacuna de "nada medido" (ver docstring
+# do probe, "O OITAVO DEGRAU"). V42 abaixo e o CONTROLE: a mesma ausencia de bypass_actors SEM
+# cucb='never' continua NOT_VERIFIED.
 MRK="$T/chamou-ruleset-v4"; rm -f "$MRK"
 RC="$(rodar bypass-ausente "$MRK")"
-chk "exit code 2 (nao mais 0 - o PASS fabricado)" "$RC" 2
-chk "relata estado NOT_VERIFIED" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "exit code 0 (nao mais 2 - medicao parcial declarada, nao lacuna geral, wave8)" "$RC" 0
+chk "relata estado PASS_PARCIAL (nunca PASS puro, nunca NOT_VERIFIED)" \
+    "$(grep -q '^estado: PASS_PARCIAL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado PASS puro (a limitacao tem de ficar nomeada, nao escondida)" \
+    "$(grep -q '^estado: PASS$' "$T/out" && echo vazou || echo contido)" "contido"
 # ROTULO UNICO na suite inteira (wave5): antes desta correcao, este texto tambem aparecia em
 # V19 (a2-coercao) - o arnes de mutacao credita kill por ROTULO, e um rotulo repetido entre
 # casos permite que um mutante seja "morto" pelo caso ERRADO sem que ninguem perceba.
 chk "  motivo cita 'bypass_actors' ausente (ruleset unico)" "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita MEDICAO PARCIAL DECLARADA (a limitacao nao pode ficar so no exit code)" \
+    "$(grep -q 'MEDICAO PARCIAL DECLARADA' "$T/out" && echo sim || echo nao)" "sim"
 chk "  NAO afirma 'bypass_actors=[]' sem ter medido" \
     "$(grep -q 'bypass_actors=\[\]' "$T/out" && echo afirmou || echo nao-afirmou)" "nao-afirmou"
+chk "  stderr nomeia a limitacao (canal que o operador le, nunca so exit 0 silencioso)" \
+    "$(grep -q 'PASS COM MEDICAO PARCIAL' "$T/err" && echo sim || echo nao)" "sim"
 
 echo "== V5. 'bypass_actors' NAO vazio -> FAIL (ha ator que pode burlar a regra) =="
 MRK="$T/chamou-ruleset-v5"; rm -f "$MRK"
@@ -1242,11 +1283,50 @@ chk "  NAO relata estado FAIL (nao fabrica violacao de strict so por haver um st
 chk "  NAO cita 'strict_required_status_checks_policy nao esta ligado' (nenhuma violacao medida)" \
     "$(grep -qF 'strict_required_status_checks_policy nao esta ligado' "$T/out" && echo vazou || echo contido)" "contido"
 
+echo "== V42. (wave8, CONTROLE de V4) 'bypass_actors' AUSENTE, mas 'current_user_can_bypass' TAMBEM"
+echo "==      ausente -> continua NOT_VERIFIED, exit 2 (lacuna geral, nao medicao parcial) =="
+# A MESMA ausencia de bypass_actors de V4, mas SEM o campo que o servidor calcula PARA O ATOR
+# AUTENTICADO tambem medido como 'never' - isto E a lacuna GERAL que continua reprovando por
+# NOT_VERIFIED, distinta da MEDICAO PARCIAL DECLARADA de V4. Sem este controle, um mutante que
+# tratasse QUALQUER 'bypass_actors' ausente como medicao parcial (ignorando o estado de
+# 'current_user_can_bypass') sobreviveria.
+MRK="$T/chamou-ruleset-v42"; rm -f "$MRK"
+RC="$(rodar bypass-ausente-cucb-ausente "$MRK")"
+chk "exit code 2 (lacuna geral, nao medicao parcial, v42)" "$RC" 2
+chk "relata estado NOT_VERIFIED (v42)" "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'bypass_actors' ausente (v42)" \
+    "$(grep -q "'bypass_actors' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita 'current_user_can_bypass' ausente (v42)" \
+    "$(grep -q "'current_user_can_bypass' ausente" "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado PASS_PARCIAL (ausencia de cucb='never' nao pode virar medicao parcial)" \
+    "$(grep -q '^estado: PASS_PARCIAL$' "$T/out" && echo vazou || echo contido)" "contido"
+
+echo "== V43. (wave8, CONTROLE de MV18) 'ruleset_id' AUSENTE + strict=false JA MEDIDO + contexto"
+echo "==      DIVERGENTE (ruleset_ids VAZIO) -> FAIL por SEVERIDADE, exit 1 =="
+# MESMA forma de V32 (ruleset_id ausente + strict=false na mesma regra), mas o contexto da propria
+# regra e DIVERGENTE do exigido - Required(P) fica indeterminado SEM que nenhuma OUTRA regra
+# declare 'ruleset_id' valido (ao contrario de V33, que usa DOIS ruleset_id validos, 501/502, e
+# por isso nao isola SEVERIDADE: la, a violacao de strict sobrevive por um caminho DIFERENTE - o
+# `if problemas:` que roda DEPOIS de `resolve_bypass`, dentro de `if ruleset_ids:` - mesmo se o
+# guard testado aqui for removido). Aqui, 'ruleset_ids' fica VAZIO: se a violacao de strict ja
+# medida for descartada (a mutacao que MV18 aplica), NADA MAIS a resgata - o veredito degrada de
+# FAIL para NOT_VERIFIED, nao so ganha uma chamada de rede evitavel.
+MRK="$T/chamou-ruleset-v43"; rm -f "$MRK"
+RC="$(rodar strict-false-rid-ausente-contexto-fora "$MRK")"
+chk "exit code 1 (severidade: violacao ja medida nao pode virar NOT_VERIFIED, v43)" "$RC" 1
+chk "  relata estado FAIL (v43)" "$(grep -q '^estado: FAIL$' "$T/out" && echo sim || echo nao)" "sim"
+chk "  motivo cita strict_required_status_checks_policy (v43)" \
+    "$(grep -q 'strict_required_status_checks_policy' "$T/out" && echo sim || echo nao)" "sim"
+chk "  NAO relata estado NOT_VERIFIED (severidade nao pode ser rebaixada, v43)" \
+    "$(grep -q '^estado: NOT_VERIFIED$' "$T/out" && echo vazou || echo contido)" "contido"
+chk "  NAO chama o endpoint de ruleset (ruleset_id nunca foi resolvido, v43)" \
+    "$([ -f "$MRK" ] && echo chamou || echo nao-chamou)" "nao-chamou"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio, e V2/V4/V5/V6/V7/V8/
-# V10-V41 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
-EXPECTED=169
+# V10-V43 - os casos negativos desta suite - sao precisamente o que nao pode desaparecer sem sinal.
+EXPECTED=182
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
