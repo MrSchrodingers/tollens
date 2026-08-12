@@ -149,7 +149,7 @@ CHECK=0
 # CI REAL - mesma doutrina de TOLLENS_LOCK_FILE em tests/lib/lock.sh: apontar a medicao
 # de producao para um subconjunto arbitrario desliga a garantia, nao a configura.
 ALVOS="${COBERTURA_ALVOS:-$(cat <<'EOF'
-evidence/probes/github-ruleset.py:85.4
+evidence/probes/github-ruleset.py:86.0
 evidence/validate-claims.py:81.4
 evidence/validate-literature.py:92.3
 evidence/runtime-probes/declared-capabilities.py:90.0
