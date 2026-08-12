@@ -7,40 +7,40 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Suite | Assercoes | Exit |
 |---|---:|---:|
-| `tests/unit/regressao-gate.sh` | 41 | 0 |
+| `tests/unit/regressao-gate.sh` | 59 | 0 |
 | `tests/unit/document-tools.sh` | 21 | 0 |
 | `tests/unit/supply-chain.sh` | 6 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
-| `tests/unit/claims.sh` | 47 | 0 |
+| `tests/unit/claims.sh` | 54 | 0 |
 | `tests/unit/propriedades.sh` | 22 | 0 |
 | `tests/unit/fronteira-externa.sh` | 11 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
 | `tests/unit/schedule.sh` | 29 | 0 |
-| `tests/unit/fronteira-viva.sh` | 117 | 0 |
+| `tests/unit/fronteira-viva.sh` | 169 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 38 | 0 |
-| `tests/unit/cobertura.sh` | 11 | 0 |
-| `tests/unit/run.sh` | 53 | 0 |
+| `tests/unit/cobertura.sh` | 28 | 0 |
+| `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
 ## Mutacao
 
 | Alvo | Mutantes | Exit |
 |---|---:|---:|
-| gate | 13 | 0 |
+| gate | 15 | 0 |
 | contrato de subagente | 9 | 0 |
 | instalador | 5 | variavel (sudo) |
 | fronteira externa | 7 | 0 |
 | conformidade de dois escopos | 7 | 0 |
 | escalonamento | 10 | 0 |
-| fronteira viva | 16 | 0 |
+| fronteira viva | 26 | 0 |
 | camada de literatura | 13 | 0 |
-| claim ledger | 5 | 0 |
+| claim ledger | 8 | 0 |
 | capability declarada | 7 | 0 |
-| cobertura de decisao | 2 | 0 |
+| cobertura de decisao | 5 | 0 |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 
@@ -50,8 +50,8 @@ assercao).
 
 | Arquivo | Medido | Piso | Status |
 |---|---:|---:|---|
-| `evidence/probes/github-ruleset.py` | 83.3% | 78.8% | OK |
-| `evidence/validate-claims.py` | 79.9% | 77.7% | OK |
+| `evidence/probes/github-ruleset.py` | 85.4% | 85.4% | OK |
+| `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
 | `evidence/runtime-probes/declared-capabilities.py` | 90.0% | 90.0% | OK |
 | `orchestration/schedule.py` | 88.4% | 88.4% | OK |
