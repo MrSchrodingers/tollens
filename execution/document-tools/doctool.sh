@@ -70,9 +70,20 @@ build_args(){ # popula ARGV a partir de um array JSON de args
   ARGV=()
   local raw
   while IFS= read -r raw; do
-    ARGV+=("$(IN="$IN" WORK="$WORK" TOOLS="$TOOLS" ARG="$ARG" awk -v s="$raw" '
+    # O TEMPLATE VAI POR ENVIRON, NAO POR `-v`. A primeira versao desta correcao usava
+    # `awk -v s="$raw"`, e `-v` faz PROCESSAMENTO DE ESCAPE POSIX sobre o valor - camada de
+    # interpretacao que o `${raw//.../...}` do bash nao tinha. Consequencia medida pelo portao
+    # final: `pdf.json:23` declara `^[0-9]+\.[0-9. ]*[A-Z]`, o unico arg com barra invertida do
+    # repositorio, e o `\.` (ponto literal) virava `.` (qualquer caractere). O plano `outline`
+    # passou a SOBRE-CASAR, e o awk ainda vazava `warning: escape sequence '\.' treated as plain
+    # '.'` no stderr de uma ferramenta que emite JSON.
+    #
+    # Corrigir um defeito de reprocessamento introduzindo outro reprocessamento e a forma exata
+    # do defeito que esta funcao existe para fechar. `ENVIRON` nao processa escape - medido:
+    # `-v s='a\.b'` devolve `a.b`; `X='a\.b' ... ENVIRON["X"]` devolve `a\.b`.
+    ARGV+=("$(S="$raw" IN="$IN" WORK="$WORK" TOOLS="$TOOLS" ARG="$ARG" awk '
       BEGIN {
-        n = length(s); out = ""
+        s = ENVIRON["S"]; n = length(s); out = ""
         for (i = 1; i <= n; ) {
           if (substr(s, i, 6) == "$INPUT") { out = out ENVIRON["IN"];    i += 6; continue }
           if (substr(s, i, 5) == "$WORK")  { out = out ENVIRON["WORK"];  i += 5; continue }

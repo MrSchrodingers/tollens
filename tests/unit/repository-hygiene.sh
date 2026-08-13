@@ -42,8 +42,23 @@ allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|\.git|\.github|\.gitig
 # `-v` reporta a FONTE da regra que casou; exigir que seja `.gitignore` fecha os outros dois
 # canais sem perder a correcao do falso positivo, porque o que se quer tolerar - residuo de
 # ferramenta - esta declarado no arquivo versionado, onde a decisao e revisavel.
+# O EXIT CODE TAMBEM, e nao so a fonte. Medido pelo portao final da onda 10: `git check-ignore -v`
+# imprime a regra que CASOU, inclusive quando ela e uma NEGACAO (`!padrao`) - e negacao significa
+# exatamente "NAO ignore isto". A versao anterior lia so a fonte da linha e descartava o exit
+# code, entao uma unica linha `!backdoor/` no .gitignore fazia o portao tratar lixo nao ignorado
+# como "residuo tolerado": controle sem a linha reprovava (exit 1), com a linha passava (exit 0),
+# e o `git status` continuava mostrando `?? backdoor/`.
+#
+# Isso falsificava a frase que justificou remover a isencao de mascara neste mesmo arquivo -
+# "nao cria classe isentavel nenhuma". Criava, em uma linha, e o predicado se chama `ignorado`.
+# Terceira correcao consecutiva nesta regiao; por isso o predicado agora exige as DUAS condicoes
+# e recusa padrao de negacao explicitamente, em vez de mais uma emenda em cima.
 ignorado(){
-  [ "$(git check-ignore -v -- "$1" 2>/dev/null | cut -d: -f1)" = ".gitignore" ]
+  local v
+  v="$(git check-ignore -v -- "$1" 2>/dev/null)" || return 1   # exit != 0: git NAO ignora
+  [ "${v%%:*}" = ".gitignore" ] || return 1                    # fonte tem de ser o arquivo versionado
+  case "${v#*:*:}" in '!'*) return 1 ;; esac                   # padrao de negacao nunca isenta
+  return 0
 }
 # MASCARA DO RUNTIME - POR QUE NAO HA ISENCAO AQUI, e por que houve uma por algumas horas.
 #

@@ -340,9 +340,44 @@ chk "  e o mesmo conteudo com nome honesto tambem" "$(orc "$T/log.log")" "2"
 chk "  imagem VERDADEIRA dentro do teto continua passando" \
     "$(orc "$PWD/docs/brand/tollens-header-en.png")" "0"
 
+echo "== D13. arg com BARRA INVERTIDA sobrevive a substituicao (o plano outline) =="
+# ACHADO DO PORTAO FINAL DA ONDA 10. A primeira correcao de re-substituicao usou
+# `awk -v s="$raw"`, e `-v` faz processamento de escape POSIX - camada que o `${raw//}` do bash
+# nao tinha. `pdf.json` declara `^[0-9]+\\.[0-9. ]*[A-Z]`, o UNICO arg do repositorio com barra
+# invertida: o `\.` (ponto literal) virava `.` (qualquer caractere) e o plano SOBRE-CASAVA.
+#
+# Passou porque `outline` nao tinha NENHUM caso: `grep -rn outline tests/` era vazio. A cobertura
+# estava anticorrelacionada ao risco - o unico arg com escape era o unico plano sem teste.
+#
+# O oraculo aqui e DIFERENCIAL: o executor tem de devolver exatamente o que o regex VERSIONADO
+# devolve rodando direto. Comparar com um literal esperado nao pegaria, porque eu escreveria o
+# literal ja mangled.
+python3 - "$T" <<'PYEOF'
+import sys, fitz
+d = fitz.open(); p = d.new_page(); y = 60
+for ln in ["Documento", "12X 3 Linha que so casa se o ponto virar coringa",
+           "meio", "12. 3 Linha que casa com o ponto literal"]:
+    p.insert_text((60, y), ln, fontsize=11); y += 18
+d.save(sys.argv[1] + "/escape.pdf"); d.close()
+PYEOF
+pk="$(bash "$D" run "$T/escape.pdf" outline 2>"$T/outline.err")"
+pdftotext -layout "$T/escape.pdf" "$T/escape.txt" 2>/dev/null
+# O regex sai do PROPRIO adaptador: comparar com literal escrito aqui nao pegaria nada, porque
+# eu escreveria o literal ja mangled. `jq -r` entrega a string com a barra invertida intacta.
+rx="$(jq -r '.plans[] | select(.id=="outline") | .steps[] | .args[]? | select(test("\\[A-Z\\]"))' \
+      execution/adapters/documents/pdf.json | head -1)"
+esperado="$(grep -n -E -m 60 -- "$rx" "$T/escape.txt" 2>/dev/null | tr '\n' '|')"
+chk "  (controle: o regex saiu do adaptador, com a barra intacta)" \
+    "$(printf '%s' "$rx" | grep -c '\\\.')" "1"
+chk "outline devolve o mesmo que o regex versionado" \
+    "$(jq -r '.claims[0].excerpt' <<<"$pk" | tr '\n' '|')" "$esperado"
+chk "  e nao ha aviso de escape no stderr" \
+    "$([ -s "$T/outline.err" ] && echo "poluido: $(head -c 60 "$T/outline.err")" || echo limpo)" "limpo"
+
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=54
+EXPECTED=57
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED (ferramenta ausente ou caso removido)"; exit 1
 fi
