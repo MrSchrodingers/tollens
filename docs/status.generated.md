@@ -8,20 +8,20 @@ O README referencia este arquivo em vez de duplicar numeros.
 | Suite | Assercoes | Exit |
 |---|---:|---:|
 | `tests/unit/regressao-gate.sh` | 59 | 0 |
-| `tests/unit/document-tools.sh` | 21 | 0 |
-| `tests/unit/supply-chain.sh` | 6 | 0 |
+| `tests/unit/document-tools.sh` | 54 | 0 |
+| `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
 | `tests/unit/claims.sh` | 54 | 0 |
-| `tests/unit/propriedades.sh` | 22 | 0 |
-| `tests/unit/fronteira-externa.sh` | 11 | 0 |
+| `tests/unit/propriedades.sh` | 31 | 0 |
+| `tests/unit/fronteira-externa.sh` | 13 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
 | `tests/unit/schedule.sh` | 29 | 0 |
 | `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
-| `tests/unit/capabilities.sh` | 38 | 0 |
+| `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
@@ -41,6 +41,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | claim ledger | 8 | 0 |
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
+| adaptadores (auto) | 5 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
@@ -54,8 +55,9 @@ assercao).
 | `evidence/probes/github-ruleset.py` | 86.0% | 86.0% | OK |
 | `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
-| `evidence/runtime-probes/declared-capabilities.py` | 90.0% | 90.0% | OK |
+| `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
 | `orchestration/schedule.py` | 88.4% | 88.4% | OK |
+| `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
 
 ## Componentes
 
@@ -84,7 +86,7 @@ assercao).
 ## Propriedades de seguranca medidas
 
 - fonte privilegiada user-owned, symlinkada ou group/world-writable e rejeitada antes da delegacao quando o supervisor roda como root na raiz real.
-- `TOLLENS_MANAGED_LEGACY` e proibido em execucao root sobre a raiz real; o override permanece apenas para ensaios com `MANAGED_PREFIX`.
+- `TOLLENS_MANAGED_WORKER` e proibido em execucao root sobre a raiz real; o override permanece apenas para ensaios com `MANAGED_PREFIX`.
 - modos esperados sao revalidados apos o deploy (`0755` para diretorios/scripts/document-tools; `0644` para os demais arquivos regulares), e divergencia provoca rollback.
 - ownership usa `find ... \( ! -user root -o ! -group root \) -print -quit`, evitando o bug de precedencia onde `owner!=root, group=root` podia nao produzir saida.
 - confinamento de origem/destino do manifesto, re-hash do staging, restauracao transacional e verificacao de permissao continuam cobertos pelas suites managed existentes.
