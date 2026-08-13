@@ -10,6 +10,37 @@ set -uo pipefail
 # produziam identidades diferentes para o MESMO conteudo. Encontrado pela CI, nao pela suite
 # local - que roda no mesmo locale e por construcao nao podia ver.
 export LC_ALL=C
+
+# LOCK DAS SUITES, adquirido aqui a partir da onda 10. REPRODUZIDO, nao inferido:
+#
+#   bash scripts/status.sh &                        # roda os arneses de mutacao
+#   bash install/manifest.sh install/manifest.lock  # no mesmo instante
+#   -> o manifesto gravou 819065d7... para evidence/hooks/verify-gate.sh
+#   -> o arquivo em repouso e 486427303d... (identico ao de main, nunca editado nesta onda)
+#
+# Os arneses de `tests/mutation/` mutam arquivos de PRODUCAO no lugar e restauram no `trap`.
+# Gerar o manifesto durante essa janela grava o digest do MUTANTE como estado desejado do
+# sistema. Isso e pior que uma suite vermelha: e uma DECLARACAO falsa de qual codigo deve
+# existir, escrita no arquivo que todo o resto usa como referencia.
+#
+# O caso foi pego pelo portao do deploy - `apply-managed.sh` comparou o stage contra o manifesto,
+# achou 3 divergentes e abortou SEM tocar em /opt/tollens. O portao funcionou. Mas depender do
+# portao para pegar um manifesto envenenado e depender do ultimo elo; a corrida se impede aqui.
+#
+# `flock -n` FALHA RAPIDO com exit 3, mesma decisao de tests/lib/lock.sh: esperar serializaria e
+# as duas execucoes passariam, e absorcao silenciosa de corrida e exatamente o que este
+# repositorio nao faz. Em CI os passos sao sequenciais e nao ha contencao.
+#
+# LACUNA DECLARADA: se `tests/lib/lock.sh` nao existir no contexto de execucao (copia reduzida do
+# repositorio), este script segue sem lock e AVISA em stderr. Nesse caso a unica protecao volta a
+# ser o portao do deploy. Nao se silencia a diferenca entre "protegido" e "desprotegido".
+_MANIFEST_LOCK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../tests/lib" 2>/dev/null && pwd -P)/lock.sh"
+if [ -r "$_MANIFEST_LOCK" ]; then
+  . "$_MANIFEST_LOCK"
+else
+  echo "AVISO: tests/lib/lock.sh ausente - manifesto gerado SEM lock." >&2
+  echo "  Uma execucao concorrente de tests/mutation/* pode gravar o digest de um mutante." >&2
+fi
 cd "$(dirname "$0")/.." || exit 1
 OUT="${1:-install/manifest.lock}"
 

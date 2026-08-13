@@ -286,9 +286,47 @@ chk "    e a mensagem oferece os planos do adaptador" \
 cp "$T/mini.png" "$T/mini.xlsx"
 chk "  formato sem leitura direta segue barrado mesmo minusculo" "$(orc "$T/mini.xlsx")" "2"
 
+echo "== D12. tres achados de auditoria de seguranca da onda 10 =="
+# F4 - ANCORA QUE MENTE. build_args substituia cinco placeholders em CADEIA sobre a mesma string:
+# `$INPUT` expandia primeiro, entao um `$TOOLS` DENTRO DO NOME DO ARQUIVO entrava na string e era
+# expandido na passada seguinte. Nome de arquivo e entrada nao-confiavel, e o digest e calculado
+# sobre `IN` cru: o pack ancorava no arquivo A e LIA o arquivo B. Nenhum shell foi invocado -
+# o defeito e de dado, e por isso D6 (injecao de comando) nao podia pega-lo.
+mkdir -p "$T/f4/home/ti/evidence-gate/execution"
+printf 'benigno_a,benigno_b\n1,2\n' > "$T/f4/alvo\$TOOLS.csv"
+printf 'SEGREDO,valor\n9,9\n' > "$T/f4/home/ti/evidence-gate/execution/document-tools.csv"
+pk="$(cd "$T/f4" && bash "$D" probe 'alvo$TOOLS.csv' 2>/dev/null)"
+chk "placeholder no NOME do arquivo nao e reexpandido" \
+    "$(jq -r '.path' <<<"$pk")" 'alvo$TOOLS.csv'
+chk "  e o conteudo lido e o do arquivo ANCORADO" \
+    "$(jq -r '.columns | join(",")' <<<"$pk")" "benigno_a,benigno_b"
+chk "    (controle: o arquivo-isca existe e tem outro conteudo)" \
+    "$(head -1 "$T/f4/home/ti/evidence-gate/execution/document-tools.csv")" "SEGREDO,valor"
+
+# F5 - RENDER QUE FALHA NAO PODE PARECER SUCESSO VAZIO. Antes: `claims:[]` E `gaps:[]` com exit 0,
+# indistinguivel de "rodou e nao havia nada". E o mesmo "plano sem step produtivo" que
+# validate-adapters.py reprova no FORMATO, sobrevivendo no RUNTIME.
+printf 'nao sou um video\n' > "$T/quebrado.mp4"
+pk="$(bash "$D" run "$T/quebrado.mp4" video-frames 2>/dev/null)"
+chk "render sem artefato declara LACUNA" \
+    "$(jq -r '.gaps[0].kind // "nenhuma"' <<<"$pk")" "render_sem_artefato"
+chk "  com a ferramenta e o exit code do passo" \
+    "$(jq -r 'if (.gaps[0].tool|length)>0 and (.gaps[0].exit_code|type)=="number" then "sim" else "nao" end' <<<"$pk")" "sim"
+chk "  e sem fabricar claim" "$(jq -r '.claims | length' <<<"$pk")" "0"
+
+# F8 - O PORTAO MEDIA O LINK, NAO O ALVO. `[ -f ]` deref o symlink e `stat -c%s` nao: um link de
+# 30 bytes apontando para 50 MB era liberado. E `${F##*.}` devolve a string INTEIRA quando nao ha
+# ponto, entao um arquivo chamado `png` virava imagem PNG.
+HK="$PWD/execution/hooks/read-budget.sh"
+orc(){ printf '{"tool_name":"Read","tool_input":{"file_path":"%s"}}' "$1" | bash "$HK" >/dev/null 2>&1; echo $?; }
+head -c 3000000 /dev/zero > "$T/alvo-grande.bin"; ln -s "$T/alvo-grande.bin" "$T/isca.png"
+chk "symlink .png para alvo acima do teto e BARRADO" "$(orc "$T/isca.png")" "2"
+head -c 1000 /dev/urandom > "$T/alvo-peq.bin"; ln -s "$T/alvo-peq.bin" "$T/ok.png"
+chk "  symlink para alvo DENTRO do teto passa (nao virou nega-tudo)" "$(orc "$T/ok.png")" "0"
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=43
+EXPECTED=51
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED (ferramenta ausente ou caso removido)"; exit 1
 fi

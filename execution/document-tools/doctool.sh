@@ -44,13 +44,45 @@ adapter_for(){ # $1=arquivo -> caminho do adapter
 }
 
 # D1: substituicao por VALOR. Cada arg vira um elemento do array; nada e re-parseado.
+#
+# PASSADA UNICA, e a razao e um defeito MEDIDO em 2026-08-12 por auditoria de seguranca.
+#
+# A versao anterior encadeava cinco substituicoes sobre a MESMA string, cada uma operando sobre o
+# resultado da anterior. `$INPUT` era expandido primeiro; logo, um `$TOOLS` DENTRO DO NOME DO
+# ARQUIVO entrava na string na passada 1 e era expandido na passada 3. O nome do arquivo e
+# entrada NAO CONFIAVEL, e o digest do pack e calculado sobre `IN` cru - entao a ancora apontava
+# para um arquivo e a leitura acontecia em outro. PoC do auditor, saida colada no relatorio:
+#
+#   $ doctool.sh probe 'alvo$TOOLS.csv'
+#   {"artifact_digest":"sha256:c1ca6b99...","path":"alvo/home/ti/.../document-tools.csv",
+#    "columns":["SEGREDO_DO_ALVO","valor"]}
+#
+# O digest e do arquivo A; as colunas sao do arquivo B. O invariante D2 ("toda saida e ancorada")
+# cai por DADO, nao por codigo - nenhum shell foi invocado, nenhuma injecao de comando ocorreu.
+# Para um repositorio cujo produto e evidencia ancorada, uma ancora que mente e o defeito pior
+# que existe: ela nao falha, ela afirma outra coisa.
+#
+# A correcao nao e sanitizar `IN` depois - e nunca reprocessar o que ja foi substituido. O `awk`
+# abaixo varre a string UMA vez e emite o valor de cada placeholder reconhecido; o que sai de uma
+# substituicao nunca volta a ser candidato. Placeholder desconhecido segue literal, e
+# evidence/validate-adapters.py ja reprova adaptador que declare um.
 build_args(){ # popula ARGV a partir de um array JSON de args
   ARGV=()
   local raw
   while IFS= read -r raw; do
-    raw="${raw//\$INPUT/$IN}"; raw="${raw//\$WORK/$WORK}"; raw="${raw//\$TOOLS/$TOOLS}"
-    raw="${raw//\$TERM/$ARG}";  raw="${raw//\$PAGE/$ARG}"
-    ARGV+=("$raw")
+    ARGV+=("$(IN="$IN" WORK="$WORK" TOOLS="$TOOLS" ARG="$ARG" awk -v s="$raw" '
+      BEGIN {
+        n = length(s); out = ""
+        for (i = 1; i <= n; ) {
+          if (substr(s, i, 6) == "$INPUT") { out = out ENVIRON["IN"];    i += 6; continue }
+          if (substr(s, i, 5) == "$WORK")  { out = out ENVIRON["WORK"];  i += 5; continue }
+          if (substr(s, i, 6) == "$TOOLS") { out = out ENVIRON["TOOLS"]; i += 6; continue }
+          if (substr(s, i, 5) == "$TERM")  { out = out ENVIRON["ARG"];   i += 5; continue }
+          if (substr(s, i, 5) == "$PAGE")  { out = out ENVIRON["ARG"];   i += 5; continue }
+          out = out substr(s, i, 1); i += 1
+        }
+        printf "%s", out
+      }')")
   done < <(jq -r '.[]?' <<<"$1")
 }
 
@@ -124,9 +156,28 @@ case "${1:-}" in
                     '$c + [{op:$o,exit_code:$rc,untrusted:true,excerpt:$t}]' <<<'null')" ;;
         render)
           IMG="$(ls "$WORK"/page*.png 2>/dev/null | head -1)"
-          [ -n "$IMG" ] && { cp "$IMG" "${DOCTOOL_OUT_DIR:-/tmp}/" 2>/dev/null || true
-            CLAIMS="$(jq -c --argjson c "$CLAIMS" --arg p "${DOCTOOL_OUT_DIR:-/tmp}/$(basename "$IMG")" \
-                      '$c + [{op:"render",artifact_path:$p,untrusted:true}]' <<<'null')"; } ;;
+          if [ -n "$IMG" ]; then
+            # DESTINO IMPREVISIVEL. O nome era `page*.png` fixo em /tmp, world-writable: outro
+            # usuario planta o caminho antes e o `cp` escreve onde ele quiser, ou le o que ele
+            # plantou. Diretorio proprio por execucao fecha a corrida.
+            _dst="$(mktemp -d "${DOCTOOL_OUT_DIR:-/tmp}/doctool-out.XXXXXXXX")" || _dst="${DOCTOOL_OUT_DIR:-/tmp}"
+            cp "$IMG" "$_dst/" 2>/dev/null || true
+            CLAIMS="$(jq -c --argjson c "$CLAIMS" --arg p "$_dst/$(basename "$IMG")" \
+                      '$c + [{op:"render",artifact_path:$p,untrusted:true}]' <<<'null')"
+          else
+            # LACUNA DECLARADA, e nao silencio. Ate a onda 10 este ramo NAO EXISTIA: quando o
+            # render nao produzia arquivo, o pack saia com `claims:[]` E `gaps:[]` e exit 0 -
+            # indistinguivel de sucesso vazio. Medido por auditoria de seguranca em 2026-08-12
+            # com um .mp4 invalido: `{"plan":"video-frames","claims":[],"gaps":[],...}`.
+            #
+            # E exatamente o "plano sem step produtivo" que evidence/validate-adapters.py reprova
+            # no FORMATO. O formato estava certo e o RUNTIME produzia o mesmo vazio - verificar o
+            # artefato nao e verificar a execucao, pela enesima vez nesta serie.
+            GAPS="$(jq -c --argjson g "$GAPS" --arg cmd "$CMD" --argjson rc "$RC" --arg o "$OUT" \
+                    '$g + [{kind:"render_sem_artefato",tool:$cmd,exit_code:$rc,
+                            declare:"o passo render nao produziu arquivo; NAO VERIFICADO - nao ha imagem a ler",
+                            stderr_head:($o[0:400])}]' <<<'null')"
+          fi ;;
       esac
     done <<<"$STEPS"
     T1=$(date +%s%N 2>/dev/null || echo 0)

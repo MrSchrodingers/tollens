@@ -25,8 +25,19 @@ F="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null |
 # ja esta fazendo a coisa certa.
 printf '%s' "$INPUT" | jq -e '.tool_input.offset // .tool_input.limit // .tool_input.pages' >/dev/null 2>&1 && exit 0
 
-SZ=$(stat -c%s "$F" 2>/dev/null || echo 0)
-EXT="$(printf '%s' "${F##*.}" | tr 'A-Z' 'a-z')"
+# `-L` SEGUE O SYMLINK, e a ausencia dele era um furo MEDIDO em 2026-08-12 por auditoria de
+# seguranca: `[ -f "$F" ]` deref o link, mas `stat -c%s` mede o LINK. Um `link.png -> arquivo de
+# 50 MB` era medido como 30 bytes e liberado. O portao decidia sobre um objeto e o consumidor
+# lia outro - a mesma forma do defeito de ancora corrigido em doctool.sh nesta onda.
+# Isto propaga para TODOS os ramos abaixo, nao so o de imagem: `SZ` e calculado uma vez.
+SZ=$(stat -Lc%s "$F" 2>/dev/null || echo 0)
+# EXTENSAO SO EXISTE SE HOUVER PONTO. `${F##*.}` devolve a STRING INTEIRA quando nao ha ponto no
+# nome - medido: um arquivo chamado `png`, sem extensao nenhuma, era tratado como imagem PNG e
+# liberado pelo teto. Sem ponto, nao ha extensao, e o caso cai no comportamento padrao.
+case "$(basename -- "$F")" in
+  *.*) EXT="$(printf '%s' "${F##*.}" | tr 'A-Z' 'a-z')" ;;
+  *)   EXT="" ;;
+esac
 has() { command -v "$1" >/dev/null 2>&1; }
 deny() { printf '%s\n' "$*" >&2; exit 2; }
 

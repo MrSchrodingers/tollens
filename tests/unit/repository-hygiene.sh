@@ -72,7 +72,11 @@ ignorado(){
 # /null, bind ro do proprio arquivo) varia, a montagem nao. As tres condicoes sao exigidas em
 # CONJUNTO para nao abrir buraco: montado, NAO rastreado pelo git, e sem conteudo.
 mascara_de_runtime(){
-  [ -c "$1" ] || [ -b "$1" ] && return 0
+  # PARENTESES DELIBERADOS. `A || B && C` associa a esquerda em bash: `(A || B) && C`, que aqui
+  # por acaso produz o comportamento certo. Auditoria de 2026-08-12 apontou que o codigo lia como
+  # disjuncao onde o comentario prometia conjuncao. Funciona por precedencia, nao por intencao
+  # escrita - e a proxima edicao quebra em silencio. Explicitar custa dois caracteres.
+  if [ -c "$1" ] || [ -b "$1" ]; then return 0; fi
   local abs; abs="$(cd "$(dirname -- "$1")" 2>/dev/null && pwd -P)/$(basename -- "$1")" || return 1
   grep -qF " $abs " /proc/self/mountinfo 2>/dev/null || return 1
   git ls-files --error-unmatch -- "$1" >/dev/null 2>&1 && return 1   # rastreado: nunca e mascara

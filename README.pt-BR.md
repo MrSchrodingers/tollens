@@ -327,6 +327,18 @@ não:
 
 As suítes aplicam essa distinção a oráculos dependentes do ambiente, como dependências de parser e disponibilidade de locale.
 
+### 4.4 Monotonicidade da observabilidade
+
+O espaço de estados da seção 4.1 é uma ordem parcial, não total: `PASS` é o único topo; `FAIL` e `NOT_VERIFIED` ficam abaixo dele e são **incomparáveis** entre si, não `FAIL < NOT_VERIFIED < PASS` nem o inverso. O invariante subjacente:
+
+```math
+\mathrm{Information}(x') \subseteq \mathrm{Information}(x) \;\Rightarrow\; \mathrm{Verdict}(x') \not> \mathrm{Verdict}(x)
+```
+
+foi checado contra seis verificadores reais, cada um sob dois regimes de informação (acesso completo e um degradado), em vez de presumido. Uma ordem total `PASS > NOT_VERIFIED > FAIL` foi considerada e rejeitada por duas razões verificáveis de forma independente: o consumidor que age sobre o veredito (`verify-pr`, executado sem `continue-on-error`) só distingue exit `0` de não-zero, então ranquear `NOT_VERIFIED` acima de `FAIL` não tem referente operacional; e uma ordem total reprovaria uma correção que este repositório trata como deliberada — um token com escopo de administrador lendo o mesmo ruleset reporta `FAIL`, um token com escopo de CI e menos acesso de leitura reporta `NOT_VERIFIED` sobre a configuração idêntica, e os dois são o veredito correto para o que cada token conseguiu de fato observar (ver [ADR 0029](docs/adr/0029-sete-ondas-a-cegueira-sobe-um-nivel-por-vez.md)). `FAIL` afirma uma violação medida; `NOT_VERIFIED` afirma ausência de medição — perguntas diferentes, não dois pontos na mesma escala.
+
+A propriedade é validada contra uma regressão histórica, não só uma sintética: uma cópia do probe de ruleset de plataforma com o exit code `PASS_PARCIAL` revertido para `0` reproduz um defeito que este repositório já publicou numa correção anterior e depois reverteu; o mutante da propriedade o mata.
+
 ---
 
 ## 5. Topologia de agentes e workflows
@@ -349,6 +361,10 @@ O registry define atualmente dez agentes especializados por papel.
 | `revisor-frontend` | não | UI renderizada, acessibilidade e revisão frontend |
 
 Os prompts autoritativos vivem em `execution/agents/`. As definições de runtime são wrappers que apontam para essas fontes.
+
+A concessão de ferramentas em runtime não deriva só da coluna `Escreve?` acima. O Claude Code habilita `Write` e `Edit` automaticamente para qualquer agente cujo frontmatter declare `memory: user`, independentemente de uma entrada `writes: false` em `orchestration/registry.json` (Anthropic — [Create custom subagents](https://code.claude.com/docs/en/sub-agents), "Enable persistent memory": "Read, Write, and Edit tools are automatically enabled so the subagent can manage its memory files."). Medido antes de o mecanismo causal ser confirmado contra essa fonte primária: um acréscimo não declarado de ferramenta de escrita apareceu em 8 de 8 agentes que declaravam `memory: user` e em 0 de 4 agentes que não declaravam. `memory:` foi removido dos oito agentes que `orchestration/registry.json` declara `writes: false` — os oito marcados `não` na tabela acima —, tanto nos prompts canônicos quanto na projeção de runtime do Claude; `evidence/runtime-probes/declared-capabilities.py` agora falha se o campo reaparecer em qualquer um deles.
+
+Isso fecha o mecanismo especificamente para `Write` e `Edit`. Não torna esses oito agentes read-only: todos os oito mantêm `Bash`, superfície de escrita estritamente maior — redirecionamento, `tee`, `sed -i`, `python3 -c`, `git apply` — que as duas ferramentas que a correção fecha. O verificador afirma "capacidade declarada compatível com o contrato declarado", não "read-only", e há caso de suíte que reprova se essa distinção sumir da saída.
 
 ### 5.2 Invariante de escritor único
 
@@ -676,6 +692,14 @@ O validador checa *forma* — campos obrigatórios presentes, vocabulário fecha
 
 Cada garantia rastreada em `evidence/claims/*.yaml` resolve sua evidência de suporte varrendo suítes de regressão (`tests/unit/`) e de mutação (`tests/mutation/`) em busca de um identificador de asserção ou de mutante que combine. Um conjunto de identificadores plano torna essa resolução barata, mas também absorve duplicidade em silêncio: se o mesmo identificador é declarado em dois arquivos diferentes do mesmo espaço de evidência, a checagem de pertencimento ainda reporta "existe", sem dizer qual dos dois arquivos a claim realmente cita. `_contrato_extracao_ok`, em `evidence/validate-claims.py`, checa os dois espaços de evidência contra essa colisão em vez de confiar num set simples. A checagem resolve identificadores contra o snapshot do worktree que a claim cita, não contra o histórico do repositório — a mesma fronteira de escopo que motiva ancorar as medições da seção 15.6 a tags duráveis em vez de a um branch que pode não sobreviver.
 
+### 8.11 Conformidade de adaptador de documento
+
+`execution/adapters/documents/*.json` declara o schema que um adaptador precisa satisfazer para que o executor (`execution/document-tools/doctool.sh`) e o hook de orçamento de leitura (`execution/hooks/read-budget.sh`) o interpretem — os dois iteram o campo `.plans[]` do adaptador. Nenhum verificador checava se um adaptador de fato batia com esse schema; o passo de CI rodava `jq -e .`, que valida sintaxe JSON, não a forma do adaptador. O adaptador de imagem sofreu drift sem ser detectado: declarava `pipeline` onde o schema exige `plans`, e faltavam `probe`, `version`, `rationale`, `untrusted_input` e `security`. Efeito medido: `doctool.sh plans <png>` saía com exit `5` e erro cru de `jq`, e o probe de orçamento de leitura reportava `"tool":"null"` para a classe de documento que deveria rotear.
+
+`evidence/validate-adapters.py` fecha a classe, não só a instância: schema fechado checado nos dois sentidos, detecção de colisão de extensão entre adaptadores, vocabulário fechado de `parse`/`intent`/`op`, exigência de que todo plano carregue um passo produtivo, e detecção de placeholder desconhecido nos argumentos de passo. Ele não confere se um binário de ferramenta nomeado existe, não executa um plano, e não lê a prosa do adaptador em busca de sentido — o próprio docstring do módulo declara esse escopo.
+
+Um segundo defeito, independente, ficava a jusante do próprio adaptador. `read-budget.sh` consultava o registro de adaptadores antes de avaliar o teto de tamanho, então uma imagem grande demais era rejeitada por *extensão*, nunca por tamanho — e a própria mensagem de correção do hook, que instrui reduzir o arquivo e ler o resultado, apontava para uma saída que era ela mesma uma imagem, caía no mesmo registro e era rejeitada do mesmo jeito. Medido: uma imagem reduzida a 640.914 bytes contra um teto de 2 MB ainda saía com exit `2`. O caminho de recuperação sancionado terminava num ciclo sem saída alcançável. A correção passa a avaliar o teto de tamanho antes de consultar o registro de adaptadores; a reordenação fica restrita a imagens porque os adaptadores de PDF e CSV devolvem um evidence pack ancorado em vez de depender de reler o artefato bruto, então o mesmo ciclo não se aplica a eles.
+
 ---
 
 ## 9. Gate externo de CI
@@ -717,13 +741,21 @@ A comparação inclui runner, permissões de workflow, ambiente, defaults, conta
 A CI verifica, entre outras propriedades:
 
 - GitHub Actions pinadas por SHA completo;
-- pacotes Python pinados a versões exatas na CI;
+- pacotes Python pinados a versões exatas na CI, com o fecho transitivo completo das dependências do oráculo de verificação pinado por hash de conteúdo (`--require-hashes`, 13 pacotes, 307 hashes) em vez de apenas a versão de topo;
 - compatibilidade entre versões declaradas e instaladas;
 - runner nomeado em vez de `-latest`;
 - declaração explícita da exceção não-hermética de `apt`;
 - pinagem das próprias dependências do oráculo de verificação.
 
 A CI atual é **auditável, mas não hermética**. Imagens de runner hospedadas e `apt-get update` podem mudar ao longo do tempo. O repositório registra isso como limitação em vez de reivindicar reprodutibilidade bit a bit.
+
+### 9.5 Job de verificação de política viva
+
+`verify-live-policy` mede o ruleset de plataforma contra a API viva do GitHub e roda como job próprio — com gêmeo disparado por push, `verify-live-policy-push`, nomeado deliberadamente diferente, porque o ruleset casa required checks pelo *nome* do contexto, e um job de mesmo nome em dois workflows tornaria um required check futuro ambíguo. Ele não compartilha job com as checagens estáticas de `verify-pr`. Antes desta separação, o ramo `NOT_VERIFIED` do probe — tomado sempre que o segredo `RULESET_READ_TOKEN` está ausente — se dissolvia num job que também rodava checagens estáticas não relacionadas e podia sair `0` mesmo assim (seção 15.6, elo 7). A API de Checks do GitHub só distingue `success` de `failure` para um passo `run:`, então o mapeamento honesto de `NOT_VERIFIED` é qualquer exit não-zero; `verify-live-policy` agora sai `2` quando o segredo está ausente, não `0`.
+
+`verify-live-policy` não está na lista de required checks. Sem o segredo ficaria vermelho permanente e bloquearia todo merge; é um sinal visível até ter histórico de execução verde contra a API viva, e promovê-lo a required é decisão separada, tomada depois.
+
+Dividir o job introduziu seu próprio defeito, achado e fechado na mesma correção. `tests/unit/fronteira-externa.sh` (`FE4`) definia o gêmeo disparado por push por exclusão e exigia exatamente um; com dois jobs por arquivo de workflow a contagem quebrou, mas o problema mais profundo era que o job novo do lado do PR não responde a `push` e por isso não era gêmeo de ninguém sob a contagem antiga — um job podia existir de um lado do par PR/push e não do outro sem reprovar a paridade. `FE4` agora pareia por papel declarado e exige bijeção entre os conjuntos de jobs dos dois arquivos de workflow, checando que jobs pareados compartilham contrato equivalente e que nenhum job fica órfão de nenhum dos dois lados.
 
 ---
 
@@ -770,6 +802,8 @@ flowchart TB
     ROLLBACK -->|"rollback também falha"| FAIL["exit 70: ROLLBACK_FAILED"]
     ROLLBACK -->|"rollback bem-sucedido"| PRIOR["estado ativo = estado anterior"]
 ```
+
+O nome dentro do instalador não codifica uma afirmação de ciclo de vida. Um script invocado por toda instalação managed, produção inclusive, carregava antes o sufixo `-legacy`, que lia como obsoleto; foi renomeado para `apply-managed-worker.sh` sem que seu papel mudasse. Um nome enganoso sobre código portante é um defeito distinto de um mecanismo quebrado, e este repositório o trata como tal.
 
 ---
 
@@ -861,7 +895,7 @@ Essa é uma afirmação de integridade de configuração, não um teorema de equ
 └── README.pt-BR.md
 ```
 
-Artefatos temporários de transporte, arquivos de bootstrap e fixtures órfãs na raiz são rejeitados por `tests/unit/repository-hygiene.sh`.
+Artefatos temporários de transporte, arquivos de bootstrap e fixtures órfãs na raiz são rejeitados por `tests/unit/repository-hygiene.sh`. A mesma suíte distingue uma violação de higiene real dos próprios bind mounts de arquivo de configuração que o runtime da sessão cria, que podem expor o mesmo caminho como um character-special device numa leitura e como um arquivo regular, vazio e com dono diferente minutos depois; a checagem usa um discriminante estável — ponto de montagem, não rastreado, sem conteúdo, os três exigidos em conjunto — em vez do tipo de arquivo que o kernel relata no momento da leitura.
 
 ---
 
@@ -941,6 +975,7 @@ O desenho atual contém mecanismos destinados a detectar ou restringir:
 - regressões por interferência contextual;
 - permissões inseguras na instalação managed;
 - falha observada de deployment seguida de rollback malsucedido;
+- adaptadores de documento não conformes chegando ao executor por checagem só de sintaxe;
 - reintrodução de artefatos temporários na raiz.
 
 ### 14.2 Limitações explicitamente abertas
@@ -950,7 +985,7 @@ Permanecem limitações relevantes:
 - política gravável pelo usuário continua participando da cadeia de confiança fora do modo managed;
 - não se presume ativação de política organizacional managed;
 - CI hospedada e instalação de pacotes de sistema não são herméticas;
-- comandos shell e parsers de documentos não estão contidos por sandbox de SO demonstrado;
+- um sandbox de processo ativo bloqueia alguns caminhos de sistema de arquivos e desativa `sudo` (`NoNewPrivs=1`), mas sua lista declarada `denyRead` não mostrou efeito observado na sessão que a mediu, então read-only por mecanismo permanece não verificado, e comandos shell e parsers de documentos não estão contidos por um sandbox verificado de ponta a ponta;
 - equivalência de projeções é estrutural, não comportamentalmente demonstrada;
 - não existe ainda grande corpus congelado demonstrando eficácia externa;
 - não há estudo longitudinal de custo/latência que estabeleça benefício econômico;
@@ -995,9 +1030,9 @@ Eles **não** provam que a política atual de `tollens` seja ótima. Isso perman
 
 Mutation testing fornece um método disciplinado para avaliar se uma suíte distingue implementações defeituosas selecionadas do comportamento de referência [8]. O repositório usa mutation testing como mecanismo anti-tautologia para invariantes críticos de política e verificação.
 
-### 15.6 Cegueira em camadas de verificação: uma cadeia de seis elos
+### 15.6 Cegueira em camadas de verificação: uma cadeia de sete elos
 
-A tese enunciada no Resumo é que toda camada de verificação composta neste repositório é cega a uma classe específica de defeito, e essa cegueira só se fecha subindo de checagem sobre texto para execução — até um limite que é fronteira de segurança, não lacuna de engenharia. Seis elos a sustentam, cada um extraído de fonte primária ou medido diretamente neste repositório.
+A tese enunciada no Resumo é que toda camada de verificação composta neste repositório é cega a uma classe específica de defeito, e essa cegueira só se fecha subindo de checagem sobre texto para execução — até um limite que é fronteira de segurança, não lacuna de engenharia. Sete elos a sustentam, cada um extraído de fonte primária ou medido diretamente neste repositório.
 
 1. **Autoavaliação não distingue sucesso de falso sucesso.** Em cinco juízes LLM e cinco estratégias de prompt, nenhum ultrapassa AUROC 0,65 em tau2-bench, e os mesmos juízes alcançam apenas 0,54 de AUROC em AppWorld. O sinal de falha não está concentrado na mensagem de fechamento do agente: um detector treinado em todo o texto da trajetória, *exceto* a mensagem final, alcança AUROC 0,924, contra 0,934 usando só as features da mensagem final — o sinal está distribuído pela trajetória inteira [4].
 2. **Verificador determinístico não é verdade, mas é o melhor oráculo disponível.** Em 496 tarefas de tool-calling revisadas por especialistas, em quatro famílias de benchmark, os vereditos oficiais discordam do julgamento especialista em 18,5% dos casos. Ainda assim, um avaliador com gate determinístico e fallback restrito a LLM, auditado no mesmo estudo, alcança 95,5% de concordância com julgamento humano (401 de 420 avaliações), contra 69,0% de um avaliador puramente por juiz LLM auditado ao lado dele; e, das 19 discordâncias desse avaliador determinístico com o julgamento humano, todas as 19 são falso-negativas e nenhuma é falso-positiva. Ele erra por rejeitar, não por aprovar [5].
@@ -1005,6 +1040,11 @@ A tese enunciada no Resumo é que toda camada de verificação composta neste re
 4. **Cobertura de decisão pega essa omissão e é, ela mesma, satisfazível por diluição.** O mesmo ramo não exercitado reprova um piso percentual sozinho (87,8%, abaixo de um piso de 88,4%) e passa quando 30 statements cobertos e sem relação se somam a ele no mesmo arquivo (88,8%). A seção 8.5 descreve o mecanismo de três camadas que este repositório usa para fechar essa lacuna.
 5. **Uma classe de mutante fantasma não se fecha por análise estática.** A checagem de que "uma mutação foi aplicada e um oráculo foi invocado" é textual: um bloco forjado dentro de um condicional desativado a satisfaz sem que nada rode. Fechar isso exige executar o script de mutação contra um `subject_snapshot` potencialmente hostil — recusado pela fronteira de segurança atual, e registrado como limite declarado, não como fechamento fingido.
 6. **O elo que generaliza os outros cinco.** Um instrumento pode ser verificado à exaustão e nunca ser instalado. Antes desta correção, o probe de ruleset de plataforma do qual este repositório depende tinha 155 asserções, 20 mutantes e 83,3% de cobertura de ramo — e zero invocações fora de `tests/`: ausente dos dois workflows de CI, do manifesto do instalador e de todo hook. Sua correção também depende de dois contratos de plataforma invisíveis a partir de um único objeto de ruleset: a agregação entre rulesets mantém a versão mais restritiva de uma regra (GitHub Docs — [About rulesets, "About rule layering"](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)), e o endpoint que o probe consulta omite regras de rulesets com status de enforcement `evaluate` ou `disabled` (GitHub REST API — [Rules, "Get rules for a branch"](https://docs.github.com/en/rest/repos/rules)) — um filtro que o probe precisa replicar, não presumir. Os dois contratos, e o texto verbatim que os fundamenta, também estão registrados no comentário acima do predicado em `evidence/probes/github-ruleset.py` e no [ADR 0029](docs/adr/0029-sete-ondas-a-cegueira-sobe-um-nivel-por-vez.md).
+7. **Estar instalado em CI não implica que a checagem instalada mediu algo.** O probe de ruleset de plataforma do elo 6 foi integrado ao `verify-pr` na mesma correção que fechou o elo 6, e o relato daquela correção o chamou de "instalado, fail-closed, condicionado a `RULESET_READ_TOKEN`" — cada palavra literalmente verdadeira, e ainda assim insuficiente, porque o segredo nunca foi configurado (`gh api .../actions/secrets` não lista nenhum). Toda execução, portanto, media um `GH_TOKEN` vazio, retornava `NOT_VERIFIED`, e esse resultado se dissolvia no mesmo job de checagens estáticas não relacionadas que permaneciam verdes. Medido: a execução `31641449160` de `verify-pr`, do PR #15, concluiu `success` enquanto o log do próprio passo trazia `GH_TOKEN:` vazio e "NAO VERIFICADO: RULESET_READ_TOKEN ausente". "Instalado" e "executado" são proposições diferentes:
+   ```text
+   CI_SUCCESS  =/=>  para toda garantia crítica g: Verified(g)
+   ```
+   A correção generaliza o elo 6 em vez de repeti-lo: uma garantia crítica deixa de compartilhar check-run com uma checagem estática que pode ficar verde por conta própria, fechado dividindo o job (seção 9.5). O segredo foi configurado depois desta medição, com escopo `Administration: Read` restrito a este repositório, e uma execução manual contra a API viva com o novo token retorna `PASS`. Esse `PASS` ainda não é evidência de gate: até esta medição, nenhuma execução automática de `verify-live-policy` contra a API viva o havia produzido — só a suíte com stub e a única execução manual.
 
 Formalmente, estendendo a decomposição de `Mergeable(x)` da seção 4.2, de um pull request para uma garantia `g` qualquer:
 
@@ -1020,7 +1060,7 @@ Formalmente, estendendo a decomposição de `Mergeable(x)` da seção 4.2, de um
 \mathrm{FreshEvidence}(g).
 ```
 
-Sete ondas de correção endureceram `Mechanism`; `ObservableVerifier` não existia até a onda que produziu esta seção. Cada medição acima está ancorada a uma tag durável (`evidencia/snapshot-*`) que aponta para o commit em que foi medida, para que a evidência da afirmação não dependa de um branch lateral sobreviver. O [ADR 0029](docs/adr/0029-sete-ondas-a-cegueira-sobe-um-nivel-por-vez.md) registra o relato completo, incluindo um oitavo defeito, estruturalmente idêntico, encontrado e deliberadamente deixado sem correção em vez de remendado sob pressão de tempo.
+Sete ondas de correção endureceram `Mechanism`; `ObservableVerifier` não existia até a onda que produziu esta seção. Cada medição acima está ancorada a uma tag durável (`evidencia/snapshot-*`) que aponta para o commit em que foi medida, para que a evidência da afirmação não dependa de um branch lateral sobreviver. O [ADR 0029](docs/adr/0029-sete-ondas-a-cegueira-sobe-um-nivel-por-vez.md) registra o relato completo, incluindo um oitavo defeito, estruturalmente idêntico, encontrado e deliberadamente deixado sem correção em vez de remendado sob pressão de tempo. Uma correção posterior mediu que `ObservableVerifier` existir e estar instalado em CI não implica, por si só, que observou algo — a distinção que o elo 7 enuncia formalmente; o [ADR 0030](docs/adr/0030-o-verificador-instalado-que-nunca-observou.md) registra esse relato e a seção 9.5 registra a correção concreta.
 
 ```mermaid
 flowchart TD
@@ -1032,6 +1072,7 @@ flowchart TD
 
     G["Verificador observável<br/>instalado em CI; manifesto e hooks pendentes"] -.->|"qualquer camada acima pode ser<br/>verificada à exaustão e nunca instalada"| A
     G -.->|"155 asserções, 20 mutantes, 83,3% de cobertura de ramo,<br/>zero invocações fora de tests/"| F
+    G -.->|"instalado em CI, ainda nunca observou<br/>segredo ausente, NOT_VERIFIED dissolvido num job verde"| H["Job dividido por termo do quantificador<br/>NOT_VERIFIED agora sai não-zero, ainda não required"]
 ```
 
 ---
@@ -1042,7 +1083,7 @@ Toda citação de preprint abaixo carrega versão explícita (`vN`) e data de ac
 
 ### 16.1 Referências citadas
 
-As obras a seguir são aquelas de que o argumento deste documento de fato depende: a cadeia de seis elos da seção 15.6, a política de ativação de skills da seção 6 e a justificativa de estratégia de verificação das seções 8 e 9. A versão e cada número citado foram conferidos diretamente contra o HTML da versão citada, na sessão que produziu esta seção.
+As obras a seguir são aquelas de que o argumento deste documento de fato depende: a cadeia de sete elos da seção 15.6, a política de ativação de skills da seção 6 e a justificativa de estratégia de verificação das seções 8 e 9. A versão e cada número citado foram conferidos diretamente contra o HTML da versão citada, na sessão que produziu esta seção.
 
 1. Jimenez, C. E. et al. **SWE-bench: Can Language Models Resolve Real-World GitHub Issues?** ICLR 2024.  
    https://arxiv.org/abs/2310.06770

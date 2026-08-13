@@ -140,21 +140,41 @@ teria de crescer.
 
 ## Limites, declarados
 
-**O sandbox de filesystem esta ATIVO e o `denyRead` NAO pegou.** Medido nesta sessao apos ativar
+**O sandbox de filesystem esta ATIVO e o `denyRead` e PARCIAL.** Medido nesta sessao apos ativar
 o escopo managed e instalar `@anthropic-ai/sandbox-runtime`:
 
 ```
 NoNewPrivs: 1   Seccomp: 2   Seccomp_filters: 1
-/etc            BLOQUEADO
-~/.ssh          LEGIVEL          <- denyRead declarado, sem efeito observado
-repo, $HOME     gravaveis
+/etc                          BLOQUEADO
+sudo                          BLOQUEADO (no new privileges)
+~/.config/gh/hosts.yml        BLOQUEADO   <- denyRead EM VIGOR
+~/.ssh                        LEGIVEL     <- denyRead declarado, SEM efeito observado
+repo, $HOME                   gravaveis
 ```
 
-O sandbox contem: `/etc` saiu do alcance e `sudo` deixou de funcionar a partir da ferramenta Bash
-(`no new privileges`). Mas a lista de `denyRead` que a politica declara nao produziu efeito
-observavel - provavelmente porque a sessao ja estava em curso quando a politica mudou. Logo:
-**read-only por mecanismo permanece NAO VERIFICADO**, e a politica atual contem um termo que
-afirma proteger e nao foi observado protegendo. Isso e a forma deste ADR aplicada a esta onda.
+CORRECAO DE UMA AFIRMACAO MINHA, registrada porque a versao anterior deste paragrafo dizia que o
+`denyRead` "nao pegou". Isso era falso, e foi refutado pela via mais direta possivel: o
+`denyRead` de `~/.config/gh/hosts.yml` esta EM VIGOR e derrubou o `gh` inteiro
+(`failed to read configuration: permission denied`), retirando desta sessao toda capacidade de
+ESCRITA no GitHub - push, abertura de PR e remocao de branch. Um PAT de escopo
+`Administration: Read` continua lendo pela API, e responde `403 Resource not accessible` a
+qualquer escrita, medido.
+
+Eu havia concluido "nao pegou" a partir de UMA amostra (`~/.ssh` legivel) e generalizado para a
+lista inteira. Uma amostra negativa refuta o universal, nao estabelece o vazio - o erro esta na
+inferencia, nao na medicao.
+
+O que permanece verdadeiro: `~/.ssh` segue legivel apesar de declarado, entao a lista e aplicada
+de forma PARCIAL por razao nao determinada aqui. E, sobretudo, **read-only por mecanismo continua
+NAO VERIFICADO**: o que o sandbox demonstrou conter foi `/etc`, privilegio e um arquivo de
+credencial - nao a escrita dos agentes revisores no repositorio, que e a garantia que o §6 do
+CLAUDE.md afirma. `Bash` segue escrevendo no repo e em `$HOME`.
+
+NOTA OPERACIONAL, e ela e desconfortavel: esse bloqueio acidental E, em substancia, o controle que
+as duas auditorias pediram - o ator governado deixou de poder empurrar codigo sozinho. O custo e
+que a mediacao humana passou a ser obrigatoria no meio de uma onda, sem ter sido desenhada para
+isso. Registrado como fato, nao como conquista: enforcement que aparece por acidente nao foi
+projetado, e o que nao foi projetado nao tem contorno conhecido.
 
 **O efeito da remocao de `memory:` nao e observavel na sessao que a fez.** O registro de agentes
 resolve na inicializacao. O discriminante para uma sessao NOVA esta em
