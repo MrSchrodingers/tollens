@@ -3,7 +3,6 @@ name: revisor-frontend
 description: Projeção do agente canônico revisor-frontend.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

@@ -30,6 +30,36 @@ deles VERIFICADOS EMPIRICAMENTE (nao por doc, que se mostrou falivel - ver abaix
    acumulada real (o `investigador` tem 17 arquivos de conhecimento dos projetos do usuario). Os 3
    agentes sem o campo (implementador, tdd, continuidade) nao tem pasta. Decisao: MANTER nos 10.
 
+   > **ERRATA, 2026-08-12 (onda 10).** A observacao acima permanece: ela esta CORRETA, e agora
+   > confirmada na fonte primaria que este ADR nao tinha. Verbatim de
+   > `https://code.claude.com/docs/en/sub-agents.md`, secao "Enable persistent memory":
+   > "Read, Write, and Edit tools are automatically enabled so the subagent can manage its
+   > memory files."
+   >
+   > O que muda e a DECISAO. "MANTER nos 10" foi revertida para os OITO agentes que
+   > `orchestration/registry.json` declara com `writes: false`. A razao nao e evidencia nova
+   > sobre memoria: e uma consequencia que este ADR registrou sem tirar. Se o campo
+   > auto-habilita Write e Edit, entao todo agente que o declara TEM Write e Edit - e oito deles
+   > se apresentam ao leitor como "Read-only, nunca corrige". A garantia estava no texto e
+   > ausente no mecanismo, que e a forma que o ADR 0029 documenta nove vezes. `tdd` e
+   > `implementador` mantem o campo: declaram `writes: true`, e para eles nao ha contradicao.
+   >
+   > Medido: `evidence/runtime-probes/declared-capabilities.py --repo-only` saia 1 com 16
+   > violacoes (os oito, em arvore canonica e projecao) e agora sai 0; reintroduzir `memory: user`
+   > em um unico agente devolve exit 1 nomeando-o.
+   >
+   > CUSTO ACEITO, e ele e real: os oito perdem a memoria acumulada. O caso material e o
+   > `investigador`, com 17 arquivos segundo este mesmo ADR. Os diretorios em
+   > `~/.claude/agent-memory/` NAO foram apagados - deixam de ser carregados, e voltam se o campo
+   > voltar. O contrato de delegacao ja exige passar o contexto LOCAL no proprio prompt, que era
+   > de onde o essencial deveria vir.
+   >
+   > LIMITE, que importa mais que a correcao: remover `memory:` fecha UM canal de escrita. NAO
+   > torna ninguem read-only. Os oito tem `Bash`, que escreve por `>`, `tee`, `sed -i`,
+   > `python3 -c` ou `git apply` - superficie estritamente maior que Write e Edit. Read-only como
+   > MECANISMO depende de sandbox de filesystem, e em 2026-08-12 ele permanece NAO VERIFICADO
+   > nesta maquina.
+
 3. **Hooks disparam em tool-call de subagente.** Evidencia direta (transcript): o Write de um
    subagente acionou PreToolUse (emoji bloqueado) e PostToolUse (poka-yoke). Mecanismo: os hooks do
    `settings.json` sao herdados pelo subagente e executam no contexto dele. A disciplina de artefato

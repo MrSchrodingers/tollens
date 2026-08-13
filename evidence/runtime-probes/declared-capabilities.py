@@ -52,23 +52,62 @@ Para cada `execution/agents/<nome>.md` (a fonte canonica):
 validos; ele NAO confere que `tools:` case entre elas (registry.json nem armazena a lista de
 ferramentas). Este script fecha exatamente essa lacuna, sem duplicar a logica de render.py.
 
+SEGUNDA PROPRIEDADE: CONTRATO DE ESCRITA x CAPACIDADE DECLARADA
+----------------------------------------------------------------
+`orchestration/registry.json` declara, por agente, `writes: true|false` - o contrato de
+escrita, e o unico oraculo legivel por maquina de quem pode alterar arquivo. A comparacao de
+`tools:` entre fontes nao ve esse contrato: as tres podiam concordar em conceder escrita a um
+agente declarado sem escrita, e a comparacao continuaria verde.
+
+Para cada agente com `writes: false`, nenhuma das duas arvores deste repositorio (canonica e
+projecao) pode conceder escrita pelo frontmatter. Duas formas de conceder:
+  1. listar `Write`/`Edit`/`MultiEdit`/`NotebookEdit` em `tools:`; e
+  2. declarar o campo `memory:`. Pela doc primaria do Claude Code (sub-agents, secao "Enable
+     persistent memory", https://code.claude.com/docs/en/sub-agents): "Read, Write, and Edit
+     tools are automatically enabled so the subagent can manage its memory files." A concessao
+     e do RUNTIME e nao aparece em `tools:` - por isso nenhuma comparacao de `tools:` a
+     detecta.
+
+O QUE ESTA SEGUNDA CHECAGEM NAO AFIRMA
+---------------------------------------
+Nao afirma que o agente e read-only. `Bash` esta no `tools:` dos agentes com `writes: false`, e
+Bash e superficie de escrita ESTRITAMENTE MAIOR que Write/Edit (`>`, `tee`, `sed -i`,
+`python3 -c`, `git apply`, qualquer binario), sem portao equivalente: em
+install/hooks-spec.sh:39-46, `artifact-discipline.sh` e `self-mod-audit.sh` so rodam no matcher
+`Write|Edit|MultiEdit|NotebookEdit`, e o matcher que alcanca `Bash` roda apenas
+`fable-guard.sh`, de escopo declaradamente restrito. A propriedade verificada aqui e menor e
+verdadeira: capacidade DECLARADA compativel com o contrato declarado. Read-only de fato depende
+de sandbox de filesystem, que nao mora no frontmatter.
+
 LIMITE DECLARADO
 -----------------
 - So compara TEXTO declarado. Nao invoca nenhum agente, nao inspeciona `~/.claude/logs` nem
   transcritos de sessao - isso e do protocolo runtime, deliberadamente fora deste arquivo.
-- So confere `.codex/agents/*.toml`? NAO. O runtime Codex usa `sandbox_mode` (um modelo de
-  sandbox de SO), nao uma allowlist de nomes de ferramenta - comparar os dois exigiria uma
-  ontologia de equivalencia que nao existe hoje, entao fica fora de escopo (nao "resolvido em
-  silencio").
+- A checagem de contrato le as duas arvores do repositorio; a copia INSTALADA fica de fora
+  porque `install/verify.sh` ja a prende ao digest do arquivo canonico em
+  `install/manifest.lock` (ver o docstring de `confere_contrato`). Se aquele elo cair, esta
+  checagem passa a nao dizer nada sobre o que esta instalado.
+- So confere `.codex/agents/*.toml`? NAO - nem para `tools:`, nem para `memory:`. O runtime
+  Codex usa `sandbox_mode` (um modelo de sandbox de SO), nao uma allowlist de nomes de
+  ferramenta - comparar os dois exigiria uma ontologia de equivalencia que nao existe hoje,
+  entao fica fora de escopo (nao "resolvido em silencio").
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
 EXIT_OK, EXIT_VIOLACAO, EXIT_NAO_VERIFICADO = 0, 1, 2
+
+# Contrato de escrita: o unico oraculo legivel por maquina de quem pode alterar arquivo.
+REGISTRY_REL = "orchestration/registry.json"
+# Ferramentas que concedem escrita por NOME. `Bash` NAO esta aqui de proposito: ele tambem
+# escreve, e escreve mais (`>`, `tee`, `sed -i`, `python3 -c`, `git apply`), mas nao ha como
+# decidir isso pelo nome da ferramenta - ver "O QUE ESTA SEGUNDA CHECAGEM NAO AFIRMA".
+FERRAMENTAS_DE_ESCRITA = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 
 try:
     import yaml
@@ -88,6 +127,27 @@ CLAUDE_HOME = Path(os.environ.get("CLAUDE_HOME", Path.home() / ".claude")).resol
 ROTULO_PROJECAO = "projecao do repo (.claude/agents)"
 ROTULO_INSTALADA = "instalada (CLAUDE_HOME/agents)"
 ROTULO_CANONICA = "canonica (execution/agents)"
+
+
+def contrato_de_escrita(root: Path) -> dict | str:
+    """Mapa `nome -> entrada` de `orchestration/registry.json`, onde cada entrada declara
+    `writes: true|false` - o contrato de escrita do agente.
+
+    Devolve o mapa, ou uma STRING com o motivo pelo qual o contrato nao pode ser lido. Toda
+    falha de leitura e INDECIDIVEL (NAO_VERIFICADO), nunca violacao: sem contrato nao ha com o
+    que comparar a capacidade declarada, e inventar um default ("assume read-only") produziria
+    veredito sobre um oraculo que nao existe."""
+    caminho = root / REGISTRY_REL
+    try:
+        reg = json.loads(caminho.read_text(encoding="utf-8"))
+    except OSError:
+        return f"{REGISTRY_REL} nao pode ser lido (ausente, ou falha de permissao/E-S)"
+    except json.JSONDecodeError:
+        return f"{REGISTRY_REL} nao e JSON valido"
+    agentes = reg.get("agents") if isinstance(reg, dict) else None
+    if not isinstance(agentes, dict):
+        return f"{REGISTRY_REL} nao tem o mapeamento `agents`"
+    return agentes
 
 
 class _ChaveToolsAusente:
@@ -146,6 +206,25 @@ def frontmatter_lines(caminho: Path) -> list[str] | _ErroAmbiental | None:
         if linha.strip() == "---":
             return linhas[1:i]
     return None
+
+
+def frontmatter_doc(caminho: Path) -> dict | _ErroAmbiental | _YamlInvalido | None:
+    """O frontmatter INTEIRO como mapeamento, para decidir sobre chaves que nao sao `tools:`
+    (hoje: `memory:`). Devolve as mesmas sentinelas de indecidibilidade de `tools_declarados`.
+
+    Parse proprio, e nao um refactor de `tools_declarados`: aquela funcao decide UMA chave e tem
+    contrato, casos de borda e mutantes proprios (a forma escalar separada por virgula, a lista
+    de bloco, a ausencia como concessao maxima). Esta so precisa do mapeamento cru."""
+    fm = frontmatter_lines(caminho)
+    if fm is ERRO_AMBIENTAL:
+        return ERRO_AMBIENTAL
+    if fm is None:
+        return None
+    try:
+        carregado = yaml.safe_load("\n".join(fm))
+    except yaml.YAMLError:
+        return YAML_INVALIDO
+    return carregado if isinstance(carregado, dict) else YAML_INVALIDO
 
 
 def tools_declarados(
@@ -213,6 +292,71 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="compara so execution/agents x .claude/agents; NAO verifica CLAUDE_HOME/agents "
              "(uso: CI, onde a perna instalada nao existe no runner)")
     return ap.parse_args(argv)
+
+
+def confere_contrato(canon_files: list[Path]) -> tuple[list[str], list[str], int]:
+    """Compara o CONTRATO de escrita (`writes` em orchestration/registry.json) com a capacidade
+    que o frontmatter concede, nas DUAS arvores deste repositorio (canonica e projecao).
+    Devolve (violacoes, nao_verificados, pares_conferidos).
+
+    So agentes com `writes: false` sao conferidos - quem tem `writes: true` declara escrita por
+    contrato, e listar Write/Edit ou `memory:` ali e coerencia, nao violacao.
+
+    A copia INSTALADA fica de fora, e nao por omissao: `install/verify.sh` compara o sha256 do
+    arquivo instalado com o digest de `install/manifest.lock`, calculado sobre o arquivo
+    canonico - conformidade da canonica mais digest igual implica a instalada. A projecao NAO
+    herda esse argumento: e um estipe diferente, com corpo truncado e campos proprios, entao
+    tem digest proprio e precisa ser conferida aqui."""
+    violacoes: list[str] = []
+    nao_verificados: list[str] = []
+    conferidos = 0
+
+    contrato = contrato_de_escrita(ROOT)
+    if isinstance(contrato, str):
+        return violacoes, [f"contrato de escrita indecidivel: {contrato}"], conferidos
+
+    for canon_path in canon_files:
+        nome = canon_path.stem
+        entrada = contrato.get(nome)
+        escreve = entrada.get("writes") if isinstance(entrada, dict) else None
+        if not isinstance(escreve, bool):
+            nao_verificados.append(
+                f"{nome}: {REGISTRY_REL} nao declara `writes` booleano para este agente - "
+                f"sem contrato nao ha capacidade a conferir")
+            continue
+        if escreve:
+            continue
+        fontes = [(ROTULO_CANONICA, canon_path),
+                  (ROTULO_PROJECAO, ROOT / ".claude" / "agents" / f"{nome}.md")]
+        for rotulo, caminho in fontes:
+            if not caminho.is_file():
+                # Fonte ausente ja e reportada pela comparacao de `tools:` acima, que tambem ja
+                # decide o exit code - repetir aqui duplicaria a linha, nao acrescentaria sinal.
+                continue
+            doc = frontmatter_doc(caminho)
+            if not isinstance(doc, dict):
+                nao_verificados.append(
+                    f"{nome}: frontmatter {rotulo} em {caminho} ilegivel ou nao e um mapeamento "
+                    f"- indecidivel, nao violacao")
+                continue
+            conferidos += 1
+            if doc.get("memory") is not None:
+                violacoes.append(
+                    f"{nome}: {REGISTRY_REL} declara `writes: false`, mas o frontmatter {rotulo} "
+                    f"declara `memory: {doc['memory']}` - pela doc primaria do Claude Code "
+                    f"(sub-agents, \"Enable persistent memory\"), com memoria habilitada \"Read, "
+                    f"Write, and Edit tools are automatically enabled\", concessao que nao "
+                    f"aparece em `tools:` e que nenhuma comparacao entre fontes detecta")
+            declaradas = tools_declarados(caminho)
+            escrita_direta = (sorted(declaradas & FERRAMENTAS_DE_ESCRITA)
+                              if isinstance(declaradas, frozenset) else [])
+            if escrita_direta:
+                violacoes.append(
+                    f"{nome}: {REGISTRY_REL} declara `writes: false`, mas `tools:` do "
+                    f"frontmatter {rotulo} concede escrita direta "
+                    f"({', '.join(escrita_direta)})")
+
+    return violacoes, nao_verificados, conferidos
 
 
 def main() -> int:
@@ -344,6 +488,28 @@ def main() -> int:
         for v in nao_verificados:
             print(f"  - {v}")
 
+    violacoes_contrato, nao_verificados_contrato, conferidos = confere_contrato(canon_files)
+
+    print(f"\nCONTRATO DE ESCRITA ({REGISTRY_REL} `writes: false` x capacidade que o "
+          f"frontmatter concede): {conferidos} pares agente-fonte conferidos | "
+          f"{len(violacoes_contrato)} violacoes | "
+          f"{len(nao_verificados_contrato)} nao verificados")
+    if violacoes_contrato:
+        print("CONTRATO DE ESCRITA - VIOLACOES (o frontmatter concede escrita a agente "
+              "declarado sem escrita):")
+        for v in violacoes_contrato:
+            print(f"  - {v}")
+    if nao_verificados_contrato:
+        print("CONTRATO DE ESCRITA - NAO VERIFICADO (sem oraculo legivel, nada e decidido):")
+        for v in nao_verificados_contrato:
+            print(f"  - {v}")
+    print("CONTRATO DE ESCRITA - LIMITE: isto compara DECLARACAO com DECLARACAO e NAO afirma "
+          "read-only. `Bash` consta no `tools:` desses agentes e escreve por `>`, `tee`, "
+          "`sed -i`, `python3 -c` ou `git apply` - superficie maior que Write/Edit, e nao "
+          "decidivel por nome de ferramenta. Read-only de fato exige sandbox de filesystem, "
+          "fora do frontmatter. A copia instalada nao e conferida aqui (fica presa ao digest "
+          "de install/manifest.lock, ver install/verify.sh).")
+
     print("\nISTO FECHA APENAS A METADE DECLARADA. ObservedCapabilities (o que o runtime "
           "realmente concede em execucao) NAO foi medido aqui - ver "
           "evidence/runtime-probes/capabilities.md.")
@@ -351,9 +517,9 @@ def main() -> int:
         print(f"--repo-only tambem NAO fechou a metade declarada inteira: {ROTULO_INSTALADA} "
               f"ficou fora desta execucao por desenho (ver acima).")
 
-    if violacoes:
+    if violacoes or violacoes_contrato:
         return EXIT_VIOLACAO
-    if nao_verificados:
+    if nao_verificados or nao_verificados_contrato:
         return EXIT_NAO_VERIFICADO
     return EXIT_OK
 

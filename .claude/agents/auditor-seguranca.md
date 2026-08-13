@@ -3,7 +3,6 @@ name: auditor-seguranca
 description: Projeção do agente canônico auditor-seguranca.
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

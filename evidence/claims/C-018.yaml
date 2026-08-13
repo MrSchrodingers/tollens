@@ -433,4 +433,18 @@ limitations:
   autenticado nao contorna a regra. Fechar esta lacuna exige rodar o probe com um token que
   tenha acesso de escrita ao ruleset (nao o GITHUB_TOKEN de execucao agendada); nenhuma
   heuristica sobre o campo parcial visivel substitui essa medicao.'
+- 'MEDIDO EM 2026-08-12 (onda 10), e e a limitacao mais importante desta alegacao: o probe foi
+  integrado a CI na onda 9 e NUNCA MEDIU NADA contra a API real. No log da execucao 31641449160
+  (verify-pr do PR #15, conclusao `success`), o ambiente do passo aparece como `GH_TOKEN:` vazio
+  e a saida e "NAO VERIFICADO: RULESET_READ_TOKEN ausente". O segredo nunca foi configurado no
+  repositorio - conferido tambem por `gh api .../actions/secrets`, que nao lista nenhum.
+  Consequencia: todas as evidencias desta alegacao vem de suites com stub e de execucao MANUAL
+  do probe contra a API viva; NENHUMA vem de execucao automatica no gate. O mecanismo estava
+  instalado, coberto por 188 assercoes e 30 mutantes, e o ObservableVerifier nunca observou.
+  A onda 10 separou o passo em job proprio (`verify-live-policy`) que agora sai 2 em vez de 0
+  quando o segredo falta, tornando a lacuna VISIVEL como check-run nao-verde em vez de invisivel
+  dentro de um job verde. Isso NAO fecha a lacuna - fechar exige que alguem com admin crie o
+  segredo com um token que tenha acesso de leitura de administracao do repositorio. Ate la, o
+  termo exists a. Bypass(a,P) permanece NAO MEDIDO em toda execucao de CI, e esta alegacao nao
+  deve ser lida como se ele fosse.'
 status: supported-in-tested-domain

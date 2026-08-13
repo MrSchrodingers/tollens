@@ -37,10 +37,10 @@ OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 # seria o falso positivo que faz o operador desligar o mecanismo. Os tres estados sao distintos
 # no heartbeat justamente para que "nao ha managed" nunca seja lido como "managed confere".
 # A GUARDA E A UNIAO DOS ARTEFATOS JULGADOS, nao um deles. O verificador managed julga DUAS
-# metades - a arvore em $OPT e a politica em managed-settings.json (apply-managed-legacy.sh:249:
+# metades - a arvore em $OPT e a politica em managed-settings.json (apply-managed-worker.sh:249:
 # "ActiveState = (arvore em $OPT, politica em $SETTINGS). AS DUAS metades"). Testar so a arvore
 # fazia o PIOR drift possivel passar por benigno: com a politica viva e a arvore apagada - estado
-# que o proprio legacy documenta como resultado de SIGKILL entre os dois renames, e que `rm -rf`
+# que o proprio worker documenta como resultado de SIGKILL entre os dois renames, e que `rm -rf`
 # manual reproduz - o hook gravava `absent` e calava. Com allowManagedHooksOnly=true isso e o
 # mecanismo inteiro desligado, apontando para caminhos inexistentes, reportado como conformidade.
 #

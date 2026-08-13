@@ -45,6 +45,40 @@ allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|\.git|\.github|\.gitig
 ignorado(){
   [ "$(git check-ignore -v -- "$1" 2>/dev/null | cut -d: -f1)" = ".gitignore" ]
 }
+# MASCARA DO RUNTIME - POR QUE NAO HA ISENCAO AQUI, e por que houve uma por algumas horas.
+#
+# Rodando dentro do Claude Code, `find` na raiz devolve `.mcp.json` como CHARACTER SPECIAL FILE:
+# o runtime monta 176 bind mounts sobre arquivos de configuracao no namespace da sessao. Nove
+# caminhos desta arvore estao nessa condicao. Eles nao existem em disco e somem com a sessao, e
+# sem tratamento a suite dava FALSO VERMELHO para qualquer pessoa que a rodasse de dentro do
+# agente - foi o que aconteceu, e ainda arrastou junto `evidence/cobertura.sh`, que corretamente
+# se recusa a medir cobertura sobre um oraculo ja vermelho.
+#
+# A PRIMEIRA CORRECAO FOI UMA FUNCAO `mascara_de_runtime()` QUE ISENTAVA A ENTRADA. Ela durou
+# poucas horas e foi REMOVIDA por revisao independente, que provou dois contraexemplos - ambos
+# sem privilegio nenhum, ambos em uma linha:
+#
+#   1. `ln -s /dev/null ./backdoor && git add -f backdoor`
+#      `test -c` SEGUE symlink, entao a isencao casava. E o git versiona symlink (modo 120000):
+#      medido, `git ls-files -s` devolveu `120000 dc1dc0c... backdoor`, enquanto a mensagem da
+#      suite dizia "nao versionavel". A justificativa que eu havia escrito - "o git so versiona
+#      arquivo regular, symlink e gitlink, logo char device nao pode ser commitado" - se
+#      auto-refuta na propria enumeracao, porque symlink esta nela.
+#
+#   2. `unshare -rm bash -c ': > ./payload && mount --bind vazio ./payload'`
+#      Satisfazia as TRES condicoes que eu havia exigido em conjunto (montado, nao rastreado,
+#      vazio) com lixo arbitrario na raiz. As tres eram propriedades que o atacante escolhe.
+#
+# A CORRECAO REAL E O `.gitignore`, e ela e melhor por tres razoes. Fecha a janela do `git add`
+# (que ja tinha commitado nove blobs vazios, no commit e4ab92e desta mesma onda). E revisavel -
+# uma linha por caminho, visivel em diff, com decisao escrita. E nao cria classe isentavel
+# nenhuma: um DECIMO caminho mascarado no futuro reprova esta suite de forma VISIVEL, e a
+# correcao sera acrescentar uma linha que alguem le, em vez de um predicado que alguem contorna.
+#
+# LICAO QUE FICA, e ela vale mais que o caso: a funcao removida tinha comentario declarando
+# "as tres condicoes sao exigidas em CONJUNTO para nao abrir buraco". O comentario descrevia a
+# intencao; o codigo, por precedencia de `||`/`&&`, avaliava a primeira e retornava. Comentario
+# nao e mecanismo, nem quando o mecanismo esta na linha de baixo.
 while IFS= read -r entry; do
   if ! [[ "$entry" =~ $allowed_root ]]; then
     if ignorado "$entry"; then continue; fi

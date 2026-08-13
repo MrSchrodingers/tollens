@@ -10,9 +10,12 @@
 # delegacao vivem la, nao aqui.
 #
 # O que NAO fica, e por que: a instrucao de "responder como colegiado com vozes rotuladas"
-# foi removida (ADR 0011). Voz rotulada dentro da mesma resposta e auto-correcao intrinseca
-# - mesmos pesos, mesmo contexto, correlacao 1 - e degrada em vez de verificar (Huang et al.,
-# ICLR 2024). Contraditorio real exige contexto separado: agente `refutador`.
+# foi removida (ADR 0011). Voz rotulada dentro da mesma resposta e auto-correcao intrinseca -
+# mesmos pesos e mesmo contexto produzem erro em MODO COMUM, com dependencia substancial de
+# magnitude NAO MEDIDA aqui - e degrada em vez de verificar (Huang et al., ICLR 2024).
+# Ate 2026-08-12 esta linha dizia "correlacao 1": numero forte, falso, e desnecessario, porque
+# a evidencia de Huang et al. sustenta a conclusao sem coeficiente nenhum. Ver a errata em
+# docs/adr/0011. Contraditorio real exige contexto separado: agente `refutador`.
 #
 # Fail-open por construcao: so escreve em stdout e sai 0. Nunca bloqueia o prompt.
 

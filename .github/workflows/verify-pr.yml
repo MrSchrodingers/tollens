@@ -40,7 +40,13 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
-          python3 -m pip install --quiet 'ruff==0.15.5' 'pandas==2.2.3' 'openpyxl==3.1.5' 'pymupdf==1.27.1' 'packaging==25.0' 'pyyaml==6.0.2' 'coverage==7.13.4'
+          # PIP COM HASH DO FECHO TRANSITIVO. Antes desta linha havia sete pacotes com `==`
+          # inline: isso pinava a versao de TOPO e deixava numpy, python-dateutil, pytz, six,
+          # tzdata e et-xmlfile livres e sem hash nenhum. `==` responde 'qual versao', nunca
+          # 'qual artefato'. `--require-hashes` exige hash para TODO pacote do fecho e recusa
+          # qualquer arquivo cujo sha256 nao case. Ver install/requirements-ci.txt para como o
+          # arquivo foi gerado e validado, e install/regen-requirements.sh para regerar.
+          python3 -m pip install --quiet --require-hashes -r install/requirements-ci.txt
           # EXCECAO DECLARADA - apt NAO pinado: `ubuntu-24.04` fixa a familia da imagem, nao
           # o snapshot do repositorio apt. Fixar versoes apt contra um runner hospedado quebraria
           # quando a imagem girasse. Isto compra auditabilidade, NAO hermeticidade; as versoes
@@ -49,15 +55,19 @@ jobs:
           missing=()
           command -v pdftotext >/dev/null || missing+=(poppler-utils)
           command -v pandoc    >/dev/null || missing+=(pandoc)
+          # ffmpeg entra na onda 10: sem ele o grupo D8 de tests/unit/document-tools.sh mede o
+          # ramo da LACUNA DECLARADA do adaptador de midia, nao o ramo produtivo. Uma suite que
+          # so exercita o caminho de indisponibilidade nao verifica o caminho que se usa.
+          command -v ffmpeg    >/dev/null || missing+=(ffmpeg)
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "instalando: ${missing[*]}"
             sudo timeout 180 apt-get -o Acquire::Retries=3 update -qq
-            sudo timeout 180 apt-get -o Acquire::Retries=3 install -y -qq "${missing[@]}"
+            sudo timeout 300 apt-get -o Acquire::Retries=3 install -y -qq "${missing[@]}"
           else
-            echo "poppler-utils e pandoc ja presentes na imagem; apt nao foi acionado"
+            echo "poppler-utils, pandoc e ffmpeg ja presentes na imagem; apt nao foi acionado"
           fi
           echo "versoes de sistema observadas nesta execucao:"
-          pdftotext -v 2>&1 | head -1; pandoc --version | head -1
+          pdftotext -v 2>&1 | head -1; pandoc --version | head -1; ffmpeg -version | head -1
           ruff --version && node --version && jq --version
       - name: sintaxe de todo hook
         run: |
@@ -139,6 +149,17 @@ jobs:
         run: bash tests/mutation/claims.sh
       - name: validacao por mutacao (capability declarada)
         run: bash tests/mutation/capabilities.sh
+      # ONDA 10. A CI conferia os adaptadores documentais so com `jq -e .` - sintaxe valida. Foi
+      # exatamente por ali que `media.json` atravessou nove ondas declarando `pipeline` onde o
+      # executor exige `plans`, e o caminho sancionado para imagem ficou inutilizavel. Sintaxe
+      # valida nao e conformidade de contrato.
+      - name: conformidade de schema dos adaptadores documentais
+        run: python3 evidence/validate-adapters.py
+      # PASSO DEDICADO, e nao opcional: scripts/status.sh varre tests/mutation/*.sh e publica
+      # "passo dedicado no CI" para cada arnes que encontra. Sem este passo aquela linha seria
+      # uma afirmacao falsa no documento de estado.
+      - name: validacao por mutacao (conformidade de adaptador)
+        run: bash tests/mutation/adaptadores.sh
       - name: cobertura de decisao (mecanismo, evidence/cobertura.sh)
         run: bash tests/unit/cobertura.sh
       # UBUNTU 24.04 RESTRINGE USER NAMESPACE NAO PRIVILEGIADO POR APPARMOR. Tres dos doze
@@ -165,12 +186,45 @@ jobs:
         run: bash evidence/cobertura.sh --check
       - name: suite legada
         run: bash tests/unit/run.sh
-      # POSICAO DELIBERADA - ULTIMO PASSO. E o unico passo que depende de REDE e de permissao de
-      # token. Estava na posicao 23 de 40, e um vermelho ali PULA 17 verificacoes deterministicas
-      # (medido: run 31607753782, 24 passos skipped apos falha no 16). Verificacao que depende de
-      # fator externo vai por ultimo, para que a sua indisponibilidade nunca esconda o resultado
-      # do que nao depende de nada.
-      #
+      # FIM DO JOB ESTATICO. O verde de `verify-pr` significa, a partir da onda 10, EXATAMENTE
+      # "as verificacoes deterministicas passaram". Nada alem disso. A fronteira viva saiu daqui.
+
+  # ---------------------------------------------------------------------------------------------
+  # POR QUE A FRONTEIRA VIVA VIROU UM JOB SEPARADO, e o defeito que forcou a separacao
+  #
+  # Enquanto ela era um PASSO de `verify-pr`, a ausencia de RULESET_READ_TOKEN produzia `exit 0`
+  # e o job inteiro ficava verde com a garantia critica NAO MEDIDA. Duas auditorias externas
+  # independentes apontaram isso em 2026-08-12, por caminhos diferentes.
+  #
+  # A medicao que fecha o caso e pior do que ambas supuseram. No log da execucao 31641449160
+  # (verify-pr do PR #15, conclusao success) o ambiente do passo aparece como `GH_TOKEN:` VAZIO,
+  # e a saida e "NAO VERIFICADO: RULESET_READ_TOKEN ausente". O segredo nunca foi configurado:
+  # o probe foi instalado na onda 9 e NUNCA mediu nada contra a API real. O ObservableVerifier
+  # existia, era testado por 188 assercoes e 30 mutantes, e nunca observou.
+  #
+  #     CI_SUCCESS   =/=>   para toda garantia critica g:  Verified(g)
+  #
+  # Um job por termo torna o quantificador visivel: `verify-pr` responde pelo lado estatico,
+  # `verify-live-policy` responde pelo termo externo, e nenhum dos dois cobre o outro.
+  #
+  # DIFERENCA DE CONTRATO EM RELACAO AO PASSO ANTIGO: sem o segredo isto agora sai 2, nao 0.
+  # NOT_VERIFIED nao pode compartilhar a conclusao externa de VERIFIED - o GitHub so tem
+  # success/failure para um passo de `run:`, entao o unico mapeamento honesto de NOT_VERIFIED e
+  # nao-verde. O custo declarado: em PR vindo de fork o segredo e legitimamente indisponivel e
+  # este job ficara vermelho; este repositorio tem 0 forks (medido em 2026-08-12), e quando isso
+  # mudar a condicao correta e `github.event.pull_request.head.repo.fork`, nao afrouxar o portao.
+  #
+  # `verify-live-policy` NAO esta na lista de required status checks do ruleset - hoje ele
+  # ficaria permanentemente vermelho e bloquearia todo merge, porque o segredo nao existe.
+  # Adiciona-lo e a etapa seguinte, DEPOIS de o segredo existir. Ate la ele e sinal visivel,
+  # nao portao - e essa distincao esta escrita aqui para nao ser confundida com aprovacao.
+  # ---------------------------------------------------------------------------------------------
+  verify-live-policy:
+    name: verify-live-policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinado: tag e mutavel
       # FRONTEIRA VIVA - mede Applies(P,r) e Bypass(a,P) contra o endpoint AUTORITATIVO do
       # GitHub, nao contra os arquivos de workflow deste repositorio.
       #
@@ -178,9 +232,7 @@ jobs:
       # que contorna?"; `current_user_can_bypass` responde so "ESTE ator contorna?". A API omite
       # o primeiro para quem nao tem write no ruleset - medido contra a API viva em 2026-08-12
       # (github/docs ruleset 19633356: campo ausente). Tratar a ausencia como aprovacao INVERTIA
-      # a direcao: reduzir o privilegio do observador deixava o portao verde sobre o mesmo
-      # ruleset. Com RULESET_READ_TOKEN, mede e BLOQUEIA (exit 1 e 2 reprovam). Sem ele, declara
-      # a lacuna - nunca verde fingido, nunca vermelho permanente.
+      # a direcao: reduzir o privilegio do observador deixava o portao verde sobre o mesmo ruleset.
       #
       # A DECISAO ESTA EM BASH, NAO EM `if:` DE PASSO, E ISSO E DELIBERADO. A tentativa anterior
       # usou `if: ${{ secrets.X == '' }}` e invalidou o workflow INTEIRO - execucao 31626367844
@@ -196,8 +248,8 @@ jobs:
             echo "  O termo existencial de Bypass(a,P) NAO foi medido nesta execucao."
             echo "  GITHUB_TOKEN nao recebe 'bypass_actors' da API - medido, nao suposto."
             echo "  LACUNA DECLARADA, nao aprovacao. Ver evidence/claims/C-018.yaml."
-            echo "::warning title=fronteira viva nao medida::Bypass(a,P) exige RULESET_READ_TOKEN"
-            exit 0
+            echo "::error title=fronteira viva NAO MEDIDA::Bypass(a,P) exige RULESET_READ_TOKEN; exit 2 = NOT_VERIFIED"
+            exit 2
           fi
           python3 evidence/probes/github-ruleset.py \
             --owner "${GITHUB_REPOSITORY%%/*}" \

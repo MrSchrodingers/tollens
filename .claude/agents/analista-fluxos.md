@@ -3,7 +3,6 @@ name: analista-fluxos
 description: Projeção do agente canônico analista-fluxos.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

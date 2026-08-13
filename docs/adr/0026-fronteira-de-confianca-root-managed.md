@@ -7,7 +7,7 @@
 
 O instalador managed existe para publicar hooks, adapters e document tools fora do espaço de escrita do ator governado. Essa propriedade é anulada se o próprio caminho privilegiado executar código vindo de um checkout ainda controlado por esse ator.
 
-O caso concreto observado foi `apply-managed-legacy.sh` executar `install/hooks-spec.sh` por `bash`. O confinamento de caminhos do manifesto e o re-hash do staging protegem contra classes importantes de drift e travessia, mas não autenticam um script-irmão executado como root.
+O caso concreto observado foi `apply-managed-worker.sh` executar `install/hooks-spec.sh` por `bash`. O confinamento de caminhos do manifesto e o re-hash do staging protegem contra classes importantes de drift e travessia, mas não autenticam um script-irmão executado como root.
 
 A fronteira correta é sobre a **closure de código privilegiado**, não sobre um arquivo isolado.
 
@@ -29,7 +29,7 @@ E, para toda dependência executada por `p`:
 
 1. `install/apply-managed.sh` trata execução com UID 0 sobre a raiz real como uma fronteira privilegiada distinta.
 2. Antes de delegar para qualquer helper, o supervisor stock exige que o repositório inteiro observado por ele seja `root:root`, não contenha symlinks e não seja gravável por grupo/outros segundo os bits POSIX.
-3. `TOLLENS_MANAGED_LEGACY` é proibido nessa execução privilegiada real. O override permanece exclusivamente como seam de teste quando `MANAGED_PREFIX` desloca a raiz.
+3. `TOLLENS_MANAGED_WORKER` é proibido nessa execução privilegiada real. O override permanece exclusivamente como seam de teste quando `MANAGED_PREFIX` desloca a raiz.
 4. A pós-condição do deploy passa a verificar **modos exatos**, não apenas conteúdo e ausência de escrita por grupo/outros:
    - diretórios: `0755`;
    - `*.sh`: `0755`;
@@ -85,3 +85,14 @@ Também permanecem fora da claim:
 ## Nota de portabilidade
 
 A auditoria não sustenta a afirmação de que BusyBox `stat` tenha, por si só, semântica oposta ao GNU `stat` para dereference de symlinks. O contrato relevante deve ser testado nas plataformas suportadas em vez de inferido por nome da implementação. A claim atual permanece limitada ao ambiente POSIX/GNU exercitado pela CI.
+
+> **NOTA DE RENOMEACAO, 2026-08-12 (onda 10).** Este ADR foi escrito quando o instalador
+> de fase 2 se chamava `install/apply-managed-legacy.sh` e o override `TOLLENS_MANAGED_LEGACY`.
+> Os dois foram renomeados para `apply-managed-worker.sh` e `TOLLENS_MANAGED_WORKER`, e as
+> mencoes acima acompanham a renomeacao para que continuem resolvendo para um arquivo que
+> existe. O NOME era o defeito, nao o codigo: o script nunca foi legado - e o worker que
+> `apply-managed.sh` invoca em toda instalacao, incluindo a de producao. Nome que declara
+> obsolescencia sobre codigo portante convida a remocao errada.
+> Nenhum comando ou saida GRAVADA foi alterado por esta renomeacao: as observacoes em
+> `evidence/observations/` nao foram tocadas (conferido por `git diff --name-only`). Quem
+> buscar o nome antigo no historico do git encontra ambos os lados.

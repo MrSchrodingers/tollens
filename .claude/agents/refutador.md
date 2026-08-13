@@ -3,7 +3,6 @@ name: refutador
 description: Projeção do agente canônico refutador.
 tools: Read, Grep, Glob, Bash
 model: opus
-memory: project
 permissionMode: plan
 maxTurns: 24
 ---

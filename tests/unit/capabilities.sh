@@ -8,8 +8,17 @@
 # PASS continuava afirmando "identico nas 3 fontes" - uma prova de comparacao que nao ocorreu,
 # arquivavel em log de CI. Sem suite alguma, nada discriminava essa mentira de saida.
 #
+#
+# K19 EM DIANTE cobrem a SEGUNDA propriedade do probe: o contrato de escrita
+# (`writes: false` em orchestration/registry.json) contra a capacidade que o frontmatter
+# concede. Ela nasceu de um defeito da mesma familia e invisivel a comparacao de `tools:`: as
+# tres fontes concordavam em `Read, Grep, Glob, Bash` enquanto `memory: user` fazia o runtime
+# auto-habilitar Read/Write/Edit por cima disso. Comparar fontes entre si nunca poderia pegar
+# uma concessao que nenhuma delas escreve em `tools:`.
+#
 # ISOLAMENTO: o script sob teste le TRES arvores via variavel de ambiente
-# (TOLLENS_ROOT/execution/agents, TOLLENS_ROOT/.claude/agents, CLAUDE_HOME/agents) -
+# (TOLLENS_ROOT/execution/agents, TOLLENS_ROOT/.claude/agents, CLAUDE_HOME/agents), mais o
+# contrato em TOLLENS_ROOT/orchestration/registry.json -
 # por isso toda fixture desta suite vive em diretorio descartavel, nunca em execution/agents/ ou
 # .claude/agents/ deste repositorio (que sao o DADO que o probe observa - mutar o dado para o
 # probe passar seria fraude, nao teste).
@@ -41,13 +50,16 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 #       "BADYAML"         -> `tools:` com YAML sintaticamente INVALIDO (colchete de fluxo
 #                            nao fechado) - indecidivel, nao violacao
 #       "OMIT"            -> nenhuma chave `tools:` (arquivo existe, frontmatter fecha)
-agente(){  # $1=caminho do .md  $2=spec
-  local path="$1" spec="$2"
+# $3 (opcional) e uma linha EXTRA de frontmatter - usada pelos casos de contrato de escrita
+# para plantar `memory: user` sem tocar em nada mais do documento.
+agente(){  # $1=caminho do .md  $2=spec  [$3=linha extra de frontmatter]
+  local path="$1" spec="$2" extra="${3:-}"
   mkdir -p "$(dirname "$path")"
   {
     echo "---"
     echo "name: fixture"
     echo "description: fixture de teste"
+    [ -n "$extra" ] && echo "$extra"
     case "$spec" in
       OMIT) : ;;
       BADYAML) echo "tools: [Read, Grep" ;;
@@ -92,6 +104,27 @@ agente(){  # $1=caminho do .md  $2=spec
   } > "$path"
 }
 
+# --- FIXTURE: o CONTRATO de escrita (orchestration/registry.json), oraculo da segunda
+# propriedade do probe. Sem esta fixture a arvore nao tem contrato, e o probe sai
+# NAO_VERIFICADO em vez de decidir - o que e ele proprio um caso de teste (K22).
+# spec por agente: "nome:true" / "nome:false" / "nome:<qualquer outra coisa>" (nao booleano,
+# para exercitar o caso indecidivel).
+registro(){  # $1=ROOT  $2...=nome:valor
+  local root="$1"; shift
+  mkdir -p "$root/orchestration"
+  python3 - "$root/orchestration/registry.json" "$@" <<'PY'
+import json, sys
+destino, itens = sys.argv[1], sys.argv[2:]
+agentes = {}
+for item in itens:
+    nome, _, bruto = item.partition(":")
+    valor = (bruto == "true") if bruto in ("true", "false") else bruto
+    agentes[nome] = {"source": f"execution/agents/{nome}.md", "writes": valor}
+with open(destino, "w", encoding="utf-8") as fh:
+    json.dump({"schema_version": 1, "agents": agentes}, fh)
+PY
+}
+
 rodar(){  # $1=ROOT  $2=HOME  $3...=argumentos extras do probe
   local root="$1" home="$2"; shift 2
   TOLLENS_ROOT="$root" CLAUDE_HOME="$home" python3 "$PROBE" "$@" >"$T/out" 2>"$T/err"
@@ -100,6 +133,7 @@ rodar(){  # $1=ROOT  $2=HOME  $3...=argumentos extras do probe
 
 echo "== K1. duas arvores integras (canonica == projecao == instalada) -> PASS, exit 0 =="
 R="$T/k1"; H="$T/k1-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Glob"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep, Glob"
 agente "$H/agents/a.md"           "INLINE:Read, Grep, Glob"
@@ -111,6 +145,7 @@ chk "  PASS declara as 3 fontes comparadas (canonica, projecao, instalada)" \
 
 echo "== K2. arquivo de projecao do repo AUSENTE (arvore existe, arquivo nao) -> NAO_VERIFICADO, exit 2 =="
 R="$T/k2"; H="$T/k2-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 mkdir -p "$R/.claude/agents"          # arvore existe, mas SEM a.md
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -123,6 +158,7 @@ chk "  nao imprime PASS nenhum (nada foi decidido)" \
 
 echo "== K3. tools: DIVERGENTE entre canonica e projecao -> VIOLACAO, exit 1 =="
 R="$T/k3"; H="$T/k3-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Glob"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"          # falta Glob
 agente "$H/agents/a.md"           "INLINE:Read, Grep, Glob"
@@ -133,6 +169,7 @@ chk "  nomeia o que falta na fonte divergente" \
 
 echo "== K4. diretorio .claude/agents INTEIRO ausente (nao so um arquivo) -> NAO_VERIFICADO, exit 2 =="
 R="$T/k4"; H="$T/k4-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 # $R/.claude nao e criado de forma alguma
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -143,6 +180,7 @@ echo "== K5. --repo-only com divergencia plantada SO na perna instalada -> exit 
 # Esta e a reproducao literal do defeito original: canonica == projecao do repo, e a UNICA
 # divergencia real mora na perna instalada (a mesma forma do achado de refutador: Write a mais).
 R="$T/k5"; H="$T/k5-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep, Write"   # divergencia SO aqui
@@ -167,6 +205,7 @@ echo "== K6. tools: AUSENTE (omitido) numa projecao -> VIOLACAO, exit 1 (D2: nao
 # lacuna. Antes desta correcao este caso saia NAO_VERIFICADO/exit 2; a decisao inverte para
 # VIOLACAO porque a ausencia agora e informacao DECIDIVEL, nao indecidibilidade.
 R="$T/k6"; H="$T/k6-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "OMIT"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -181,6 +220,7 @@ echo "== K7. tools: EM BLOCO YAML (lista, nao inline) e reconhecido como igual a
 # Prova o segundo ponto de D2: RE_TOOLS so casava a forma inline; uma lista de bloco nao podia
 # virar VIOLACAO por engano de leitura (parser cego a uma forma valida != capacidade divergente).
 R="$T/k7"; H="$T/k7-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "BLOCK:Read,Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -189,6 +229,7 @@ chk "lista de bloco YAML equivalente a inline -> exit 0 (nao falso-VIOLACAO por 
 
 echo "== K8. tools: ausente na fonte CANONICA -> defeito estrutural (violacao), nao lacuna silenciosa =="
 R="$T/k8"; H="$T/k8-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "OMIT"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -201,6 +242,7 @@ echo "== K9. CLI: flag desconhecida NAO roda modo completo calado -> exit 2, sem
 # Antes: \`\"--repo-only\" in sys.argv\` aceitava qualquer outro token sem reclamar - um erro de
 # digitacao (--repoonly) rodava o modo completo em silencio, sem aplicar o filtro pedido.
 R="$T/k9"; H="$T/k9-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -217,6 +259,7 @@ echo "== K10. REPRODUCAO DO ALTO: bloco com LINHA EM BRANCO escondia itens extra
 # `break` na linha em branco e nunca via Write/Edit - PASS falso. yaml.safe_load le a lista
 # inteira e a divergencia aparece.
 R="$T/k10"; H="$T/k10-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Glob, Bash"
 agente "$R/.claude/agents/a.md"   "BLOCKBLANK:4:Read,Grep,Glob,Bash,Write,Edit"
 agente "$H/agents/a.md"           "INLINE:Read, Grep, Glob, Bash"
@@ -229,6 +272,7 @@ echo "== K11. bloco com linha em branco, MESMO conjunto -> continua batendo, exi
 # Controle do K10: uma linha em branco no meio do bloco nao pode, por si so, virar violacao -
 # so itens genuinamente extras/faltantes devem.
 R="$T/k11"; H="$T/k11-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Glob, Bash"
 agente "$R/.claude/agents/a.md"   "BLOCKBLANK:2:Read,Grep,Glob,Bash"
 agente "$H/agents/a.md"           "INLINE:Read, Grep, Glob, Bash"
@@ -237,6 +281,7 @@ chk "linha em branco com conjunto equivalente -> exit 0" "$RC" 0
 
 echo "== K12. bloco com COMENTARIO YAML no meio -> nao trunca, continua batendo, exit 0 =="
 R="$T/k12"; H="$T/k12-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "BLOCKCOMMENT:Read,Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -247,6 +292,7 @@ echo "== K13. P2: 'tools: ' com ESPACO a mais nao esconde o bloco abaixo dele ==
 # Antes: RE_TOOLS casava a linha 'tools: ' com valor vazio e retornava TOOLS_AUSENTE sem nunca
 # olhar o bloco - VIOLACAO com a alegacao FALSA de que o arquivo nao declara tools:.
 R="$T/k13"; H="$T/k13-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "TRAILSPACE:Read,Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -257,6 +303,7 @@ chk "  nao alega falsamente 'HERDA TODAS as ferramentas' (P2 corrigido)" \
 
 echo "== K14. P3: forma de FLUXO 'tools: [A, B]' reconhecida como igual ao canonico =="
 R="$T/k14"; H="$T/k14-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "FLOW:Read, Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -265,6 +312,7 @@ chk "forma de fluxo YAML equivalente ao canonico -> exit 0" "$RC" 0
 
 echo "== K15. P3: itens ENTRE ASPAS no bloco reconhecidos como iguais ao canonico =="
 R="$T/k15"; H="$T/k15-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "QUOTED:Read,Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -275,6 +323,7 @@ echo "== K16. YAML INVALIDO numa projecao -> NAO_VERIFICADO, exit 2 (nao VIOLACA
 # Decisao explicita desta correcao: um frontmatter que fecha mas cujo conteudo nao e YAML
 # valido e indecidivel sobre tools:, nao uma divergencia de capacidade.
 R="$T/k16"; H="$T/k16-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 agente "$R/.claude/agents/a.md"   "BADYAML"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -285,6 +334,7 @@ chk "  nao aparece na secao de VIOLACOES" \
 
 echo "== K17. YAML INVALIDO na fonte CANONICA -> NAO_VERIFICADO, exit 2 (nao VIOLACAO) =="
 R="$T/k17"; H="$T/k17-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "BADYAML"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
 agente "$H/agents/a.md"           "INLINE:Read, Grep"
@@ -298,6 +348,7 @@ echo "== K18. P5: falha AMBIENTAL (permissao) na fonte CANONICA -> NAO_VERIFICAD
 # frontmatter malformado (estrutural). Um erro de permissao no arquivo canonico nao pode virar
 # a mesma VIOLACAO de "defeito estrutural" - e a causa esta no ambiente, nao no autor do agente.
 R="$T/k18"; H="$T/k18-home"
+registro "$R" a:false
 agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
 chmod 000 "$R/execution/agents/a.md"
 agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
@@ -308,11 +359,138 @@ chk "canonica ilegivel por permissao -> exit 2 (nao 1 - nao e defeito estrutural
 chk "  aponta falha AMBIENTAL, nao alega defeito estrutural" \
     "$(grep -q 'falha ambiental' "$T/out" && echo sim || echo nao)" "sim"
 
+echo "== K19. CONTRATO: agente writes:false que declara memory: no canonico -> VIOLACAO, exit 1 =="
+# A REPRODUCAO do defeito que esta segunda propriedade existe para pegar: as tres fontes
+# concordam em `tools:` (a primeira propriedade fica VERDE) e mesmo assim o frontmatter concede
+# Write/Edit, porque `memory:` os auto-habilita no runtime. Doc primaria do Claude Code
+# (sub-agents, "Enable persistent memory"): "Read, Write, and Edit tools are automatically
+# enabled so the subagent can manage its memory files."
+R="$T/k19"; H="$T/k19-home"
+registro "$R" a:false
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep" "memory: user"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "memory: em agente writes:false -> exit 1" "$RC" 1
+chk "  nomeia o campo e a fonte concreta" \
+    "$(grep -q 'frontmatter canonica (execution/agents) declara `memory: user`' "$T/out" && echo sim || echo nao)" "sim"
+chk "  cita a doc primaria (o auto-grant nao aparece em tools:)" \
+    "$(grep -q 'Read, Write, and Edit tools are automatically enabled' "$T/out" && echo sim || echo nao)" "sim"
+chk "  a comparacao de tools: continua PASS - as duas propriedades sao independentes" \
+    "$(grep -q '^PASS a: tools: identico nas 3 fontes comparadas' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K20. CONTROLE: o MESMO memory: em agente writes:true -> exit 0 (nao e violacao) =="
+# Sem este controle, a checagem poderia ser um detector de `memory:` em vez de um detector de
+# INCOERENCIA com o contrato - e reprovaria tdd/implementador, que escrevem por contrato.
+R="$T/k20"; H="$T/k20-home"
+registro "$R" a:true
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep" "memory: user"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "memory: em agente writes:true -> exit 0" "$RC" 0
+
+echo "== K21. CONTRATO: memory: so na PROJECAO (canonico limpo) -> VIOLACAO, exit 1 =="
+# A projecao e um estipe proprio, com digest proprio: corrigir so o canonico deixaria este
+# canal aberto, e nenhuma comparacao de `tools:` o veria.
+R="$T/k21"; H="$T/k21-home"
+registro "$R" a:false
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep" "memory: project"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "memory: so na projecao -> exit 1" "$RC" 1
+chk "  nomeia a projecao como a fonte que concede" \
+    "$(grep -q 'frontmatter projecao do repo (.claude/agents) declara `memory: project`' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K22. CONTRATO: tools: com Write em agente writes:false -> VIOLACAO, exit 1 =="
+# As tres fontes concordam (primeira propriedade VERDE) e concordam em conceder escrita direta.
+R="$T/k22"; H="$T/k22-home"
+registro "$R" a:false
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Write"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep, Write"
+agente "$H/agents/a.md"           "INLINE:Read, Grep, Write"
+RC="$(rodar "$R" "$H")"
+chk "Write em tools: de agente writes:false -> exit 1" "$RC" 1
+chk "  nomeia a ferramenta de escrita concedida" \
+    "$(grep -q 'concede escrita direta (Write)' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K23. CONTRATO: registry AUSENTE -> NAO_VERIFICADO, exit 2 (nao verde por omissao) =="
+R="$T/k23"; H="$T/k23-home"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "sem contrato legivel -> exit 2 (nao 0)" "$RC" 2
+chk "  nomeia o oraculo ausente" \
+    "$(grep -q 'contrato de escrita indecidivel: orchestration/registry.json nao pode ser lido' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K24. CONTRATO: registry com JSON INVALIDO -> NAO_VERIFICADO, exit 2 =="
+R="$T/k24"; H="$T/k24-home"
+mkdir -p "$R/orchestration"; printf 'isto nao e json\n' > "$R/orchestration/registry.json"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "registry ilegivel como JSON -> exit 2" "$RC" 2
+chk "  distingue JSON invalido de arquivo ausente" \
+    "$(grep -q 'orchestration/registry.json nao e JSON valido' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K25. CONTRATO: registry sem o mapeamento agents -> NAO_VERIFICADO, exit 2 =="
+R="$T/k25"; H="$T/k25-home"
+mkdir -p "$R/orchestration"; printf '{"schema_version": 1}\n' > "$R/orchestration/registry.json"
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "registry sem agents -> exit 2" "$RC" 2
+chk "  nomeia a chave que falta" \
+    "$(grep -q 'orchestration/registry.json nao tem o mapeamento `agents`' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K26. CONTRATO: writes nao booleano -> NAO_VERIFICADO por agente, exit 2 =="
+R="$T/k26"; H="$T/k26-home"
+registro "$R" a:talvez
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep" "memory: user"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "writes nao booleano -> exit 2 (nao decide, nem a favor nem contra)" "$RC" 2
+chk "  nomeia o agente sem contrato legivel" \
+    "$(grep -q 'a: orchestration/registry.json nao declara `writes` booleano' "$T/out" && echo sim || echo nao)" "sim"
+
+echo "== K27. CONTRATO: agente FORA do registry -> NAO_VERIFICADO, exit 2 =="
+# Agente novo que nasce sem entrada no contrato nao pode passar por conformante em silencio.
+R="$T/k27"; H="$T/k27-home"
+registro "$R" outro:false
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep" "memory: user"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep"
+agente "$H/agents/a.md"           "INLINE:Read, Grep"
+RC="$(rodar "$R" "$H")"
+chk "agente ausente do registry -> exit 2" "$RC" 2
+chk "  nao vira violacao por adivinhacao de contrato" \
+    "$(grep -A5 'CONTRATO DE ESCRITA - VIOLACOES' "$T/out" | grep -q 'a: orchestration' && echo vazou || echo contido)" "contido"
+
+echo "== K28. ANTI-OVERCLAIM: mesmo VERDE, a saida declara que isto nao prova read-only =="
+# Um log de CI verde nao pode ser lido como "read-only provado": os agentes conferidos tem
+# `Bash`, superficie de escrita maior que Write/Edit. Se a linha de LIMITE for removida, este
+# caso reprova.
+R="$T/k28"; H="$T/k28-home"
+registro "$R" a:false
+agente "$R/execution/agents/a.md" "INLINE:Read, Grep, Bash"
+agente "$R/.claude/agents/a.md"   "INLINE:Read, Grep, Bash"
+agente "$H/agents/a.md"           "INLINE:Read, Grep, Bash"
+RC="$(rodar "$R" "$H")"
+chk "contrato conferido e coerente -> exit 0" "$RC" 0
+chk "  conta os pares agente-fonte que de fato conferiu (canonica + projecao)" \
+    "$(grep -q '2 pares agente-fonte conferidos | 0 violacoes' "$T/out" && echo sim || echo nao)" "sim"
+chk "  declara que Bash mantem a superficie de escrita aberta" \
+    "$(grep -q 'CONTRATO DE ESCRITA - LIMITE: .*NAO afirma read-only' "$T/out" && echo sim || echo nao)" "sim"
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 # CONTAGEM INVARIANTE: um caso que parasse de rodar aqui sumiria em silencio - a mesma disciplina
 # de tests/unit/fronteira-viva.sh e tests/unit/literatura.sh.
-EXPECTED=38
+EXPECTED=60
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

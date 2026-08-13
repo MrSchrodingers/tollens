@@ -37,6 +37,25 @@ contexto e amostragem com ela. Nao ha independencia: a objecao do `[Auditor]` e 
 condicionada a tese do `[Arquiteto]` ja presente no contexto. Ganho de ensemble exige
 descorrelacao de erro; aqui a correlacao e 1 por construcao.
 
+> **ERRATA, 2026-08-12 (onda 10).** A frase acima permanece como foi escrita, porque este
+> documento e registro datado - mas a ultima clausula esta ERRADA e nao deve ser citada.
+> `correlacao 1` e afirmacao quantitativa forte, e compartilhar pesos, contexto e amostragem
+> NAO implica correlacao perfeita de erros. Nenhuma medicao deste repositorio estimou essa
+> quantidade. A formulacao correta: revisores derivados do mesmo modelo e do mesmo contexto
+> exibem erro em MODO COMUM e dependencia substancial, de magnitude NAO MEDIDA aqui; separacao
+> de contexto compra independencia PROCEDIMENTAL parcial, nao independencia estatistica.
+>
+> A decisao que este ADR tomou continua valendo, e por argumento mais fraco e suficiente: sem
+> sinal externo nao ha o que descorrelacione, e a evidencia de Huang et al. citada logo abaixo
+> sustenta a conclusao sem precisar de nenhum coeficiente. O defeito foi usar um numero como
+> selo de forca onde o argumento ja se sustentava sem ele - o que a §2 da config global proibe,
+> e que esta serie de ADRs documenta ter cometido varias vezes.
+>
+> Apontado por auditoria externa em 2026-08-12. Estimar a quantidade de verdade exigiria medir
+> `P(R_i=1, R_j=1 | defeito)` contra `P(R_i=1|defeito) P(R_j=1|defeito)` sobre um corpus de
+> defeitos conhecidos - trabalho registrado como pendente, nao realizado. Correcoes irmas em
+> `execution/agents/refutador.md` e na §3 da config global do operador.
+
 Isso tem nome na literatura: e **auto-correcao intrinseca**, definida por Huang et al.,
 "Large Language Models Cannot Self-Correct Reasoning Yet" (ICLR 2024) como "an LLM attempts to
 correct its initial responses based solely on its inherent capabilities, without the crutch of

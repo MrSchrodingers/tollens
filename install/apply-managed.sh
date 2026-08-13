@@ -3,7 +3,7 @@ set -uo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)" || exit 1
 REPO="$(cd "$SELF_DIR/.." && pwd -P)" || exit 1
-DEFAULT_LEGACY="$SELF_DIR/apply-managed-legacy.sh"
+DEFAULT_WORKER="$SELF_DIR/apply-managed-worker.sh"
 
 RAW_PREFIX="${MANAGED_PREFIX:-}"
 case "$RAW_PREFIX" in
@@ -16,13 +16,13 @@ REAL=0; [ -z "$PREFIX" ] && REAL=1
 
 # PRIVILEGED TRUST BOUNDARY.
 # A real-root deployment must never execute a helper from a checkout writable by the governed
-# actor. This check covers the entire repository because apply-managed-legacy.sh executes
+# actor. This check covers the entire repository because apply-managed-worker.sh executes
 # install/hooks-spec.sh today and future privileged helpers must inherit the same invariant.
 # Symlinks are rejected as well: ownership of the link does not establish ownership of its
-# target. TOLLENS_MANAGED_LEGACY remains available only for prefixed, non-production tests.
+# target. TOLLENS_MANAGED_WORKER remains available only for prefixed, non-production tests.
 if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
-  if [ -n "${TOLLENS_MANAGED_LEGACY:-}" ]; then
-    echo "ERRO: override TOLLENS_MANAGED_LEGACY e proibido em execucao root sobre a raiz real." >&2
+  if [ -n "${TOLLENS_MANAGED_WORKER:-}" ]; then
+    echo "ERRO: override TOLLENS_MANAGED_WORKER e proibido em execucao root sobre a raiz real." >&2
     exit 78
   fi
   trust_bad="$(find "$REPO" -xdev \( -type l -o \! -user root -o \! -group root -o -perm /022 \) -print -quit 2>/dev/null || true)"
@@ -34,12 +34,12 @@ if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
   fi
 fi
 
-LEGACY="${TOLLENS_MANAGED_LEGACY:-$DEFAULT_LEGACY}"
-[ -x "$LEGACY" ] || { echo "NOT_VERIFIED: instalador legado ausente" >&2; exit 2; }
+WORKER="${TOLLENS_MANAGED_WORKER:-$DEFAULT_WORKER}"
+[ -x "$WORKER" ] || { echo "NOT_VERIFIED: instalador (worker) ausente" >&2; exit 2; }
 
 case "${1:-}" in
   --verify|--revert)
-    exec "$LEGACY" "$@"
+    exec "$WORKER" "$@"
     ;;
 esac
 
@@ -76,7 +76,7 @@ rollback(){
   return 0
 }
 
-"$LEGACY" "$@"
+"$WORKER" "$@"
 rc=$?
 if [ "$rc" -ne 0 ]; then
   rollback && exit "$rc" || exit 70

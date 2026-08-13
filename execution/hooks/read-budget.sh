@@ -25,10 +25,63 @@ F="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null |
 # ja esta fazendo a coisa certa.
 printf '%s' "$INPUT" | jq -e '.tool_input.offset // .tool_input.limit // .tool_input.pages' >/dev/null 2>&1 && exit 0
 
-SZ=$(stat -c%s "$F" 2>/dev/null || echo 0)
-EXT="$(printf '%s' "${F##*.}" | tr 'A-Z' 'a-z')"
+# `-L` SEGUE O SYMLINK, e a ausencia dele era um furo MEDIDO em 2026-08-12 por auditoria de
+# seguranca: `[ -f "$F" ]` deref o link, mas `stat -c%s` mede o LINK. Um `link.png -> arquivo de
+# 50 MB` era medido como 30 bytes e liberado. O portao decidia sobre um objeto e o consumidor
+# lia outro - a mesma forma do defeito de ancora corrigido em doctool.sh nesta onda.
+# Isto propaga para TODOS os ramos abaixo, nao so o de imagem: `SZ` e calculado uma vez.
+SZ=$(stat -Lc%s "$F" 2>/dev/null || echo 0)
+# EXTENSAO SO EXISTE SE HOUVER PONTO. `${F##*.}` devolve a STRING INTEIRA quando nao ha ponto no
+# nome - medido: um arquivo chamado `png`, sem extensao nenhuma, era tratado como imagem PNG e
+# liberado pelo teto. Sem ponto, nao ha extensao, e o caso cai no comportamento padrao.
+case "$(basename -- "$F")" in
+  *.*) EXT="$(printf '%s' "${F##*.}" | tr 'A-Z' 'a-z')" ;;
+  *)   EXT="" ;;
+esac
 has() { command -v "$1" >/dev/null 2>&1; }
 deny() { printf '%s\n' "$*" >&2; exit 2; }
+
+# TETO DE IMAGEM, AVALIADO ANTES DO REGISTRO. Sem isto o hook tem um CICLO SEM SAIDA, medido em
+# 2026-08-12: o registro e consultado antes do `case`, entao TODA imagem e negada por extensao,
+# nunca por tamanho. A receita que o proprio hook imprime manda reduzir com ffmpeg e ler o
+# resultado - mas o resultado reduzido tambem e imagem, tambem cai no registro, e tambem e
+# negado. Medido: o header desta marca reduzido a 640914 bytes, contra um teto de 2 MB, recebia
+# exit 2 com a mesma mensagem. O caminho sancionado nunca terminava, e as linhas do caso
+# `png|jpg|...` abaixo eram inalcancaveis para toda extensao coberta pelo adaptador de midia.
+#
+# ESCOPO DELIBERADO - so imagem. PDF e CSV tambem tem caso de "dentro do orcamento" abaixo que o
+# registro torna inalcancavel, e ali isso NAO e defeito: para esses formatos o adaptador entrega
+# evidence pack ancorado, que e estritamente melhor que despejar o arquivo, e nenhuma receita do
+# hook depende de reler o proprio artefato. A imagem e o unico caso em que a receita do hook
+# EXIGE que a leitura direta seja possivel, porque o plano `reduce-image` do adaptador de midia
+# termina em "agora leia". Um portao cuja saida ele mesmo bloqueia nao e portao, e armadilha.
+#
+# DECIDE POR CONTEUDO, NAO POR SUFIXO. Medido em 2026-08-12 por revisao independente: com a
+# checagem so por extensao, 1.050.000 bytes de TEXTO chamados `log.png` passavam (exit 0), e os
+# MESMOS bytes chamados `log.log` eram barrados (exit 2). O teto de imagem e ~7x o orcamento de
+# texto deste mesmo arquivo, entao renomear era um bypass de 7x - e uma REGRESSAO introduzida por
+# esta onda, porque antes o registro de adaptadores negava todo `.png`.
+#
+# A verificacao e por magic byte, sem dependencia nova: `file` nao esta garantido em todo host
+# onde o hook roda, e trocar um portao por outro que pode nao existir seria piorar. Sufixo que
+# promete imagem e conteudo que nao e imagem cai fora do atalho e segue para o fluxo normal, onde
+# o teto de texto responde.
+imagem_de_verdade(){
+  local m; m="$(head -c 12 "$1" 2>/dev/null | od -An -tx1 -v 2>/dev/null | tr -d ' \n')"
+  case "$m" in
+    89504e470d0a1a0a*) return 0 ;;                       # PNG
+    ffd8ff*)           return 0 ;;                       # JPEG
+    474946383761*|474946383961*) return 0 ;;             # GIF87a / GIF89a
+    424d*)             return 0 ;;                       # BMP
+    52494646????????57454250*) return 0 ;;               # RIFF....WEBP
+  esac
+  return 1
+}
+LIMITE_IMAGEM_BYTES=2097152
+case "$EXT" in
+  png|jpg|jpeg|webp|gif|bmp)
+    if [ "$SZ" -le "$LIMITE_IMAGEM_BYTES" ] && imagem_de_verdade "$F"; then exit 0; fi ;;
+esac
 
 # REGISTRY ANTES DO CASE EMBUTIDO. Enquanto este hook mantinha `case "$EXT"` proprio, os
 # adaptadores de documento eram especificacao versionada que nenhum executor consumia - o
@@ -110,10 +163,13 @@ ou o usuario fornecer a transcricao. Informe essa limitacao em vez de contorna-l
 O AUDIO do video tem a mesma limitacao do caso anterior: nao ha transcritor local." ;;
 
   png|jpg|jpeg|webp|gif|bmp)
-    [ "$SZ" -le 2097152 ] && exit 0
+    # O teto ja foi avaliado no inicio do arquivo; chegar aqui significa imagem ACIMA dele para
+    # a qual nenhum adaptador declarou a extensao (hoje: .bmp). Havendo adaptador, o registro
+    # ja negou com a lista de planos, que e mensagem melhor que esta.
     deny "ORCAMENTO DE LEITURA: imagem de $(( SZ/1024/1024 )) MB. Reduza antes - resolucao alem
 do necessario vira custo de token sem ganho de informacao:
-  ffmpeg -i '$F' -vf scale=1568:-1 /tmp/menor.png" ;;
+  ffmpeg -i '$F' -vf scale=1568:-1 /tmp/menor.png
+Depois leia o arquivo reduzido: dentro do teto de $(( LIMITE_IMAGEM_BYTES/1024/1024 )) MB, Read passa." ;;
 
   zip|tar|gz|tgz|bz2|xz|7z|jar|whl|so|bin|exe|o|a|pyc|wasm)
     deny "ORCAMENTO DE LEITURA: arquivo binario/compactado ($EXT). Liste o conteudo, nao o leia:

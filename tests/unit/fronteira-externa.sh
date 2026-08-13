@@ -141,17 +141,50 @@ else:
 colisoes = sorted(n for n, c in Counter(j["contexto"] for j in jobs).items() if c > 1)
 print("colisoes\t%s" % (",".join(colisoes) if colisoes else "-"))
 
-# Equivalencia de CONTRATO entre o job exigido e o gemeo de push. O gemeo e definido por
-# exclusao: responde a `push` e nao e o exigido.
-gemeos = [j for j in jobs if "push" in j["eventos"] and j["contexto"] != declarado]
-if len(produtores) == 1 and len(gemeos) == 1:
-    print("contrato_equivalente\t%s" %
-          ("sim" if produtores[0]["contrato"] == gemeos[0]["contrato"] else "nao"))
-    print("n_passos\t%d" % produtores[0]["n_passos"])
-else:
-    print("contrato_equivalente\tindeterminado")
-    print("n_passos\t0")
-print("n_gemeos\t%d" % len(gemeos))
+# Equivalencia de CONTRATO, PAREADA POR PAPEL.
+#
+# A versao anterior definia o gemeo por exclusao ("responde a push e nao e o exigido") e exigia
+# que houvesse exatamente UM. Isso codificava a topologia de um job por arquivo, nao a
+# propriedade. Quando a onda 10 separou a fronteira viva em job proprio, dois defeitos
+# apareceram de uma vez: o contador quebrou (got=2), e - pior, porque silencioso - o job NOVO do
+# lado do PR nao respondia a `push`, logo nao era gemeo de ninguem e ESCAPAVA inteiramente da
+# checagem de paridade. Um arquivo podia ganhar job que o outro nao tem, sem reprovar.
+#
+# O pareamento por PAPEL fecha os dois: cada job de cada arquivo recebe uma chave de papel, e a
+# exigencia passa a ser BIJECAO entre os papeis dos dois arquivos, com contrato equivalente em
+# cada par. Isso e estritamente mais forte que a versao anterior - ela verificava um par, esta
+# verifica todos, e acusa job orfao nos dois sentidos.
+def papel(nome):
+    n = nome[len("verify-"):] if nome.startswith("verify-") else nome
+    if n.endswith("-push"):
+        n = n[:-len("-push")]
+    return "estatico" if n in ("pr", "push") else n
+
+por_arquivo = {}
+for j in jobs:
+    por_arquivo.setdefault(j["arquivo"], {}).setdefault(papel(j["contexto"]), []).append(j)
+
+arq_pr   = next((a for a in por_arquivo if "pr" in a), None)
+arq_push = next((a for a in por_arquivo if "push" in a), None)
+papeis_pr   = por_arquivo.get(arq_pr, {})
+papeis_push = por_arquivo.get(arq_push, {})
+
+# Papel com mais de um job no mesmo arquivo torna o pareamento ambiguo - isso e falha, nao
+# detalhe: um par indeterminado nunca poderia reprovar por divergencia de contrato.
+ambiguo = sorted(p for d in (papeis_pr, papeis_push) for p, v in d.items() if len(v) != 1)
+orfaos  = sorted(set(papeis_pr) ^ set(papeis_push))
+pares   = [(papeis_pr[p][0], papeis_push[p][0])
+           for p in sorted(set(papeis_pr) & set(papeis_push)) if p not in ambiguo]
+
+divergentes = sorted(papel(a["contexto"]) for a, b in pares if a["contrato"] != b["contrato"])
+print("papeis_pr\t%s" % (",".join(sorted(papeis_pr)) or "-"))
+print("papeis_orfaos\t%s" % (",".join(orfaos) or "-"))
+print("papeis_ambiguos\t%s" % (",".join(ambiguo) or "-"))
+print("pares_comparados\t%d" % len(pares))
+print("contratos_divergentes\t%s" % (",".join(divergentes) or "-"))
+# ANTIVACUIDADE: soma dos passos EFETIVAMENTE comparados. Com `steps` vazio nos dois lados,
+# "equivalente" seria verdadeiro e nada teria sido comparado.
+print("n_passos\t%d" % sum(a["n_passos"] for a, _ in pares))
 PY
 )" || { echo "FAIL: o analisador da fronteira nao executou"; exit 1; }
 
@@ -181,15 +214,23 @@ chk "  e NAO responde a push (senao dois check-runs homonimos por SHA)" \
 echo "== FE3. nenhum contexto e produzido por mais de um job =="
 chk "sem nome de job duplicado entre workflows" "$(campo colisoes)" "-"
 
-echo "== FE4. o gemeo de push tem CONTRATO DE EXECUCAO equivalente =="
+echo "== FE4. TODO job do arquivo de PR tem gemeo de push com CONTRATO equivalente =="
 # O preco de ter dois arquivos e a chance de divergirem. Este caso e o pagamento - e compara o
 # contrato inteiro (runner, permissoes, env, defaults, container, servicos, matriz, timeout,
 # passos), nao apenas `steps`: passos identicos sob autoridades diferentes nao sao a mesma
 # verificacao. A versao anterior comparava so `steps`, e a afirmacao ficava mais estreita que
 # a frase que a acompanhava.
-chk "existe exatamente um gemeo de push" "$(campo n_gemeos)" "1"
-chk "  contrato de execucao equivalente ao do exigido" "$(campo contrato_equivalente)" "sim"
-# ANTIVACUIDADE: com `steps` vazio, "equivalente" seria verdadeiro e nada teria sido comparado.
+#
+# O pareamento e por PAPEL, nao por contagem. Ver o comentario no analisador: com um job por
+# arquivo, "existe exatamente um gemeo" e "todo job tem gemeo" coincidiam; com dois, a primeira
+# forma deixava o job novo do lado do PR sem nenhuma checagem de paridade.
+chk "nenhum papel orfao entre os dois arquivos" "$(campo papeis_orfaos)" "-"
+chk "  nenhum papel ambiguo (dois jobs mesmo papel no mesmo arquivo)" "$(campo papeis_ambiguos)" "-"
+chk "  contrato de execucao equivalente em TODOS os pares" "$(campo contratos_divergentes)" "-"
+# ANTIVACUIDADE em dois eixos: ao menos um par comparado, e substancia dentro dos pares.
+NPARES="$(campo pares_comparados)"
+chk "  e houve par a comparar (nao vacuo)" \
+    "$([ "${NPARES:-0}" -ge 1 ] && echo sim || echo nao)" "sim"
 NPASSOS="$(campo n_passos)"
 chk "  e havia substancia a comparar (nao vacuo)" \
     "$([ "${NPASSOS:-0}" -ge 10 ] && echo sim || echo nao)" "sim"
