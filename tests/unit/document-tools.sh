@@ -321,12 +321,28 @@ HK="$PWD/execution/hooks/read-budget.sh"
 orc(){ printf '{"tool_name":"Read","tool_input":{"file_path":"%s"}}' "$1" | bash "$HK" >/dev/null 2>&1; echo $?; }
 head -c 3000000 /dev/zero > "$T/alvo-grande.bin"; ln -s "$T/alvo-grande.bin" "$T/isca.png"
 chk "symlink .png para alvo acima do teto e BARRADO" "$(orc "$T/isca.png")" "2"
-head -c 1000 /dev/urandom > "$T/alvo-peq.bin"; ln -s "$T/alvo-peq.bin" "$T/ok.png"
-chk "  symlink para alvo DENTRO do teto passa (nao virou nega-tudo)" "$(orc "$T/ok.png")" "0"
+# O alvo precisa ser imagem DE VERDADE: desde a correcao de A1 o atalho tambem confere magic
+# byte, e /dev/urandom nao e PNG. A fixture anterior media a checagem errada.
+cp "$T/amostra.png" "$T/alvo-peq.png"; ln -s "$T/alvo-peq.png" "$T/ok.png"
+chk "  symlink para imagem REAL dentro do teto passa (nao virou nega-tudo)" "$(orc "$T/ok.png")" "0"
+
+# A1 - EXTENSAO FORJADA. O atalho de imagem decidia so por sufixo, e o teto dele e ~7x o
+# orcamento de texto: renomear `log.log` para `log.png` era bypass de 7x. Regressao introduzida
+# por esta onda - antes o registro de adaptadores negava todo .png. Agora decide por magic byte.
+python3 -c "open('$T/log.log','w').write('linha de log qualquer'+chr(10))" 2>/dev/null
+python3 - "$T" <<'PYEOF'
+import sys
+open(sys.argv[1] + "/log.log", "w").write("linha de log qualquer\n" * 48000)
+PYEOF
+cp "$T/log.log" "$T/log.png"
+chk "texto grande com extensao .png forjada e BARRADO" "$(orc "$T/log.png")" "2"
+chk "  e o mesmo conteudo com nome honesto tambem" "$(orc "$T/log.log")" "2"
+chk "  imagem VERDADEIRA dentro do teto continua passando" \
+    "$(orc "$PWD/docs/brand/tollens-header-en.png")" "0"
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=51
+EXPECTED=54
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED (ferramenta ausente ou caso removido)"; exit 1
 fi

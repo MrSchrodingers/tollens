@@ -55,10 +55,32 @@ deny() { printf '%s\n' "$*" >&2; exit 2; }
 # hook depende de reler o proprio artefato. A imagem e o unico caso em que a receita do hook
 # EXIGE que a leitura direta seja possivel, porque o plano `reduce-image` do adaptador de midia
 # termina em "agora leia". Um portao cuja saida ele mesmo bloqueia nao e portao, e armadilha.
+#
+# DECIDE POR CONTEUDO, NAO POR SUFIXO. Medido em 2026-08-12 por revisao independente: com a
+# checagem so por extensao, 1.050.000 bytes de TEXTO chamados `log.png` passavam (exit 0), e os
+# MESMOS bytes chamados `log.log` eram barrados (exit 2). O teto de imagem e ~7x o orcamento de
+# texto deste mesmo arquivo, entao renomear era um bypass de 7x - e uma REGRESSAO introduzida por
+# esta onda, porque antes o registro de adaptadores negava todo `.png`.
+#
+# A verificacao e por magic byte, sem dependencia nova: `file` nao esta garantido em todo host
+# onde o hook roda, e trocar um portao por outro que pode nao existir seria piorar. Sufixo que
+# promete imagem e conteudo que nao e imagem cai fora do atalho e segue para o fluxo normal, onde
+# o teto de texto responde.
+imagem_de_verdade(){
+  local m; m="$(head -c 12 "$1" 2>/dev/null | od -An -tx1 -v 2>/dev/null | tr -d ' \n')"
+  case "$m" in
+    89504e470d0a1a0a*) return 0 ;;                       # PNG
+    ffd8ff*)           return 0 ;;                       # JPEG
+    474946383761*|474946383961*) return 0 ;;             # GIF87a / GIF89a
+    424d*)             return 0 ;;                       # BMP
+    52494646????????57454250*) return 0 ;;               # RIFF....WEBP
+  esac
+  return 1
+}
 LIMITE_IMAGEM_BYTES=2097152
 case "$EXT" in
   png|jpg|jpeg|webp|gif|bmp)
-    [ "$SZ" -le "$LIMITE_IMAGEM_BYTES" ] && exit 0 ;;
+    if [ "$SZ" -le "$LIMITE_IMAGEM_BYTES" ] && imagem_de_verdade "$F"; then exit 0; fi ;;
 esac
 
 # REGISTRY ANTES DO CASE EMBUTIDO. Enquanto este hook mantinha `case "$EXT"` proprio, os

@@ -45,51 +45,43 @@ allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|\.git|\.github|\.gitig
 ignorado(){
   [ "$(git check-ignore -v -- "$1" 2>/dev/null | cut -d: -f1)" = ".gitignore" ]
 }
-# MASCARA DO RUNTIME, e nao entrada do repositorio. Medido em 2026-08-12: rodando dentro do
-# Claude Code, `find` na raiz devolve `.mcp.json` como CHARACTER SPECIAL FILE, dono nobody:nobody,
-# dispositivo 1,3 - e /proc/self/mountinfo confirma um bind mount read-only de `devtmpfs /null`
-# sobre esse caminho. Nove entradas nesta arvore estao nessa condicao (`.mcp.json` e oito sob
-# `.claude/`), parte de 176 mascaras que o runtime aplica a arquivos de configuracao e credencial
-# no namespace de mount da sessao. Elas nao existem em disco e somem com a sessao.
+# MASCARA DO RUNTIME - POR QUE NAO HA ISENCAO AQUI, e por que houve uma por algumas horas.
 #
-# Sem esta clausula a suite dava FALSO VERMELHO para qualquer pessoa que a rodasse de dentro do
-# Claude Code - foi o que aconteceu aqui, e ainda arrastou junto `evidence/cobertura.sh`, que se
-# recusa (corretamente) a medir cobertura sobre um oraculo ja vermelho.
+# Rodando dentro do Claude Code, `find` na raiz devolve `.mcp.json` como CHARACTER SPECIAL FILE:
+# o runtime monta 176 bind mounts sobre arquivos de configuracao no namespace da sessao. Nove
+# caminhos desta arvore estao nessa condicao. Eles nao existem em disco e somem com a sessao, e
+# sem tratamento a suite dava FALSO VERMELHO para qualquer pessoa que a rodasse de dentro do
+# agente - foi o que aconteceu, e ainda arrastou junto `evidence/cobertura.sh`, que corretamente
+# se recusa a medir cobertura sobre um oraculo ja vermelho.
 #
-# NAO E AFROUXAMENTO, e o motivo e estrutural: o git so versiona arquivo regular, symlink e
-# gitlink. Um character device NAO PODE ser conteudo commitado - `git add` o recusa. Logo esta
-# clausula nao cria caminho para esconder nada; ela ignora exatamente a classe de entrada que o
-# teste jamais poderia ter a ver. Diretorio e arquivo regular seguem valendo integralmente.
+# A PRIMEIRA CORRECAO FOI UMA FUNCAO `mascara_de_runtime()` QUE ISENTAVA A ENTRADA. Ela durou
+# poucas horas e foi REMOVIDA por revisao independente, que provou dois contraexemplos - ambos
+# sem privilegio nenhum, ambos em uma linha:
 #
-# O TIPO OSCILA, e por isso o predicado nao pode ser so o tipo. Medido em 2026-08-12: o mesmo
-# caminho mascarado apareceu como `character special file / nobody:nobody / 666` numa leitura e
-# como `regular empty file / ti:ti / 444` minutos depois, sem nada ter mudado no repositorio.
-# Uma execucao desta suite reprovou nesse intervalo e a seguinte passou - falha intermitente num
-# portao de higiene, que este repositorio nao normaliza como "as vezes acontece".
+#   1. `ln -s /dev/null ./backdoor && git add -f backdoor`
+#      `test -c` SEGUE symlink, entao a isencao casava. E o git versiona symlink (modo 120000):
+#      medido, `git ls-files -s` devolveu `120000 dc1dc0c... backdoor`, enquanto a mensagem da
+#      suite dizia "nao versionavel". A justificativa que eu havia escrito - "o git so versiona
+#      arquivo regular, symlink e gitlink, logo char device nao pode ser commitado" - se
+#      auto-refuta na propria enumeracao, porque symlink esta nela.
 #
-# O discriminante ESTAVEL nao e o tipo: e ser um PONTO DE MONTAGEM. A mascara existe porque o
-# runtime monta algo sobre o caminho no namespace da sessao; o que a montagem expoe (devtmpfs
-# /null, bind ro do proprio arquivo) varia, a montagem nao. As tres condicoes sao exigidas em
-# CONJUNTO para nao abrir buraco: montado, NAO rastreado pelo git, e sem conteudo.
-mascara_de_runtime(){
-  # PARENTESES DELIBERADOS. `A || B && C` associa a esquerda em bash: `(A || B) && C`, que aqui
-  # por acaso produz o comportamento certo. Auditoria de 2026-08-12 apontou que o codigo lia como
-  # disjuncao onde o comentario prometia conjuncao. Funciona por precedencia, nao por intencao
-  # escrita - e a proxima edicao quebra em silencio. Explicitar custa dois caracteres.
-  if [ -c "$1" ] || [ -b "$1" ]; then return 0; fi
-  local abs; abs="$(cd "$(dirname -- "$1")" 2>/dev/null && pwd -P)/$(basename -- "$1")" || return 1
-  grep -qF " $abs " /proc/self/mountinfo 2>/dev/null || return 1
-  git ls-files --error-unmatch -- "$1" >/dev/null 2>&1 && return 1   # rastreado: nunca e mascara
-  [ -s "$1" ] && return 1                                            # tem conteudo: nao e mascara
-  return 0
-}
+#   2. `unshare -rm bash -c ': > ./payload && mount --bind vazio ./payload'`
+#      Satisfazia as TRES condicoes que eu havia exigido em conjunto (montado, nao rastreado,
+#      vazio) com lixo arbitrario na raiz. As tres eram propriedades que o atacante escolhe.
+#
+# A CORRECAO REAL E O `.gitignore`, e ela e melhor por tres razoes. Fecha a janela do `git add`
+# (que ja tinha commitado nove blobs vazios, no commit e4ab92e desta mesma onda). E revisavel -
+# uma linha por caminho, visivel em diff, com decisao escrita. E nao cria classe isentavel
+# nenhuma: um DECIMO caminho mascarado no futuro reprova esta suite de forma VISIVEL, e a
+# correcao sera acrescentar uma linha que alguem le, em vez de um predicado que alguem contorna.
+#
+# LICAO QUE FICA, e ela vale mais que o caso: a funcao removida tinha comentario declarando
+# "as tres condicoes sao exigidas em CONJUNTO para nao abrir buraco". O comentario descrevia a
+# intencao; o codigo, por precedencia de `||`/`&&`, avaliava a primeira e retornava. Comentario
+# nao e mecanismo, nem quando o mecanismo esta na linha de baixo.
 while IFS= read -r entry; do
   if ! [[ "$entry" =~ $allowed_root ]]; then
     if ignorado "$entry"; then continue; fi
-    if mascara_de_runtime "$entry"; then
-      echo "  ignorado (mascara do runtime, nao versionavel): $entry"
-      continue
-    fi
     echo "FAIL entrada nao declarada na raiz: $entry"
     fail=1
   fi
