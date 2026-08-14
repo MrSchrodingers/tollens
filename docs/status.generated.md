@@ -67,8 +67,8 @@ assercao).
 | agent | 10 |
 | doctool | 5 |
 | hook | 14 |
-| skill | 9 |
-| **total** | **49** |
+| skill | 8 |
+| **total** | **48** |
 
 ## Limites declarados
 
