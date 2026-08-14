@@ -103,7 +103,7 @@ Decisoes arquiteturais relevantes (do PRD/plano):
 - [ ] Criterio 2
 - [ ] Criterio 3
 - [ ] Testes escritos e passando
-- [ ] Code review aprovado (`/revisao-codigo`)
+- [ ] Code review aprovado (o agente `revisor-codigo`)
 
 ## Bloqueada por
 
@@ -124,7 +124,7 @@ Sugestao de abordagem (sem caminhos de arquivo):
 1. Implementar via `/tdd` (red-green-refactor)
 2. Seguir padroes existentes do modulo X
 3. Adicionar observabilidade (metricas, logs, traces)
-4. Revisar com `/revisao-codigo` antes de merge
+4. Revisar com o agente `revisor-codigo` antes de merge
 
 ## Estimativa
 
@@ -150,4 +150,4 @@ Issues criadas:
 Sugira ao usuario:
 - Priorizar as issues sem bloqueio para comecar imediatamente
 - Usar `/tdd` para implementar cada issue
-- Usar `/revisao-codigo` antes de cada merge
+- Usar o agente `revisor-codigo` antes de cada merge

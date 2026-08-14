@@ -12,7 +12,7 @@ Skill para criar PRDs completos e acionaveis. O PRD eh o ponto de partida do pip
 ```
 /write-a-prd → /prd-to-plan → /prd-to-issues → /tdd (implementacao)
        ↑                                              ↑
-  /grill-me (stress-test)                    /triage-issue (bugs)
+  /grill-me (stress-test)                    a triagem de issue (bugs)
 ```
 
 Apos criar o PRD, sugira ao usuario:
@@ -58,7 +58,7 @@ Use o Agent tool com subagent_type=Explore para investigacao profunda. NAO confi
 
 Entreviste o usuario sobre CADA aspecto do plano ate atingir entendimento compartilhado. Percorra cada galho da arvore de decisao, resolvendo dependencias uma a uma.
 
-**Esta etapa eh equivalente a invocar `/grill-me` (ou `/entrevistador` no contexto do projeto).**
+**Esta etapa eh equivalente a invocar `/grill-me` (chamado de entrevistador no contexto do projeto).**
 
 **Tecnicas de entrevista:**
 
@@ -106,7 +106,7 @@ Apresente os modulos ao usuario e confirme:
 - Algum modulo esta faltando ou sobrando?
 - A granularidade esta adequada?
 
-Se o design de interface for complexo, sugira invocar `/design-an-interface` para explorar alternativas em paralelo.
+Se o design de interface for complexo, sugira um passo dedicado de design de interface (nao ha comando instalado para isso) para explorar alternativas em paralelo.
 
 ### 5. Definir Criterios de Aceitacao
 
@@ -237,7 +237,7 @@ Apos aprovacao deste PRD:
 1. `/prd-to-plan` — criar plano de implementacao por fases (tracer bullets)
 2. `/prd-to-issues` — quebrar em issues independentes no GitHub
 3. `/tdd` — implementar cada issue via ciclos red-green-refactor
-4. `/revisao-codigo` — revisar antes de merge
+4. o agente `revisor-codigo` — revisar antes de merge
 
 ## Notas Adicionais
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 from pathlib import Path
 
@@ -12,6 +13,13 @@ protocol = json.loads((ROOT / "orchestration/evaluation-protocol.json").read_tex
 
 checks: list[tuple[bool, str]] = []
 
+
+# Tokens com barra que NAO sao invocacao de skill: caminho, flag, unidade, fracao.
+_CONHECIDAS_NAO_SKILL = {
+    "dev", "tmp", "etc", "opt", "usr", "bin", "var", "home", "root", "proc",
+    "sec", "min", "req", "run", "src", "doc", "docs", "img", "png", "svg", "css",
+    "com", "org", "net", "app", "api", "url", "www", "http", "https",
+}
 
 def check(condition: bool, message: str) -> None:
     checks.append((condition, message))
@@ -89,6 +97,53 @@ check(analysis["separate_model_scaffold_results"] is True, "resultados estratifi
 check(analysis["report_null_and_negative_results"] is True, "resultados nulos e negativos nao sao ocultados")
 check(analysis["no_universal_skill_claim_from_single_model"] is True, "um modelo nao sustenta claim universal")
 check(analysis["no_universal_scaffold_claim_from_single_scaffold"] is True, "um scaffold nao sustenta claim universal")
+
+# ------------------------------------------------------------------------------------------
+# REFERENCIA ENTRE SKILLS TEM DE RESOLVER. Achado de 2026-08-14, e a forma ja e conhecida:
+# `execution/skills/promoted/design-system-proposal/SKILL.md` invocava `/direcao-de-arte` em
+# QUATRO pontos, e essa skill nao existe - foi absorvida pelo agente `revisor-frontend`. Chamava
+# tambem `/defesa-de-tese`, que o CLAUDE.md global declarava absorvida pelo `refutador` desde
+# antes, e que continuava promovida.
+#
+# Referencia morta num fluxo que o operador aciona por comando, sobrevivendo porque NADA
+# validava coerencia do registro consigo mesmo. `orchestration/skill-policy.json` ja lista
+# `unresolved_reference` como gatilho de depreciacao - o criterio existia e nao tinha portao.
+#
+# LIMITE DECLARADO: isto resolve nome de SKILL. Nao verifica que o agente citado exista, nem que
+# o passo descrito faca o que promete. E oraculo de referencia, nao de conteudo.
+promovidas = {d.name for d in (ROOT / "execution/skills/promoted").iterdir() if d.is_dir()}
+_dep = ROOT / "execution/skills/deprecated"
+depreciadas = {d.name for d in _dep.iterdir() if d.is_dir()} if _dep.is_dir() else set()
+agentes = {f.stem for f in (ROOT / "execution/agents").glob("*.md")}
+
+# O universo que uma invocacao `/x` pode resolver: skill promovida, agente, ou um arquivo de
+# apoio DENTRO da propria skill (`references/x.md`). Qualquer outra coisa e placeholder de prosa
+# (declarado abaixo) ou referencia morta.
+_PLACEHOLDERS = {"cmd", "nome", "plugin", "exemplo", "path", "arquivo", "termo", "id"}
+
+mortas = []
+for _sk in sorted(promovidas):
+    _dir = ROOT / "execution/skills/promoted" / _sk
+    _f = _dir / "SKILL.md"
+    if not _f.is_file():
+        mortas.append(f"{_sk}: sem SKILL.md")
+        continue
+    _locais = {q.stem for q in _dir.rglob("*.md")} | {q.stem for q in _dir.rglob("*.sh")}
+    # `<` no lookbehind exclui tag de fechamento XML: `</regras-fatia-vertical>` casava
+    # como invocacao e era falso positivo.
+    for _tok in sorted(set(re.findall(r"(?<![\w/.<])/([a-z][a-z0-9-]{2,})(?![\w/.-])", _f.read_text(encoding="utf-8")))):
+        if _tok in promovidas or _tok in agentes or _tok == _sk:
+            continue
+        if _tok in _locais or _tok in _PLACEHOLDERS:
+            continue
+        mortas.append(f"{_sk} -> /{_tok}" + (" (DEPRECADA)" if _tok in depreciadas else " (INEXISTENTE)"))
+
+check(not mortas, "toda invocacao /x em SKILL.md resolve para skill, agente ou arquivo local"
+      + ("" if not mortas else f" - mortas: {sorted(set(mortas))}"))
+# ANTIVACUIDADE em dois eixos: sem skills o caso passaria vazio, e sem agentes o universo de
+# resolucao ficaria largo demais e absolveria referencia morta.
+check(len(promovidas) >= 5, f"ha skills promovidas a conferir (medido: {len(promovidas)})")
+check(len(agentes) >= 5, f"o universo de agentes foi carregado (medido: {len(agentes)})")
 
 failed = sum(not ok for ok, _ in checks)
 print(f"TOTAL={len(checks)} FAIL={failed}")

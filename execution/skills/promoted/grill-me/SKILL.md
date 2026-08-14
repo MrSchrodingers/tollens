@@ -13,11 +13,11 @@ Esta skill pode ser invocada como sub-etapa de qualquer outra skill:
 
 ```
 /write-a-prd ──────→ usa /grill-me na etapa de entrevista
-/request-refactor-plan → usa /grill-me na etapa de entrevista
+um plano de refatoracao dedicado → usa /grill-me na etapa de entrevista
 /prd-to-plan ──────→ usa /grill-me para validar fases
 ```
 
-No contexto do projeto DEBTHUB, esta skill eh equivalente a `/entrevistador`.
+No contexto do projeto DEBTHUB, esta skill cumpre o papel que la se chama entrevistador (nome de outro projeto, nao comando local).
 
 ---
 

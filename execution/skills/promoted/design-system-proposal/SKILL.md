@@ -5,8 +5,8 @@ description: Le e estuda um repositorio qualquer (stack, libs de UI, tokens/tema
 
 # /design-system-proposal
 
-IMPORTA: /direcao-de-arte (banca de UI/UX/cor; delega ao agente revisor-frontend) e
-/defesa-de-tese (veredito calibrado + varredura de erro obvio). NAO reimplementar o review nem o
+IMPORTA: o agente `revisor-frontend` (banca de UI/UX/cor - renderiza a tela e roda axe) e
+o agente `refutador` (veredito calibrado, contexto separado). NAO reimplementar o review nem o
 gate de tese: este dominio e a GERACAO da proposta; as duas bancas sao as fases 7 e 8.
 
 ## O que entrega
@@ -22,7 +22,7 @@ tem um PAPEL declarado no UI (ver fase 6). Falha em qualquer item BLOQUEIA a pub
 ## Gatilho
 SE o usuario pede propor/criar um design system, tokens/tema, paleta multi-marca, ou "um DS como o
 do amaral" -> FAZER as Fases.
-SE a duvida e so revisar UI ja existente (nao propor DS novo) -> acionar /direcao-de-arte direto,
+SE a duvida e so revisar UI ja existente (nao propor DS novo) -> delegar ao `revisor-frontend` direto,
 NAO esta skill (evita custo sem retorno, Diretriz 13).
 SE o pedido e um artefato PONTUAL (uma cor, um token OKLCH avulso) sem proposta de DS -> resolver
 direto, NAO rodar o pipeline de 9 fases.
@@ -67,11 +67,11 @@ VERIFICAR: build re-roda o gerador e ABORTA a escrita se exit != 0; HTML abre of
 Para CADA cor: onde entra (fundo/superficie/borda/texto/acento-solido/hover/foco/status) e o piso de
 contraste exigido ali. VERIFICAR: nenhuma cor sem papel; nenhum papel sem cor.
 
-### 7. REVISAR (banca de arte) -> /direcao-de-arte
+### 7. REVISAR (banca de arte) -> agente `revisor-frontend`
 Acionar a skill importada: parecer por severidade, gate WCAG binario, harmonia com o DS, comparacao
 de telas-irmas. Aplicar achados material antes de seguir. VERIFICAR: parecer com veredito.
 
-### 8. VALIDAR (banca academica) -> /defesa-de-tese
+### 8. VALIDAR (banca academica) -> agente `refutador`
 Tratar a proposta como TESE: 3 portoes logicos + varredura de erro obvio (C1-C10 da Diretriz 13.1)
 sobre o HTML/gerador BRUTOS, MAIS o checklist de dominio L1-L10 (references/lessons.md). VERIFICAR:
 veredito calibrado; "aprovar" so com as DUAS varreduras passando e evidencia colada.
@@ -91,7 +91,7 @@ timestampado da fonte+artifact fora do repo se o usuario pedir seguranca.
 
 ## Verificacao (da skill inteira)
 Artifact publicado; gerador exit 0; 0 par WCAG reprovado; 0 recurso externo/emoji; REAL vs PROPOSTA
-declarado; parecer de /direcao-de-arte e veredito de /defesa-de-tese anexados; cada cor com papel no UI.
+declarado; parecer do `revisor-frontend` e veredito do `refutador` anexados; cada cor com papel no UI.
 
 ## Porque (P7)
 - Duas bancas importadas: o review de arte e o gate de tese ja existem e sao caros de refazer (P10a).
