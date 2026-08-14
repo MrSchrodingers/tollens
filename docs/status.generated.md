@@ -8,7 +8,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | Suite | Assercoes | Exit |
 |---|---:|---:|
 | `tests/unit/regressao-gate.sh` | 59 | 0 |
-| `tests/unit/document-tools.sh` | 54 | 0 |
+| `tests/unit/document-tools.sh` | 57 | 0 |
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
