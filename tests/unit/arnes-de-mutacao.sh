@@ -87,7 +87,16 @@ fi
 #
 # `setsid` + `kill -TERM -PGID` MATA O GRUPO. `tests/mutation/run.sh` invoca as suites de
 # regressao como filhos proprios; SIGTERM so no processo direto deixava os netos vivos.
-setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+# TOLLENS_ARENA=off DE PROPOSITO. A partir de 2026-08-17 os arneses mutam uma COPIA da arvore
+# (tests/lib/arena.sh), entao o arquivo de producao NUNCA entra em estado mutado - e este caso,
+# que mede "o trap restaura o que foi mutado", perdeu a premissa: passou a reportar
+# NOT_VERIFIED por nao conseguir observar a mutacao, o que e honesto e inutil.
+#
+# O trap continua sendo garantia REAL: vale quando alguem roda com a arena desligada, e vale se a
+# arena falhar ao montar. Para medi-lo e preciso deixar a mutacao acontecer - por isso o `off`
+# aqui e deliberado, e por isso este caso restaura a arvore a mao ao final.
+# Quem mede o mundo COM arena e o AM4, que usa SIGKILL - sinal que o trap nao pode interceptar.
+setsid env TOLLENS_ARENA=off bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
 CHILD=$!
 MUTOU=nao
 # ORCAMENTO RECALIBRADO EM 2026-08-12, com medicao. O valor anterior era 400 x 0.05s (~20s) e
@@ -117,9 +126,61 @@ DEPOIS_SHA="$(sha256sum "$ALVO" 2>/dev/null | cut -d' ' -f1)"
 # Rede de seguranca: se o trap falhou, este teste NAO pode deixar o mutante para o proximo.
 [ "$DEPOIS_SHA" = "$ORIG_SHA" ] || git checkout -- "$ALVO" 2>/dev/null || true
 
+echo "== AM4. a arena isola a arvore candidata do experimento =="
+# AM3 mede SIGTERM, que o `trap` INTERCEPTA, e por isso roda com a arena DESLIGADA. Este caso
+# mede SIGKILL, que nao e interceptavel por construcao: nenhum trap executa. Antes da arena o
+# mutante ficava no disco - aconteceu tres vezes em 2026-08-12/14 (validate-claims.py,
+# cobertura.sh, github-ruleset.py), sempre por `pkill` ou `timeout` num arnes em curso.
+#
+# A EVIDENCIA E DIRETA, nao por ausencia: em vez de esperar um tempo e torcer, este caso enquete
+# a ARENA ate observar o mutante LA DENTRO. Isso prova que a janela de mutacao foi alcancada -
+# sem essa prova, "arvore candidata intacta" nao distinguiria isolamento de arnes que nem chegou
+# a mutar. Foi exatamente esse o defeito da primeira versao deste caso: `sleep 6` contra uma
+# janela que so abre aos ~16.7s (medido em AM3), e o controle de direcao acusou.
+ALVO4="evidence/hooks/verify-gate.sh"
+SHA4="$(sha256sum "$ALVO4" | cut -d' ' -f1)"
+setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+C4=$!
+ARENA_MUTOU=nao
+for _ in $(seq 1 1800); do   # ate ~90s, mesmo orcamento medido de AM3
+  sleep 0.05
+  A4="$(ls -dt "${TMPDIR:-/tmp}"/tollens-arena.* 2>/dev/null | head -1)"
+  [ -n "$A4" ] && [ -f "$A4/$ALVO4" ] \
+    && [ "$(sha256sum "$A4/$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] \
+    && { ARENA_MUTOU=sim; break; }
+done
+kill -KILL -"$C4" 2>/dev/null; wait "$C4" 2>/dev/null
+if [ "$ARENA_MUTOU" = nao ]; then
+  echo "  NOT_VERIFIED: nao observei mutacao DENTRO da arena em ~90s - o caso nao foi realizado."
+  echo "                Sem isso, 'arvore intacta' nao prova isolamento."
+  exit 2
+fi
+chk "a mutacao ocorreu DENTRO da arena (a janela foi alcancada)" "$ARENA_MUTOU" "sim"
+chk "  e SIGKILL nao deixou mutante na arvore candidata" \
+    "$([ "$SHA4" = "$(sha256sum "$ALVO4" | cut -d' ' -f1)" ] && echo intacto || echo MUTADO)" "intacto"
+
+# CONTROLE DE DIRECAO. Sem arena, o MESMO SIGKILL tem de deixar o mutante. Se disser "intacto",
+# o experimento nao discrimina - e o PASS acima seria compativel com um arnes que nao muta nada.
+setsid env TOLLENS_ARENA=off bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+C5=$!
+SEM_MUTOU=nao
+for _ in $(seq 1 1800); do
+  sleep 0.05
+  [ "$(sha256sum "$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] && { SEM_MUTOU=sim; break; }
+done
+kill -KILL -"$C5" 2>/dev/null; wait "$C5" 2>/dev/null
+chk "  SEM arena o mesmo SIGKILL DEIXA o mutante (o experimento discrimina)" "$SEM_MUTOU" "sim"
+# Nenhum trap rodou: restauracao a mao, e conferida.
+git checkout -- "$ALVO4" 2>/dev/null || true
+chk "  arvore restaurada apos o controle" \
+    "$([ "$SHA4" = "$(sha256sum "$ALVO4" | cut -d' ' -f1)" ] && echo intacto || echo SUJO)" "intacto"
+
+FORA4="$(grep -L 'lib/arena.sh' tests/mutation/*.sh | xargs -r -n1 basename | tr '\n' ' ')"
+chk "  todo arnes de mutacao carrega a arena" "${FORA4:-nenhum}" "nenhum"
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=3
+EXPECTED=8
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

@@ -16,6 +16,9 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 # LOCK: suites deste repo nao sao reentrantes entre si (tests/lib/lock.sh).
 . "$(dirname "$0")/../lib/lock.sh"
+# ARENA: muta uma COPIA da arvore, nunca a arvore candidata. Ver tests/lib/arena.sh para os
+# seis incidentes medidos que motivaram isto.
+. "$(dirname "$0")/../lib/arena.sh"
 ORIG="evidence/hooks/subagent-contract.sh"
 REG="tests/unit/run.sh"
 TMP="$(mktemp -d)"

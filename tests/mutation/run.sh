@@ -12,6 +12,10 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 # LOCK: suites deste repo nao sao reentrantes entre si (tests/lib/lock.sh).
 . "$(dirname "$0")/../lib/lock.sh"
+# ARENA: muta uma COPIA da arvore, nunca a arvore candidata. Ver tests/lib/arena.sh para os seis
+# incidentes medidos que motivaram isto. Faz `cd` para a copia; os caminhos abaixo sao relativos
+# a raiz e por isso nao mudam.
+. "$(dirname "$0")/../lib/arena.sh"
 ORIG="evidence/hooks/verify-gate.sh"
 REG="tests/unit/regressao-gate.sh"
 # ORDEM DO TRAP: RESTAURAR ANTES DE REMOVER.
