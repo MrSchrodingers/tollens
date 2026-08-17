@@ -32,7 +32,30 @@ chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL
 # arneses, que ao menos tinham trap.
 # Nao e caminho de excecao: scripts/status.sh e os dois workflows executam esta suite.
 _ALVO_REC="evidence/hooks/verify-gate.sh"
-trap 'git checkout -- "$_ALVO_REC" 2>/dev/null || true' EXIT INT TERM
+# SHA DE PARTIDA. A primeira versao deste trap fazia `git checkout --` incondicional, e isso
+# APAGAVA TRABALHO NAO COMMITADO: o guarda de sujeira que recusa medir sobre arvore suja esta
+# mais abaixo, entao a suite detectava a edicao do operador, saia 2 por causa dela, e no caminho
+# de saida destruia exatamente essa edicao. Reproduzido: marca nao commitada some sem aviso ao
+# rodar `scripts/status.sh`, que executa esta suite. Perda de dado silenciosa e irreversivel.
+#
+# Agora o trap restaura APENAS se o conteudo divergir do que havia quando a suite comecou - isto
+# e, apenas o que ELA mutou. Edicao do operador tem o mesmo sha no inicio e no fim e nao e tocada.
+_SHA_REC="$(sha256sum "$_ALVO_REC" 2>/dev/null | cut -d' ' -f1)"
+_restaura_rec(){
+  [ -n "${_SHA_REC:-}" ] || return 0
+  [ "$(sha256sum "$_ALVO_REC" 2>/dev/null | cut -d' ' -f1)" = "$_SHA_REC" ] && return 0
+  git checkout -- "$_ALVO_REC" 2>/dev/null || true
+}
+# RE-EMITIR O SINAL. Um `trap` sem `exit` executa o handler e RETOMA o script - medido: a suite
+# sobreviveu ao SIGTERM e completou os sete casos. Logo `pkill` (SIGTERM por default) nao a
+# parava e ela voltava a mutar, e `timeout N` PENDURAVA em vez de matar. Trocar "morre deixando
+# mutante" por "ignora o sinal e continua mutando" e piorar. Aqui o handler restaura e MORRE com
+# o codigo convencional (128+sinal), deixando o pai ver que houve sinal.
+# LIMITE DECLARADO: SIGKILL nao e interceptavel e continua deixando o mutante quando a suite roda
+# com TOLLENS_ARENA=off. Nos 13 arneses isso ja nao ocorre - eles usam a arena.
+trap '_restaura_rec' EXIT
+trap '_restaura_rec; exit 130' INT
+trap '_restaura_rec; exit 143' TERM
 
 echo "== AM1. todo trap que restaura o faz ANTES de remover o diretorio =="
 ruins=""
@@ -199,7 +222,15 @@ git checkout -- "$ALVO4" 2>/dev/null || true
 chk "  arvore restaurada apos o controle" \
     "$([ "$SHA4" = "$(sha256sum "$ALVO4" | cut -d' ' -f1)" ] && echo intacto || echo SUJO)" "intacto"
 
-FORA4="$(grep -L 'lib/arena.sh' tests/mutation/*.sh | xargs -r -n1 basename | tr '\n' ' ')"
+# CASA A DIRETIVA DE SOURCE, NAO A MENCAO. A versao anterior usava `grep -L 'lib/arena.sh'`, e
+# o MESMO commit que a escreveu adicionou aos 13 arneses um comentario contendo essa string
+# ("Ver tests/lib/arena.sh para os seis incidentes..."). Resultado medido: removi a diretiva de
+# `run.sh`, mantive o comentario, e a assercao CONTINUOU PASSANDO. Um arnes que perdesse o source
+# seguiria mutando a arvore real com a suite verde.
+# E a regra 2 de §6.3 - remova a garantia e exija que o teste REPROVE - reprovada pelo teste que
+# ela governa. O ancoramento agora exige `.` ou `source` no inicio da linha util.
+FORA4="$(grep -LE '^[[:space:]]*(\.|source)[[:space:]].*lib/arena\.sh' tests/mutation/*.sh \
+         | xargs -r -n1 basename | tr '\n' ' ')"
 chk "  todo arnes de mutacao carrega a arena" "${FORA4:-nenhum}" "nenhum"
 
 echo
