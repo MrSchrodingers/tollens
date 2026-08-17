@@ -23,6 +23,40 @@ cd "$(dirname "$0")/../.." || exit 1
 P=0; F=0
 chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL  $1 (got=$2 want=$3)"; F=$((F+1)); fi; }
 
+# C3: TRAP DE RECUPERACAO. Esta suite roda `TOLLENS_ARENA=off` em DOIS pontos (AM3 e o controle
+# de direcao de AM4), o que reintroduz deliberadamente a mutacao da arvore REAL - e ate
+# 2026-08-17 ela nao tinha trap nenhum: a recuperacao era so `git checkout --` no fim do fluxo
+# feliz. Ctrl-C, `timeout`, `pkill` ou o Stop-hook entre a mutacao e o checkout deixavam
+# `evidence/hooks/verify-gate.sh` mutado no disco. E o INCIDENTE 3 do cabecalho de
+# tests/lib/arena.sh, dentro da propria suite que certifica que ele acabou - e pior que nos 13
+# arneses, que ao menos tinham trap.
+# Nao e caminho de excecao: scripts/status.sh e os dois workflows executam esta suite.
+_ALVO_REC="evidence/hooks/verify-gate.sh"
+# SHA DE PARTIDA. A primeira versao deste trap fazia `git checkout --` incondicional, e isso
+# APAGAVA TRABALHO NAO COMMITADO: o guarda de sujeira que recusa medir sobre arvore suja esta
+# mais abaixo, entao a suite detectava a edicao do operador, saia 2 por causa dela, e no caminho
+# de saida destruia exatamente essa edicao. Reproduzido: marca nao commitada some sem aviso ao
+# rodar `scripts/status.sh`, que executa esta suite. Perda de dado silenciosa e irreversivel.
+#
+# Agora o trap restaura APENAS se o conteudo divergir do que havia quando a suite comecou - isto
+# e, apenas o que ELA mutou. Edicao do operador tem o mesmo sha no inicio e no fim e nao e tocada.
+_SHA_REC="$(sha256sum "$_ALVO_REC" 2>/dev/null | cut -d' ' -f1)"
+_restaura_rec(){
+  [ -n "${_SHA_REC:-}" ] || return 0
+  [ "$(sha256sum "$_ALVO_REC" 2>/dev/null | cut -d' ' -f1)" = "$_SHA_REC" ] && return 0
+  git checkout -- "$_ALVO_REC" 2>/dev/null || true
+}
+# RE-EMITIR O SINAL. Um `trap` sem `exit` executa o handler e RETOMA o script - medido: a suite
+# sobreviveu ao SIGTERM e completou os sete casos. Logo `pkill` (SIGTERM por default) nao a
+# parava e ela voltava a mutar, e `timeout N` PENDURAVA em vez de matar. Trocar "morre deixando
+# mutante" por "ignora o sinal e continua mutando" e piorar. Aqui o handler restaura e MORRE com
+# o codigo convencional (128+sinal), deixando o pai ver que houve sinal.
+# LIMITE DECLARADO: SIGKILL nao e interceptavel e continua deixando o mutante quando a suite roda
+# com TOLLENS_ARENA=off. Nos 13 arneses isso ja nao ocorre - eles usam a arena.
+trap '_restaura_rec' EXIT
+trap '_restaura_rec; exit 130' INT
+trap '_restaura_rec; exit 143' TERM
+
 echo "== AM1. todo trap que restaura o faz ANTES de remover o diretorio =="
 ruins=""
 for f in tests/mutation/*.sh; do
@@ -87,7 +121,16 @@ fi
 #
 # `setsid` + `kill -TERM -PGID` MATA O GRUPO. `tests/mutation/run.sh` invoca as suites de
 # regressao como filhos proprios; SIGTERM so no processo direto deixava os netos vivos.
-setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+# TOLLENS_ARENA=off DE PROPOSITO. A partir de 2026-08-17 os arneses mutam uma COPIA da arvore
+# (tests/lib/arena.sh), entao o arquivo de producao NUNCA entra em estado mutado - e este caso,
+# que mede "o trap restaura o que foi mutado", perdeu a premissa: passou a reportar
+# NOT_VERIFIED por nao conseguir observar a mutacao, o que e honesto e inutil.
+#
+# O trap continua sendo garantia REAL: vale quando alguem roda com a arena desligada, e vale se a
+# arena falhar ao montar. Para medi-lo e preciso deixar a mutacao acontecer - por isso o `off`
+# aqui e deliberado, e por isso este caso restaura a arvore a mao ao final.
+# Quem mede o mundo COM arena e o AM4, que usa SIGKILL - sinal que o trap nao pode interceptar.
+setsid env TOLLENS_ARENA=off bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
 CHILD=$!
 MUTOU=nao
 # ORCAMENTO RECALIBRADO EM 2026-08-12, com medicao. O valor anterior era 400 x 0.05s (~20s) e
@@ -117,9 +160,82 @@ DEPOIS_SHA="$(sha256sum "$ALVO" 2>/dev/null | cut -d' ' -f1)"
 # Rede de seguranca: se o trap falhou, este teste NAO pode deixar o mutante para o proximo.
 [ "$DEPOIS_SHA" = "$ORIG_SHA" ] || git checkout -- "$ALVO" 2>/dev/null || true
 
+echo "== AM4. a arena isola a arvore candidata do experimento =="
+# AM3 mede SIGTERM, que o `trap` INTERCEPTA, e por isso roda com a arena DESLIGADA. Este caso
+# mede SIGKILL, que nao e interceptavel por construcao: nenhum trap executa. Antes da arena o
+# mutante ficava no disco - aconteceu tres vezes em 2026-08-12/14 (validate-claims.py,
+# cobertura.sh, github-ruleset.py), sempre por `pkill` ou `timeout` num arnes em curso.
+#
+# A EVIDENCIA E DIRETA, nao por ausencia: em vez de esperar um tempo e torcer, este caso enquete
+# a ARENA ate observar o mutante LA DENTRO. Isso prova que a janela de mutacao foi alcancada -
+# sem essa prova, "arvore candidata intacta" nao distinguiria isolamento de arnes que nem chegou
+# a mutar. Foi exatamente esse o defeito da primeira versao deste caso: `sleep 6` contra uma
+# janela que so abre aos ~16.7s (medido em AM3), e o controle de direcao acusou.
+ALVO4="evidence/hooks/verify-gate.sh"
+SHA4="$(sha256sum "$ALVO4" | cut -d' ' -f1)"
+setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+C4=$!
+ARENA_MUTOU=nao
+for _ in $(seq 1 1800); do   # ate ~90s, mesmo orcamento medido de AM3
+  sleep 0.05
+  # A ARENA VEM DA ATRIBUICAO DO FILHO, nao de `ls -dt | head -1`. A versao anterior adivinhava
+  # pela mais recente, e revisao independente reproduziu dois modos de falha: observar arena
+  # ALHEIA ja mutada (falso positivo - as duas assercoes seguintes passariam por vacuidade, com o
+  # filho morto antes de mutar) e travar em arena alheia ILEGIVEL de outro usuario (inanicao).
+  # Agravado porque o `tar` restaurava o mtime da fonte em todas as arenas, entao elas empatavam
+  # e o `ls -dt` degenerava para ordem alfabetica.
+  # `tests/lib/arena.sh` publica `$TMPDIR/tollens-arena-of.<pid>`; aqui lemos pelo pid do NOSSO
+  # filho, que e a unica atribuicao que nao depende de relogio nem de ordem.
+  A4="$(cat "${TMPDIR:-/tmp}/tollens-arena-of.$C4" 2>/dev/null)"
+  [ -n "$A4" ] && [ -f "$A4/$ALVO4" ] \
+    && [ "$(sha256sum "$A4/$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] \
+    && { ARENA_MUTOU=sim; break; }
+  # S10: filho morto (lock, baseline vermelho) nao deve custar 90s de espera.
+  kill -0 "$C4" 2>/dev/null || break
+done
+kill -KILL -"$C4" 2>/dev/null; wait "$C4" 2>/dev/null
+if [ "$ARENA_MUTOU" = nao ]; then
+  echo "  NOT_VERIFIED: nao observei mutacao DENTRO da arena em ~90s - o caso nao foi realizado."
+  echo "                Sem isso, 'arvore intacta' nao prova isolamento."
+  exit 2
+fi
+# A antiga `chk "a mutacao ocorreu DENTRO da arena"` foi REMOVIDA: ela vinha depois do
+# `exit 2` do ramo contrario, entao nunca podia falhar - inflava PASS sem discriminar nada.
+# A observacao continua sendo pre-condicao dura (o exit 2 acima), so deixou de contar como caso.
+chk "  e SIGKILL nao deixou mutante na arvore candidata" \
+    "$([ "$SHA4" = "$(sha256sum "$ALVO4" | cut -d' ' -f1)" ] && echo intacto || echo MUTADO)" "intacto"
+
+# CONTROLE DE DIRECAO. Sem arena, o MESMO SIGKILL tem de deixar o mutante. Se disser "intacto",
+# o experimento nao discrimina - e o PASS acima seria compativel com um arnes que nao muta nada.
+setsid env TOLLENS_ARENA=off bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+C5=$!
+SEM_MUTOU=nao
+for _ in $(seq 1 1800); do
+  sleep 0.05
+  [ "$(sha256sum "$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] && { SEM_MUTOU=sim; break; }
+  kill -0 "$C5" 2>/dev/null || break
+done
+kill -KILL -"$C5" 2>/dev/null; wait "$C5" 2>/dev/null
+chk "  SEM arena o mesmo SIGKILL DEIXA o mutante (o experimento discrimina)" "$SEM_MUTOU" "sim"
+# Nenhum trap rodou: restauracao a mao, e conferida.
+git checkout -- "$ALVO4" 2>/dev/null || true
+chk "  arvore restaurada apos o controle" \
+    "$([ "$SHA4" = "$(sha256sum "$ALVO4" | cut -d' ' -f1)" ] && echo intacto || echo SUJO)" "intacto"
+
+# CASA A DIRETIVA DE SOURCE, NAO A MENCAO. A versao anterior usava `grep -L 'lib/arena.sh'`, e
+# o MESMO commit que a escreveu adicionou aos 13 arneses um comentario contendo essa string
+# ("Ver tests/lib/arena.sh para os seis incidentes..."). Resultado medido: removi a diretiva de
+# `run.sh`, mantive o comentario, e a assercao CONTINUOU PASSANDO. Um arnes que perdesse o source
+# seguiria mutando a arvore real com a suite verde.
+# E a regra 2 de §6.3 - remova a garantia e exija que o teste REPROVE - reprovada pelo teste que
+# ela governa. O ancoramento agora exige `.` ou `source` no inicio da linha util.
+FORA4="$(grep -LE '^[[:space:]]*(\.|source)[[:space:]].*lib/arena\.sh' tests/mutation/*.sh \
+         | xargs -r -n1 basename | tr '\n' ' ')"
+chk "  todo arnes de mutacao carrega a arena" "${FORA4:-nenhum}" "nenhum"
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=3
+EXPECTED=7
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

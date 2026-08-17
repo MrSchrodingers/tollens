@@ -432,7 +432,24 @@ limitations:
   nunca PASS - mesmo quando `current_user_can_bypass`=never confirma que o proprio ator
   autenticado nao contorna a regra. Fechar esta lacuna exige rodar o probe com um token que
   tenha acesso de escrita ao ruleset (nao o GITHUB_TOKEN de execucao agendada); nenhuma
-  heuristica sobre o campo parcial visivel substitui essa medicao.'
+  heuristica sobre o campo parcial visivel substitui essa medicao.
+
+  CORRECAO DE PRECISAO, 2026-08-17. As tres mencoes acima dizem "acesso de ESCRITA ao ruleset".
+  Isso e mais forte que o fato, e a diferenca importa para quem for configurar o segredo. Medido
+  nesta data com um PAT fine-grained de permissao `Administration: Read` sobre um unico
+  repositorio: `gh api repos/MrSchrodingers/tollens/rulesets/20385799 --jq
+  ''has("bypass_actors")''` devolve `true`, e o probe rodado com esse mesmo token sai PASS
+  citando `bypass_actors=[]`. Ou seja, LEITURA de administracao basta; escrita nao e necessaria.
+
+  O achado historico permanece correto no que importa: um `GITHUB_TOKEN` de Actions com
+  `contents: read` NAO recebe o campo, e tratar a ausencia como vazio produzia PASS fabricado.
+  O que estava impreciso era o LIMIAR de permissao, nao o mecanismo.
+
+  Consequencia pratica registrada porque custou uma reprovacao real: em 2026-08-17 o job
+  obrigatorio `verify-live-policy` saiu failure em dois commits seguidos. O log mostra `GH_TOKEN`
+  presente e mesmo assim `bypass_actors` nao divulgado, com o probe reportando PASS_PARCIAL e
+  exit 2. O token que estava no segredo nao tinha o acesso que o local tem. Isto NAO e defeito do
+  probe - e ele recusando dizer PASS sobre termo que nao mediu, que e o contrato dele.'
 - 'MEDIDO EM 2026-08-12 (onda 10), e e a limitacao mais importante desta alegacao: o probe foi
   integrado a CI na onda 9 e NUNCA MEDIU NADA contra a API real. No log da execucao 31641449160
   (verify-pr do PR #15, conclusao `success`), o ambiente do passo aparece como `GH_TOKEN:` vazio

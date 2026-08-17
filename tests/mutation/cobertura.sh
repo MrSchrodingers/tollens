@@ -23,6 +23,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 . "$(dirname "$0")/../lib/lock.sh"
+# ARENA: muta uma COPIA da arvore, nunca a arvore candidata. Ver tests/lib/arena.sh para os
+# seis incidentes medidos que motivaram isto.
+. "$(dirname "$0")/../lib/arena.sh"
 ORIG="evidence/cobertura.sh"
 REG="tests/unit/cobertura.sh"
 TMP="$(mktemp -d)"; trap 'cp -f "$TMP/orig.sh" "$ORIG" 2>/dev/null || true; rm -rf "$TMP"' EXIT

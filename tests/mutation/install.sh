@@ -4,6 +4,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 . "$(dirname "$0")/../lib/lock.sh"
+# ARENA: muta uma COPIA da arvore, nunca a arvore candidata. Ver tests/lib/arena.sh para os
+# seis incidentes medidos que motivaram isto.
+. "$(dirname "$0")/../lib/arena.sh"
 
 ORIG="install/apply.sh"
 ORIG_M="install/apply-managed.sh"
@@ -22,6 +25,20 @@ restore_common(){ cp -f "$TMP/orig.sh" "$ORIG"; }
 restore_managed(){ cp -f "$TMP/orig-managed.sh" "$ORIG_M"; }
 kill_ok(){ echo "  PASS  $1"; P=$((P+1)); }
 kill_fail(){ echo "  FAIL  $1"; F=$((F+1)); }
+# TERCEIRO ESTADO. MI4 e MI5 exigem oraculo ROOT (tests/unit/managed-root-trust.sh), que sai SKIP
+# quando `sudo -n` nao esta disponivel. Ate 2026-08-14 os dois reportavam
+# "sobreviveu OU oraculo root foi indisponivel" e contavam como FALHA - duas proposicoes
+# diferentes colapsadas num veredito so.
+#
+# Mutante que SOBREVIVEU e defeito: a garantia nao esta testada. Oraculo AUSENTE e NAO VERIFICADO:
+# nao se sabe. Colapsar os dois em FAIL e exatamente o que o contrato de tres estados deste
+# repositorio existe para impedir, e produzia vermelho permanente nesta estacao - o tipo de
+# vermelho que se aprende a ignorar, e que no dia em que significar outra coisa nao se distingue.
+#
+# NAO_MEDIDO nunca vira verde: o exit final e 2 se houver qualquer um, nunca 0.
+NAO_MEDIDOS=0
+nao_medido(){ echo "  NAO MEDIDO  $1"; NAO_MEDIDOS=$((NAO_MEDIDOS+1)); }
+oraculo_root_disponivel(){ sudo -n true 2>/dev/null; }
 
 echo "== baseline =="
 if bash "$REG" >/dev/null 2>&1; then echo "  PASS  regressao baseline verde"; else echo "  FAIL  regressao baseline vermelha"; exit 1; fi
@@ -93,7 +110,11 @@ out="$(bash "$REG_TRUST" 2>&1)"; rc=$?
 if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "FAIL user-owned-source-rejected\|FAIL source-symlink-rejected\|FAIL writable-source-rejected"; then
   kill_ok "MI4 morto pela fronteira de fonte privilegiada"
 else
-  kill_fail "MI4 sobreviveu ou oraculo root foi indisponivel"
+  if oraculo_root_disponivel; then
+    kill_fail "MI4 sobreviveu com o oraculo root DISPONIVEL - a garantia nao esta testada"
+  else
+    nao_medido "MI4: oraculo root indisponivel (sudo -n nega) - nao se sabe se morre"
+  fi
 fi
 restore_managed
 
@@ -112,15 +133,52 @@ out="$(bash "$REG_TRUST" 2>&1)"; rc=$?
 if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "FAIL wrong-owner-rejected"; then
   kill_ok "MI5 morto pelo caso owner!=root, group=root"
 else
-  kill_fail "MI5 sobreviveu ou oraculo root foi indisponivel"
+  if oraculo_root_disponivel; then
+    kill_fail "MI5 sobreviveu com o oraculo root DISPONIVEL - a garantia nao esta testada"
+  else
+    nao_medido "MI5: oraculo root indisponivel (sudo -n nega) - nao se sabe se morre"
+  fi
 fi
 restore_managed
 
 echo
-printf 'mutantes_esperados=%s  mortos=%s  falhas=%s\n' "$EXPECTED_MUTANTS" "$P" "$F"
-if [ "$F" -eq 0 ] && [ "$P" -eq "$EXPECTED_MUTANTS" ]; then
-  echo "mutacao do instalador verde"
+printf 'mutantes_esperados=%s  mortos=%s  falhas=%s  nao_medidos=%s\n' \
+       "$EXPECTED_MUTANTS" "$P" "$F" "$NAO_MEDIDOS"
+# INVARIANTE DE CONTAGEM, e ele estava INALCANCAVEL. Ate 2026-08-17 o unico ponto que comparava
+# com EXPECTED_MUTANTS ficava no ramo verde, depois dos ramos de falha e de nao-medido. Nesta
+# estacao, onde `sudo -n` nega e NAO_MEDIDOS e sempre 2, esse ponto NUNCA era alcancado - e
+# revisao independente mostrou que P=3, P=1 e P=0 produziam a MESMA saida e o MESMO exit 2:
+#
+#   A) real (P=3,F=0,N=2)  -> NAO VERIFICADA (2 de 5) / mortos: 3   exit=2
+#   B) (P=1,F=0,N=2)       -> NAO VERIFICADA (2 de 5) / mortos: 1   exit=2
+#   C) (P=0,F=0,N=2)       -> NAO VERIFICADA (2 de 5) / mortos: 0   exit=2
+#
+# Antes do terceiro estado, `[ "$P" -eq "$EXPECTED_MUTANTS" ]` gateava tudo e qualquer perda saia
+# 1. O terceiro estado corrigiu a confusao entre "sobreviveu" e "nao medido" e, no caminho,
+# perdeu o invariante. Aqui ele volta, e ANTES dos tres ramos: mutante que nao executou nao e
+# nem falha nem lacuna de oraculo - e caso que sumiu, e isso e sempre vermelho.
+if [ $((P + F + NAO_MEDIDOS)) -ne "$EXPECTED_MUTANTS" ]; then
+  echo "CONTAGEM INESPERADA: $P mortos + $F falhas + $NAO_MEDIDOS nao-medidos != $EXPECTED_MUTANTS"
+  echo "  Algum mutante nao executou. Caso removido, ancora quebrada, ou saida antecipada."
+  exit 1
+fi
+
+# TRES SAIDAS, na convencao deste repositorio: 0 verde, 1 vermelho, 2 NAO VERIFICADO.
+# A ordem importa. FALHA tem precedencia sobre NAO MEDIDO: um mutante que comprovadamente
+# sobreviveu e defeito medido, e nao pode ser rebaixado a "nao se sabe" so porque outro caso
+# ficou sem oraculo. NAO MEDIDO nunca sai 0 - medicao parcial declarada nao e aprovacao.
+if [ "$F" -ne 0 ]; then
+  echo "mutacao do instalador VERMELHA ($F mutante(s) sobreviveram com o oraculo disponivel)"
+  exit 1
+fi
+if [ "$NAO_MEDIDOS" -ne 0 ]; then
+  echo "mutacao do instalador NAO VERIFICADA ($NAO_MEDIDOS de $EXPECTED_MUTANTS sem oraculo root)"
+  echo "  mortos: $P. Rode com sudo nao-interativo disponivel para medir os demais."
+  exit 2
+fi
+if [ "$P" -eq "$EXPECTED_MUTANTS" ]; then
+  echo "mutacao do instalador verde ($P/$EXPECTED_MUTANTS)"
   exit 0
 fi
-echo "mutacao do instalador VERMELHA"
+echo "CONTAGEM INESPERADA: mortos=$P, esperado $EXPECTED_MUTANTS"
 exit 1
