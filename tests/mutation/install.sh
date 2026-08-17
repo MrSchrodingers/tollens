@@ -144,6 +144,25 @@ restore_managed
 echo
 printf 'mutantes_esperados=%s  mortos=%s  falhas=%s  nao_medidos=%s\n' \
        "$EXPECTED_MUTANTS" "$P" "$F" "$NAO_MEDIDOS"
+# INVARIANTE DE CONTAGEM, e ele estava INALCANCAVEL. Ate 2026-08-17 o unico ponto que comparava
+# com EXPECTED_MUTANTS ficava no ramo verde, depois dos ramos de falha e de nao-medido. Nesta
+# estacao, onde `sudo -n` nega e NAO_MEDIDOS e sempre 2, esse ponto NUNCA era alcancado - e
+# revisao independente mostrou que P=3, P=1 e P=0 produziam a MESMA saida e o MESMO exit 2:
+#
+#   A) real (P=3,F=0,N=2)  -> NAO VERIFICADA (2 de 5) / mortos: 3   exit=2
+#   B) (P=1,F=0,N=2)       -> NAO VERIFICADA (2 de 5) / mortos: 1   exit=2
+#   C) (P=0,F=0,N=2)       -> NAO VERIFICADA (2 de 5) / mortos: 0   exit=2
+#
+# Antes do terceiro estado, `[ "$P" -eq "$EXPECTED_MUTANTS" ]` gateava tudo e qualquer perda saia
+# 1. O terceiro estado corrigiu a confusao entre "sobreviveu" e "nao medido" e, no caminho,
+# perdeu o invariante. Aqui ele volta, e ANTES dos tres ramos: mutante que nao executou nao e
+# nem falha nem lacuna de oraculo - e caso que sumiu, e isso e sempre vermelho.
+if [ $((P + F + NAO_MEDIDOS)) -ne "$EXPECTED_MUTANTS" ]; then
+  echo "CONTAGEM INESPERADA: $P mortos + $F falhas + $NAO_MEDIDOS nao-medidos != $EXPECTED_MUTANTS"
+  echo "  Algum mutante nao executou. Caso removido, ancora quebrada, ou saida antecipada."
+  exit 1
+fi
+
 # TRES SAIDAS, na convencao deste repositorio: 0 verde, 1 vermelho, 2 NAO VERIFICADO.
 # A ordem importa. FALHA tem precedencia sobre NAO MEDIDO: um mutante que comprovadamente
 # sobreviveu e defeito medido, e nao pode ser rebaixado a "nao se sabe" so porque outro caso

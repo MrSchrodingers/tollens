@@ -59,17 +59,50 @@
 # Desativar com TOLLENS_ARENA=off, exclusivamente para depuracao. Nesse caso o arnes volta a mutar
 # a arvore de trabalho, e o aviso sai em stderr: nao se silencia a diferenca entre isolado e nao.
 
+# `pipefail` LOCAL, e nao herdado. O `tar -c | tar -x` abaixo tem um modo de falha silencioso:
+# um arquivo ilegivel no meio da arvore faz o produtor sair !=0 mas escrever um TAR VALIDO; o
+# consumidor sai 0 e a copia fica incompleta. Sem `pipefail` o `if !` le so o ultimo comando.
+# Os 13 arneses atuais definem `pipefail` antes do source - conferido - mas depender disso e
+# pre-condicao NAO DECLARADA de biblioteca: o proximo chamador que esquecer rebaixa a garantia.
+set -o pipefail
+
 if [ "${TOLLENS_ARENA:-on}" = "off" ]; then
   echo "AVISO: TOLLENS_ARENA=off - o arnes vai mutar a ARVORE DE TRABALHO." >&2
   echo "  Qualquer leitura concorrente observara o mutante. Use so para depuracao." >&2
 else
-  # VARREDURA NA ENTRADA. O `trap EXIT` de cada arnes e definido DEPOIS deste source e SOBRESCREVE
-  # o que fosse registrado aqui - entao a arena nao se limpa sozinha ao sair. Em vez de editar os
-  # treze arneses para acumular trap (invasivo e faceis de esquecer), a limpeza e por varredura de
-  # arenas velhas: uma execucao nova remove as de mais de uma hora. Auto-limitante, e nunca remove
-  # arena em uso, porque nenhum arnes deste repo roda por uma hora (o mais longo mede ~4 min).
-  find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'tollens-arena.*' -type d -mmin +60 \
-       -exec rm -rf {} + 2>/dev/null || true
+  # VARREDURA POR DONO VIVO, e a versao anterior desta funcao ERA UM DEFEITO CRITICO.
+  #
+  # Ela removia arenas com `-mmin +60`, sob a justificativa escrita de que "nunca remove arena em
+  # uso, porque nenhum arnes roda por uma hora". O codigo nao checava nada disso, e o relogio
+  # mentia: `tar -xf -` extrai o membro `./` e aplica o MTIME DA RAIZ DA ARVORE FONTE sobre o
+  # diretorio destino, sobrescrevendo o que `mktemp -d` acabou de criar. Medido:
+  #
+  #   mktemp criou:  2026-08-17 12:12:52  modo=700
+  #   apos tar:      2026-08-14 11:32:04  modo=755   <- tres dias de idade no instante zero
+  #   casaria com -mmin +60?  SIM
+  #
+  # Consequencia reproduzida por revisao independente: a varredura apagou a arena de um processo
+  # VIVO (cwd confirmado por /proc), e o arnes morreu com `FAIL regressao baseline vermelha`,
+  # exit 1. Isto e o INCIDENTE 4 do cabecalho deste mesmo arquivo - vermelho plausivel e falso -
+  # recriado pela correcao que existe para elimina-lo.
+  #
+  # O modo dual e igualmente ruim: qualquer `git checkout` na raiz torna o mtime recente, o
+  # `-mmin +60` nunca casa, e as arenas acumulam a ~14 MB cada, para sempre.
+  #
+  # A correcao troca o relogio por PROPRIEDADE: cada arena registra o pid do dono, e a varredura
+  # so remove arena cujo dono nao existe mais. `kill -0` nao envia sinal, so testa existencia.
+  for _a in "${TMPDIR:-/tmp}"/tollens-arena.*/; do
+    [ -d "$_a" ] || continue
+    _dono="$(cat "$_a/.arena-pid" 2>/dev/null)"
+    # Sem marca de dono: arena de uma versao anterior desta lib. Removivel por idade, e aqui o
+    # relogio serve, porque nao ha processo a proteger.
+    if [ -z "$_dono" ]; then
+      [ -n "$(find "$_a" -maxdepth 0 -mmin +60 2>/dev/null)" ] && rm -rf "$_a" 2>/dev/null
+      continue
+    fi
+    kill -0 "$_dono" 2>/dev/null && continue   # dono VIVO: nao toca
+    rm -rf "$_a" 2>/dev/null
+  done
 
   _arena_src="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)" || exit 1
   _arena_dst="$(mktemp -d "${TMPDIR:-/tmp}/tollens-arena.XXXXXXXX")" || exit 1
@@ -98,9 +131,47 @@ else
     exit 2
   fi
 
-  # O `trap` de EXIT dos arneses e definido DEPOIS deste source e sobrescreve o daqui. Por isso a
-  # remocao vai por `TOLLENS_ARENA_DIR`, que os arneses nao tocam, e o diretorio fica sob $TMPDIR:
-  # mesmo que nada limpe, e temporario por construcao e nao suja o repositorio.
+  # OS ALVOS DE MUTACAO CHEGARAM? O contador acima nao responde isso, e revisao independente
+  # apontou: a fonte tem ~309 arquivos nao-.git, entao o limiar 150 tolera perder ~40% da arvore -
+  # inclusive justamente os arquivos que os arneses mutam. O que hoje cobre esse buraco e o
+  # baseline de cada arnes (todos os 13 tem um, conferido), que fica vermelho sem o alvo. Mas
+  # isso e protecao de OUTRO mecanismo, e o comentario anterior a creditava a este portao.
+  #
+  # A lista e DERIVADA dos proprios arneses, nao escrita a mao: uma lista literal envelheceria em
+  # silencio no dia em que um arnes mudasse de alvo.
+  _arena_faltando=""
+  for _t in $(grep -hoE '^(ORIG|ORIG_M|SRC)="[^"]+"' "$_arena_dst"/tests/mutation/*.sh 2>/dev/null \
+              | cut -d'"' -f2 | sort -u); do
+    [ -e "$_arena_dst/$_t" ] || _arena_faltando="$_arena_faltando $_t"
+  done
+  if [ -n "$_arena_faltando" ]; then
+    echo "ERRO: arena sem alvo(s) de mutacao:$_arena_faltando" >&2
+    rm -rf "$_arena_dst"
+    exit 2
+  fi
+
+  # DESFAZ O QUE O `tar` FEZ COM O DIRETORIO-RAIZ. Ele aplicou o mtime e o modo da raiz da arvore
+  # fonte sobre o destino: 755 num $TMPDIR que aqui e /tmp com sticky 1777, e uma data que faz a
+  # varredura antiga apagar a arena no instante zero (ver o bloco de varredura acima).
+  #   - `touch`: o mtime volta a ser o da CRIACAO, que e o unico que significa alguma coisa.
+  #   - `chmod 700`: a arena e copia integral do repositorio, `.git` incluso. Em /tmp 1777 sem
+  #     isso ela fica legivel por qualquer usuario local enquanto existir.
+  touch "$_arena_dst" 2>/dev/null || true
+  chmod 700 "$_arena_dst" 2>/dev/null || true
+
+  # MARCA DE DONO. A varredura acima decide por existencia de processo, nao por relogio.
+  printf '%s\n' "$$" > "$_arena_dst/.arena-pid" 2>/dev/null || true
+
+  # ATRIBUICAO ARENA-PARA-PID, publicada FORA da arena. `tests/unit/arnes-de-mutacao.sh` precisa
+  # saber qual arena pertence ao filho que ele lancou. Antes ele adivinhava com
+  # `ls -dt .../tollens-arena.* | head -1`, e revisao independente reproduziu dois modos de falha:
+  # observar arena ALHEIA ja mutada (falso positivo, com as assercoes seguintes passando por
+  # vacuidade) e travar em arena alheia ILEGIVEL de outro usuario (inanicao). Agravado porque,
+  # com o mtime corrompido pelo tar, todas as arenas do mesmo repo empatavam e o `ls -dt`
+  # degenerava para ordem alfabetica.
+  printf '%s\n' "$_arena_dst" > "${TMPDIR:-/tmp}/tollens-arena-of.$$" 2>/dev/null || true
+
   export TOLLENS_ARENA_DIR="$_arena_dst"
   cd "$_arena_dst" || exit 1
+  unset _arena_src _arena_dst _arena_n _a _dono
 fi

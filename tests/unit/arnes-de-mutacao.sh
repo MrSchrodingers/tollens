@@ -23,6 +23,17 @@ cd "$(dirname "$0")/../.." || exit 1
 P=0; F=0
 chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL  $1 (got=$2 want=$3)"; F=$((F+1)); fi; }
 
+# C3: TRAP DE RECUPERACAO. Esta suite roda `TOLLENS_ARENA=off` em DOIS pontos (AM3 e o controle
+# de direcao de AM4), o que reintroduz deliberadamente a mutacao da arvore REAL - e ate
+# 2026-08-17 ela nao tinha trap nenhum: a recuperacao era so `git checkout --` no fim do fluxo
+# feliz. Ctrl-C, `timeout`, `pkill` ou o Stop-hook entre a mutacao e o checkout deixavam
+# `evidence/hooks/verify-gate.sh` mutado no disco. E o INCIDENTE 3 do cabecalho de
+# tests/lib/arena.sh, dentro da propria suite que certifica que ele acabou - e pior que nos 13
+# arneses, que ao menos tinham trap.
+# Nao e caminho de excecao: scripts/status.sh e os dois workflows executam esta suite.
+_ALVO_REC="evidence/hooks/verify-gate.sh"
+trap 'git checkout -- "$_ALVO_REC" 2>/dev/null || true' EXIT INT TERM
+
 echo "== AM1. todo trap que restaura o faz ANTES de remover o diretorio =="
 ruins=""
 for f in tests/mutation/*.sh; do
@@ -144,10 +155,20 @@ C4=$!
 ARENA_MUTOU=nao
 for _ in $(seq 1 1800); do   # ate ~90s, mesmo orcamento medido de AM3
   sleep 0.05
-  A4="$(ls -dt "${TMPDIR:-/tmp}"/tollens-arena.* 2>/dev/null | head -1)"
+  # A ARENA VEM DA ATRIBUICAO DO FILHO, nao de `ls -dt | head -1`. A versao anterior adivinhava
+  # pela mais recente, e revisao independente reproduziu dois modos de falha: observar arena
+  # ALHEIA ja mutada (falso positivo - as duas assercoes seguintes passariam por vacuidade, com o
+  # filho morto antes de mutar) e travar em arena alheia ILEGIVEL de outro usuario (inanicao).
+  # Agravado porque o `tar` restaurava o mtime da fonte em todas as arenas, entao elas empatavam
+  # e o `ls -dt` degenerava para ordem alfabetica.
+  # `tests/lib/arena.sh` publica `$TMPDIR/tollens-arena-of.<pid>`; aqui lemos pelo pid do NOSSO
+  # filho, que e a unica atribuicao que nao depende de relogio nem de ordem.
+  A4="$(cat "${TMPDIR:-/tmp}/tollens-arena-of.$C4" 2>/dev/null)"
   [ -n "$A4" ] && [ -f "$A4/$ALVO4" ] \
     && [ "$(sha256sum "$A4/$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] \
     && { ARENA_MUTOU=sim; break; }
+  # S10: filho morto (lock, baseline vermelho) nao deve custar 90s de espera.
+  kill -0 "$C4" 2>/dev/null || break
 done
 kill -KILL -"$C4" 2>/dev/null; wait "$C4" 2>/dev/null
 if [ "$ARENA_MUTOU" = nao ]; then
@@ -155,7 +176,9 @@ if [ "$ARENA_MUTOU" = nao ]; then
   echo "                Sem isso, 'arvore intacta' nao prova isolamento."
   exit 2
 fi
-chk "a mutacao ocorreu DENTRO da arena (a janela foi alcancada)" "$ARENA_MUTOU" "sim"
+# A antiga `chk "a mutacao ocorreu DENTRO da arena"` foi REMOVIDA: ela vinha depois do
+# `exit 2` do ramo contrario, entao nunca podia falhar - inflava PASS sem discriminar nada.
+# A observacao continua sendo pre-condicao dura (o exit 2 acima), so deixou de contar como caso.
 chk "  e SIGKILL nao deixou mutante na arvore candidata" \
     "$([ "$SHA4" = "$(sha256sum "$ALVO4" | cut -d' ' -f1)" ] && echo intacto || echo MUTADO)" "intacto"
 
@@ -167,6 +190,7 @@ SEM_MUTOU=nao
 for _ in $(seq 1 1800); do
   sleep 0.05
   [ "$(sha256sum "$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] && { SEM_MUTOU=sim; break; }
+  kill -0 "$C5" 2>/dev/null || break
 done
 kill -KILL -"$C5" 2>/dev/null; wait "$C5" 2>/dev/null
 chk "  SEM arena o mesmo SIGKILL DEIXA o mutante (o experimento discrimina)" "$SEM_MUTOU" "sim"
@@ -180,7 +204,7 @@ chk "  todo arnes de mutacao carrega a arena" "${FORA4:-nenhum}" "nenhum"
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=8
+EXPECTED=7
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
