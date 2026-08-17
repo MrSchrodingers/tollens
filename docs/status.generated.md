@@ -17,7 +17,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
-| `tests/unit/arnes-de-mutacao.sh` | 3 | 0 |
+| `tests/unit/arnes-de-mutacao.sh` | 8 | 0 |
 | `tests/unit/schedule.sh` | 29 | 0 |
 | `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
