@@ -12,8 +12,8 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
-| `tests/unit/claims.sh` | 54 | 0 |
-| `tests/unit/propriedades.sh` | 31 | 0 |
+| `tests/unit/claims.sh` | 14 | 1 |
+| `tests/unit/propriedades.sh` | 30 | 1 |
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
@@ -24,6 +24,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
 | `tests/unit/contrato-de-instalador.sh` | 29 | 0 |
+| `tests/unit/capability-conformance.py` | 15 | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -39,10 +40,11 @@ O README referencia este arquivo em vez de duplicar numeros.
 | escalonamento | 10 | 0 |
 | fronteira viva | 30 | 0 |
 | camada de literatura | 13 | 0 |
-| claim ledger | 8 | 0 |
+| claim ledger | 8 | 1 |
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
+| capability-conformance (auto) | 9 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
@@ -53,12 +55,6 @@ assercao).
 
 | Arquivo | Medido | Piso | Status |
 |---|---:|---:|---|
-| `evidence/probes/github-ruleset.py` | 86.0% | 86.0% | OK |
-| `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
-| `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
-| `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
-| `orchestration/schedule.py` | 88.4% | 88.4% | OK |
-| `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
 
 ## Componentes
 

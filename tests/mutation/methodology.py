@@ -44,7 +44,7 @@ MUTANTS = [
 # ONDA 12. ESTE ARNES MATAVA POR CRASH, NAO POR ASSERCAO - achado do portao final.
 #
 # A raiz temporaria continha SO os dois JSON de orchestration. O tester le tambem
-# `execution/skills/promoted`, `execution/agents` e as fontes de instrucao sob `execution/` e
+# `execution/skills`, `execution/agents` e as fontes de instrucao sob `execution/` e
 # `docs/method/`; sem elas ele morre em `FileNotFoundError` ANTES de avaliar qualquer coisa.
 # Medido: com a raiz minima e os JSON NAO MUTADOS, `python3 tests/unit/methodology.py` sai 1 com
 # traceback. Logo todo `returncode != 0` era o crash, e `KILLED=16/16 EXIT=0` era sinal verde
@@ -65,6 +65,11 @@ def monta_raiz(raw: str, policy: dict, protocol: dict) -> Path:
     (root / "orchestration").mkdir()
     (root / "orchestration/skill-policy.json").write_text(json.dumps(policy), encoding="utf-8")
     (root / "orchestration/evaluation-protocol.json").write_text(json.dumps(protocol), encoding="utf-8")
+    # ONDA 13: o tester passou a derivar o conjunto de skills de `registry.capabilities` em vez
+    # do nome do diretorio. Sem o registry na raiz, ele volta a morrer por ausencia de arquivo -
+    # e o baseline abaixo pegaria isso, mas o arnes ficaria inutil ate alguem consertar.
+    (root / "orchestration/registry.json").write_text(
+        (ROOT / "orchestration/registry.json").read_text(encoding="utf-8"), encoding="utf-8")
     for nome in LIDOS_PELO_TESTER:
         (root / nome).symlink_to(ROOT / nome, target_is_directory=True)
     return root

@@ -11,16 +11,46 @@
     "external_certifier": "verify-pr"
   },
   "agents": {
-    "investigador": {"source": "execution/agents/investigador.md", "writes": false},
-    "mapeador-dependencias": {"source": "execution/agents/mapeador-dependencias.md", "writes": false},
-    "tdd": {"source": "execution/agents/tdd.md", "writes": true},
-    "implementador": {"source": "execution/agents/implementador.md", "writes": true},
-    "revisor-codigo": {"source": "execution/agents/revisor-codigo.md", "writes": false},
-    "refutador": {"source": "execution/agents/refutador.md", "writes": false},
-    "auditor-seguranca": {"source": "execution/agents/auditor-seguranca.md", "writes": false},
-    "analista-otimalidade": {"source": "execution/agents/analista-otimalidade.md", "writes": false},
-    "analista-fluxos": {"source": "execution/agents/analista-fluxos.md", "writes": false},
-    "revisor-frontend": {"source": "execution/agents/revisor-frontend.md", "writes": false}
+    "investigador": {
+      "source": "execution/agents/investigador.md",
+      "writes": false
+    },
+    "mapeador-dependencias": {
+      "source": "execution/agents/mapeador-dependencias.md",
+      "writes": false
+    },
+    "tdd": {
+      "source": "execution/agents/tdd.md",
+      "writes": true
+    },
+    "implementador": {
+      "source": "execution/agents/implementador.md",
+      "writes": true
+    },
+    "revisor-codigo": {
+      "source": "execution/agents/revisor-codigo.md",
+      "writes": false
+    },
+    "refutador": {
+      "source": "execution/agents/refutador.md",
+      "writes": false
+    },
+    "auditor-seguranca": {
+      "source": "execution/agents/auditor-seguranca.md",
+      "writes": false
+    },
+    "analista-otimalidade": {
+      "source": "execution/agents/analista-otimalidade.md",
+      "writes": false
+    },
+    "analista-fluxos": {
+      "source": "execution/agents/analista-fluxos.md",
+      "writes": false
+    },
+    "revisor-frontend": {
+      "source": "execution/agents/revisor-frontend.md",
+      "writes": false
+    }
   },
   "skill_governance": {
     "policy": "orchestration/skill-policy.json",
@@ -28,5 +58,113 @@
     "method": "docs/method/skill-evaluation-protocol.md",
     "adr": "docs/adr/0025-skills-evidence-gated.md"
   },
-  "workflows": ["investigation-only", "standard-change", "high-risk-change"]
+  "capabilities": {
+    "depreciar": {
+      "kind": "skill",
+      "source": "execution/skills/depreciar",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "design-system-proposal": {
+      "kind": "skill",
+      "source": "execution/skills/design-system-proposal",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "forge": {
+      "kind": "skill",
+      "source": "execution/skills/forge",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "graphify": {
+      "kind": "skill",
+      "source": "execution/skills/graphify",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "grill-me": {
+      "kind": "skill",
+      "source": "execution/skills/grill-me",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "prd-to-issues": {
+      "kind": "skill",
+      "source": "execution/skills/prd-to-issues",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "prd-to-plan": {
+      "kind": "skill",
+      "source": "execution/skills/prd-to-plan",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "write-a-prd": {
+      "kind": "skill",
+      "source": "execution/skills/write-a-prd",
+      "state": "candidate",
+      "installed": true,
+      "activation": "contextual",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      }
+    },
+    "defesa-de-tese": {
+      "kind": "skill",
+      "source": null,
+      "state": "deprecated",
+      "installed": false,
+      "activation": "none",
+      "evidence": {
+        "dossier": null,
+        "status": "absent"
+      },
+      "retired_at": "2026-08-14",
+      "superseded_by": "refutador",
+      "reason": "validava na MESMA resposta que propos - auto-correcao intrinseca; o agente refutador faz a mesma pergunta com contexto separado (ADR 0011)"
+    }
+  },
+  "workflows": [
+    "investigation-only",
+    "standard-change",
+    "high-risk-change"
+  ]
 }

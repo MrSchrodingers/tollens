@@ -1,6 +1,6 @@
 ---
 name: design-system-proposal
-description: Le e estuda um repositorio qualquer (stack, libs de UI, tokens/temas, telas REAIS, whitelabel/multi-marca/spokes) e entrega uma PROPOSTA de Design System como UM unico artifact HTML self-contained, com gerador de tokens OKLCH + portao de contraste WCAG, fidelidade as telas reais, banca de revisao de UI/UX/cor e veredito calibrado. Acionar quando o usuario pedir "propor/criar design system", "tokens/tema para o repo", "design system whitelabel/multi-marca", "paleta para as marcas", ou "um design system como o do amaral-intern-hub".
+description: Le e estuda um repositorio qualquer (stack, libs de UI, tokens/temas, telas REAIS, whitelabel/multi-marca/spokes) e entrega uma PROPOSTA de Design System como UM unico artifact HTML self-contained, com gerador de tokens OKLCH + portao de contraste WCAG, fidelidade as telas reais, banca de revisao de UI/UX/cor e veredito calibrado. Acionar quando o usuario pedir "propor/criar design system", "tokens/tema para o repo", "design system whitelabel/multi-marca", "paleta para as marcas".
 ---
 
 # /design-system-proposal

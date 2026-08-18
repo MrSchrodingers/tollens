@@ -9,7 +9,15 @@ OUT="docs/status.generated.md"
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1 || OUT="${1:-$OUT}"
 
-conta(){ bash "$1" 2>&1 | grep -oE 'PASS=[0-9]+' | tail -1 | cut -d= -f2; }
+# INTERPRETADOR PELO SUFIXO. Achado da revisao da onda 13: a lista abaixo era invocada com
+# `bash "$t"` e ganhou um `.py`. Bash sobre Python devolve exit 2 com stdout vazio - a coluna de
+# assercoes virava `?` e a de exit virava `2` PERMANENTE no artefato publicado, que e
+# normalizacao de desvio. Pior: o bash executa as crases do docstring como substituicao de
+# comando; `python3 tests/unit/methodology.py` entre crases foi de fato invocado.
+# Verificar o artefato nao e verificar a integracao (regra 3 da §6.3): os sete mutantes do portao
+# novo morreram porque eu o chamei a mao. O mutante que faltava era o do WIRING.
+roda_suite(){ case "$1" in *.py) python3 "$1" ;; *) bash "$1" ;; esac; }
+conta(){ roda_suite "$1" 2>&1 | grep -oE 'PASS=[0-9]+|TOTAL=[0-9]+' | tail -1 | cut -d= -f2; }
 TMP="$(mktemp)" || exit 1
 trap 'rm -f "$TMP"' EXIT
 
@@ -26,8 +34,9 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
            tests/unit/capabilities.sh tests/unit/cobertura.sh \
            tests/unit/contrato-de-instalador.sh \
+           tests/unit/capability-conformance.py \
            tests/unit/run.sh; do
-    bash "$t" >/dev/null 2>&1; rc=$?
+    roda_suite "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
     printf '| `%s` | %s | %s |\n' "$t" "${n:-?}" "$rc"
   done

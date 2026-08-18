@@ -121,9 +121,13 @@ check(analysis["no_universal_scaffold_claim_from_single_scaffold"] is True, "um 
 # LIMITE DECLARADO: isto resolve nome de SKILL em qualquer `.md` sob o diretorio da skill. Nao
 # verifica que o passo descrito faca o que promete - e oraculo de referencia, nao de conteudo -
 # nem alcanca skill `deprecated/`, cujo conteudo e registro e nao instrucao viva.
-promovidas = {d.name for d in (ROOT / "execution/skills/promoted").iterdir() if d.is_dir()}
-_dep = ROOT / "execution/skills/deprecated"
-depreciadas = {d.name for d in _dep.iterdir() if d.is_dir()} if _dep.is_dir() else set()
+# ONDA 13: o diretorio deixou de codificar estado. A fonte de verdade do conjunto a
+# conferir passa a ser `registry.capabilities` com `source` sob `execution/skills/`.
+_reg = json.loads((ROOT / "orchestration/registry.json").read_text(encoding="utf-8"))
+promovidas = {n for n, c in (_reg.get("capabilities") or {}).items()
+              if (c.get("source") or "").startswith("execution/skills/")}
+depreciadas = {n for n, c in (_reg.get("capabilities") or {}).items()
+               if c.get("state") == "deprecated"}
 agentes = {f.stem for f in (ROOT / "execution/agents").glob("*.md")}
 
 # O universo que uma invocacao `/x` pode resolver: skill promovida, agente, ou um arquivo de
@@ -133,7 +137,7 @@ _PLACEHOLDERS = {"cmd", "nome", "plugin", "exemplo", "path", "arquivo", "termo",
 
 mortas = []
 for _sk in sorted(promovidas):
-    _dir = ROOT / "execution/skills/promoted" / _sk
+    _dir = ROOT / "execution/skills" / _sk
     _f = _dir / "SKILL.md"
     if not _f.is_file():
         mortas.append(f"{_sk}: sem SKILL.md")
