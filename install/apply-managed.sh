@@ -111,6 +111,29 @@ if [ "$rc" -ne 0 ]; then
   rollback && exit "$rc" || exit 70
 fi
 
+# `--dry-run` NAO E TRANSACAO, e ate a onda 13 ele afirmava que era. O worker imprimia
+# "PLANO (nada sera escrito)" e saia 0; o supervisor seguia para as pos-condicoes de modo e
+# terminava com `managed transaction committed`. Observado na saida real de um deploy do
+# operador, DUAS vezes seguidas:
+#
+#   $ sudo bash install/apply-managed.sh --dry-run
+#   PLANO (nada sera escrito). prefixo='/'
+#   ...
+#   managed transaction committed        <- nada foi escrito
+#
+# O revisor da onda 12 nomeou isto como defeito irmao ao consertar o `case`, e nao foi
+# corrigido ali. E a forma exata que este repositorio persegue - mensagem verde declarando
+# um estado que nao existe - e ela morava no caminho PRIVILEGIADO, que roda como root.
+#
+# Aqui o ensaio termina onde deve: sem pos-condicao (nao ha o que verificar - nada mudou) e
+# sem declaracao de commit. O `cleanup` do trap continua valendo.
+if [ "${1:-}" = "--dry-run" ]; then
+  cleanup
+  trap - EXIT
+  echo "plano exibido; NENHUMA escrita foi feita e nenhuma transacao foi aberta"
+  exit 0
+fi
+
 # Exact mode contract. The delegated installer intends directories and executable policy material
 # to be 0755, with other regular files at 0644. Verifying exact modes here closes the previous
 # gap where chmod failures could be hidden by a content-only postcondition.

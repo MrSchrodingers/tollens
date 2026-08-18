@@ -99,6 +99,24 @@ chk "argumento desconhecido e recusado"        "$(mg --typo)" 2
 chk "--revert --dry-run e RECUSADO (era revert real)" "$(mg --revert --dry-run)" 2
 chk "--verify extra e recusado ANTES do exec"  "$(mg --verify extra)" 2
 
+echo "== CI3b. --dry-run nao declara transacao (nada foi escrito) =="
+# Observado na saida REAL de um deploy managed do operador, duas vezes seguidas: o worker
+# imprimia "PLANO (nada sera escrito)" e o supervisor terminava com "managed transaction
+# committed". Mensagem verde declarando estado que nao existe, no caminho que roda como root.
+# O revisor da onda 12 nomeou como defeito irmao ao consertar o `case`; ficou aberto ate a 13.
+_D="$(mktemp -d "$TMP/dry.XXXXXX")"
+_saida="$(MANAGED_PREFIX="$_D" bash install/apply-managed.sh --dry-run 2>&1)"
+chk "--dry-run nao escreve arquivo" "$(find "$_D" -type f | wc -l)" 0
+chk "--dry-run NAO declara transacao commitada" \
+    "$(printf '%s' "$_saida" | grep -c 'transaction committed')" 0
+chk "--dry-run diz explicitamente que nada foi escrito" \
+    "$(printf '%s' "$_saida" | grep -c 'NENHUMA escrita')" 1
+# ANTIVACUIDADE: o apply REAL tem de continuar declarando o commit, senao os tres casos acima
+# passariam por o comando nunca dizer nada.
+_D2="$(mktemp -d "$TMP/real.XXXXXX")"
+chk "o apply real AINDA declara a transacao" \
+    "$(MANAGED_PREFIX="$_D2" bash install/apply-managed.sh 2>&1 | grep -c 'transaction committed')" 1
+
 echo "== CI4. o worker tem contagem propria (e invocavel direto) =="
 mw(){ MANAGED_PREFIX="$(mktemp -d "$TMP/mw.XXXXXX")" bash install/apply-managed-worker.sh "$@" >/dev/null 2>&1; echo $?; }
 chk "worker recusa argumento em excesso"       "$(mw --revert --dry-run)" 64
