@@ -31,12 +31,12 @@ jobs:
   verify-pr:
     name: verify-pr
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinado: tag e mutavel
         with: { fetch-depth: 0 }
       - name: ferramentas dos adaptadores
-        timeout-minutes: 6
+        timeout-minutes: 12
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
@@ -61,14 +61,25 @@ jobs:
           command -v ffmpeg    >/dev/null || missing+=(ffmpeg)
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "instalando: ${missing[*]}"
-            # ONDA 12. `timeout 180` no update REPROVOU TRES VEZES, sempre em 180.0s exatos
-            # (runs 32087883039 e 32087832119, exit 124) - o cronometro bate com o limite, nao
-            # com a rede: e o orcamento, nao um pico. `Acquire::Retries=3` multiplica o pior
-            # caso, entao 180s cobre um mirror bom e nenhum ruim. exit 124 e pior que suite
-            # vermelha: mata o passo ANTES de ele dizer qualquer coisa sobre o codigo, e ler
-            # isso como 'o verificado esta errado' e a confusao que este repositorio persegue.
-            sudo timeout 420 apt-get -o Acquire::Retries=3 update -qq
-            sudo timeout 600 apt-get -o Acquire::Retries=3 install -y -qq "${missing[@]}"
+            # ONDA 12, TRES NIVEIS DE TIMEOUT QUE PRECISAM SER COERENTES ENTRE SI.
+            # Historico medido, porque a primeira correcao daqui estava errada:
+            #   1. `timeout 180` no update reprovou TRES VEZES em 180.0s exatos (runs
+            #      32087883039, 32087832119; exit 124). Relogio batendo com o limite e nao com
+            #      um pico e assinatura de orcamento, nao de rede.
+            #   2. Subi o interno para 420/600 SEM olhar o `timeout-minutes: 6` do passo: 1020s
+            #      de orcamento interno sob um teto externo de 360s. O interno virou inalcancavel
+            #      e o passo passou a morrer com "has timed out after 6 minutes" - erro
+            #      DIFERENTE, que so apareceu porque a primeira correcao mudou o ponto de morte.
+            # Ordem correta: interno < passo < job.
+            #      interno 300 + 400 = 700s  <  passo 720s  <  job 2700s
+            # O job tambem subiu, por medicao independente: `verify-pr` fechou em 29m58s contra
+            # teto de 30min. Um job que passa por 2 segundos nao esta passando, esta sorteando.
+            #
+            # exit 124 nao e suite vermelha: mata o passo ANTES de ele avaliar o codigo. Ler isso
+            # como "o verificado esta errado" e a confusao que este repositorio persegue - e a
+            # assimetria pratica e que reexecutar corrige um pico e mascara um limite.
+            sudo timeout 300 apt-get -o Acquire::Retries=3 update -qq
+            sudo timeout 400 apt-get -o Acquire::Retries=3 install -y -qq "${missing[@]}"
           else
             echo "poppler-utils, pandoc e ffmpeg ja presentes na imagem; apt nao foi acionado"
           fi
