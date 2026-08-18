@@ -138,6 +138,27 @@ trap 'rm -f "$TMP"' EXIT
 } > "$TMP"
 
 if [ "$CHECK" -eq 1 ]; then
+  # EXIT NAO-ZERO REPROVA, e nao apenas "o artefato mudou". Ate a onda 13 este portao era
+  # SO `cmp -s`: o documento registra o exit de cada suite como VALOR numa tabela, entao uma
+  # suite vermelha gravada como `| 30 | 1 |` batia com a regeneracao e o `--check` aprovava.
+  #
+  # Nao e hipotese. Aconteceu nesta onda: `tests/unit/propriedades.sh` foi de 31/0 para 30/1
+  # por uma colisao de nome de mutante que eu introduzi, a regeneracao assou o vermelho no
+  # artefato, `--check` fechou exit 0, e so o passo dedicado da CI pegou. O portao final desta
+  # mesma onda tinha nomeado a forma - "enforcement por comparacao de bytes de uma tabela e
+  # lavavel" - e a instrucao publicada logo abaixo ("rode scripts/status.sh e commite") era o
+  # mecanismo de lavagem: seguir a instrucao ao pe da letra grava o vermelho e devolve o verde.
+  #
+  # Rotulo nao-numerico ("variavel (sudo)", "passo dedicado no CI", "OK") e ambiente-dependente
+  # por decisao ja registrada acima e NAO entra nesta checagem.
+  _vermelhas="$(awk -F'|' '/^\| `/ {e=$(NF-1); gsub(/ /,"",e); if (e ~ /^[0-9]+$/ && e+0 != 0) {s=$2; gsub(/ |`/,"",s); print s" (exit="e")"}}' "$TMP")"
+  if [ -n "$_vermelhas" ]; then
+    echo 'SUITE VERMELHA - o artefato nao pode ser aceito com exit nao-zero:'
+    printf '  %s\n' $_vermelhas
+    echo 'Regenerar o documento NAO resolve: ele registra o exit, entao gravar o vermelho'
+    echo 'devolveria este portao ao verde. Conserte a suite.'
+    exit 1
+  fi
   if cmp -s "$TMP" docs/status.generated.md; then
     echo 'status atualizado'
     exit 0

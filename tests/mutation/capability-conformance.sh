@@ -62,10 +62,10 @@ _SAVE='
 p.write_text(json.dumps(r,ensure_ascii=False,indent=2))'
 
 echo "== mutantes do lifecycle =="
-mutante MC1 "promoted sem dossie reprova" 1 \
+mutante MCAP1 "promoted sem dossie reprova" 1 \
   "$_PY"'c["graphify"]["state"]="promoted"'"$_SAVE"
 
-mutante MC2 "dossie cobrindo 2 dos 7 requisitos reprova" 1 \
+mutante MCAP2 "dossie cobrindo 2 dos 7 requisitos reprova" 1 \
   "$_PY"'
 import os
 os.makedirs("evidence/skills",exist_ok=True)
@@ -74,7 +74,7 @@ c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graph
 
 # CONTROLE POSITIVO, e ele e o que impede o portao de ser "reprova tudo". Sem este caso,
 # "nunca aprova" seria indistinguivel de "verifica corretamente".
-mutante MC3 "dossie cobrindo os 7 requisitos APROVA" 0 \
+mutante MCAP3 "dossie cobrindo os 7 requisitos APROVA" 0 \
   "$_PY"'
 import os
 reqs=json.load(open("orchestration/skill-policy.json"))["lifecycle"]["promotion_requires"]
@@ -82,7 +82,7 @@ os.makedirs("evidence/skills",exist_ok=True)
 open("evidence/skills/graphify.json","w").write(json.dumps({k:{"ok":True} for k in reqs}))
 c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graphify.json","status":"valid"})'"$_SAVE"
 
-mutante MC4 "dossie com os 7 nomes e valores VAZIOS reprova" 1 \
+mutante MCAP4 "dossie com os 7 nomes e valores VAZIOS reprova" 1 \
   "$_PY"'
 import os
 reqs=json.load(open("orchestration/skill-policy.json"))["lifecycle"]["promotion_requires"]
@@ -91,25 +91,25 @@ open("evidence/skills/graphify.json","w").write(json.dumps({k:None for k in reqs
 c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graphify.json","status":"valid"})'"$_SAVE"
 
 echo "== mutantes da divida de avaliacao =="
-mutante MC5 "capability nova em candidate estoura o teto" 1 \
+mutante MCAP5 "capability nova em candidate estoura o teto" 1 \
   "$_PY"'c["nova"]={"kind":"skill","source":"execution/skills/graphify","state":"candidate","installed":False,"activation":"contextual","evidence":{"dossier":None,"status":"absent"}}'"$_SAVE"
 
 # O FURO QUE O PORTAO FINAL ACHOU: `quarantine` e o `initial_state` da policy e ficava FORA da
 # contagem. Entrada gratuita usando o estado default, sem precisar levantar o teto.
-mutante MC6 "capability nova em QUARANTINE tambem estoura o teto" 1 \
+mutante MCAP6 "capability nova em QUARANTINE tambem estoura o teto" 1 \
   "$_PY"'c["nova"]={"kind":"skill","source":"execution/skills/graphify","state":"quarantine","installed":False,"activation":"contextual","evidence":{"dossier":None,"status":"absent"}}'"$_SAVE"
 
-mutante MC7 "capability em quarantine INSTALADA reprova" 1 \
+mutante MCAP7 "capability em quarantine INSTALADA reprova" 1 \
   "$_PY"'c["graphify"]["state"]="quarantine"'"$_SAVE"
 
 echo "== mutantes do par registry x manifesto =="
-mutante MC8 "manifesto sem uma skill do registry reprova" 1 \
+mutante MCAP8 "manifesto sem uma skill do registry reprova" 1 \
   'import pathlib
 p=pathlib.Path("install/manifest.lock")
 p.write_text("\n".join(l for l in p.read_text().splitlines() if "skills/forge" not in l)+"\n")'
 
 # Este sobreviveu na primeira versao do portao, que comparava so o nome de destino.
-mutante MC9 "manifesto com a ORIGEM do layout antigo reprova" 1 \
+mutante MCAP9 "manifesto com a ORIGEM do layout antigo reprova" 1 \
   'import pathlib
 p=pathlib.Path("install/manifest.lock")
 p.write_text(p.read_text().replace("\texecution/skills/forge\t","\texecution/skills/promoted/forge\t"))'
