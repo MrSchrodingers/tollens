@@ -44,6 +44,22 @@ fi
 cd "$(dirname "$0")/.." || exit 1
 OUT="${1:-install/manifest.lock}"
 
+# ESCRITA SO NO SUCESSO. O bloco gerador termina em `} > "$OUT"`, e o shell abre e TRUNCA o
+# destino ao ENTRAR no grupo - antes de qualquer linha ser produzida. A primeira versao do portao
+# de `config` fazia `exit 1` DENTRO desse grupo com a mensagem "o manifesto nao sera gravado
+# incompleto", e a mensagem era falsa: medido em copia isolada, o arquivo ia de 52 para 51 linhas
+# com `grep -c '^config'` = 0. Um manifesto TRUNCADO no disco e pior que nenhum, porque
+# `install/apply.sh:35` so testa `[ -f "$MAN" ]` e nao confere exit code: o componente ausente
+# vira "removido do manifesto" e a convergencia apaga o arquivo vivo correspondente. Achado do
+# portao final; a acao destrutiva ficava desacoplada no tempo do erro que a causou.
+#
+# Agora o grupo escreve num temporario e o destino so e tocado se ele terminar inteiro. Nao uso
+# `mv` porque `$OUT` pode ser `/dev/null` (ensaio), e renomear por cima de um device e outro
+# problema. LIMITE: `cat >` nao e atomico contra leitor concorrente; a serializacao vem do lock
+# das suites, adquirido acima.
+_MTMP="$(mktemp "${TMPDIR:-/tmp}/tollens-manifest.XXXXXX")" || exit 1
+trap 'rm -f "$_MTMP"' EXIT
+
 emit(){ # $1=tipo $2=origem $3=destino
   [ -e "$1" ] 2>/dev/null
   local d
@@ -81,7 +97,33 @@ emit(){ # $1=tipo $2=origem $3=destino
   for f in execution/document-tools/*; do
     [ -f "$f" ] || continue; emit doctool "$f" "tollens/document-tools/$(basename "$f")"
   done
-} > "$OUT"
+  # ONDA 12. O CLAUDE.md e o texto de MAIOR autoridade do harness - suas regras sobrepoem o
+  # comportamento default - e era o unico fora do portao de conformidade. A consequencia foi
+  # medida, nao temida: oito referencias vivas citavam secoes dele por numero, e a numeracao ja
+  # tinha mudado sob todas (tres apontavam para secao inexistente, cinco resolviam para secao que
+  # diz outra coisa). Nenhum portao podia ver, porque o referente nao estava no repositorio.
+  #
+  # A copia foi SEMEADA byte-exata do arquivo vivo, para que o primeiro `apply.sh` seja no-op
+  # comprovado e nao um clobber silencioso da config do operador.
+  #
+  # CONSEQUENCIA OPERACIONAL, e ela muda o fluxo de quem edita: a partir daqui, editar
+  # `~/.claude/CLAUDE.md` no lugar aparece como DIVERGE em `install/verify.sh`, e o proximo
+  # `apply.sh` SOBRESCREVE essa edicao. O caminho passa a ser: editar aqui, depois aplicar.
+  # FALHA ALTO SE SUMIR, e a razao e uma cadeia medida na revisao: com `[ -f ] || continue` (o
+  # idioma dos globs acima, que ali esta certo porque glob vazio e legitimo), o arquivo sumir
+  # tiraria o componente do manifesto EM SILENCIO. Ai `install/apply.sh` compara o manifesto novo
+  # com `managed-files.lock`, ve `CLAUDE.md` como componente removido, e a convergencia executa
+  # `rm -rf "$DEST/CLAUDE.md"` - apagando a config viva do operador por causa de um arquivo
+  # faltando no repo. Aqui o alvo e UM caminho conhecido, nao um glob: ausencia e defeito.
+  if [ -f execution/config/CLAUDE.md ]; then
+    emit config execution/config/CLAUDE.md "CLAUDE.md"
+  else
+    echo "ERRO: execution/config/CLAUDE.md ausente - o destino nao sera tocado." >&2
+    exit 1
+  fi
+} > "$_MTMP"
+
+cat "$_MTMP" > "$OUT" || exit 1
 
 n=$(grep -vc '^#' "$OUT")
 echo "manifesto: $OUT  ($n componentes)"

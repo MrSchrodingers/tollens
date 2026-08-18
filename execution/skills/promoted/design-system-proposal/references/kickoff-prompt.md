@@ -25,8 +25,8 @@ O QUE QUERO
    com o par "Hoje (producao)" vs "Sob o Design System" em cada tela real.
 6. MAPEIE cada cor ao seu PAPEL no UI (fundo, superficie, borda, texto, botao solido/hover, foco, link,
    status) com o piso de contraste exigido em cada lugar.
-7. REVISE com a banca de arte (/direcao-de-arte) e VALIDE como tese (/defesa-de-tese): varredura de erro
-   obvio C1-C10 sobre o HTML/gerador brutos. So declare pronto com o gerador em exit 0 e a varredura passando.
+7. REVISE com o agente `revisor-frontend` e VALIDE com o agente `refutador`: varredura de erro
+   obvio sobre o HTML/gerador brutos. So declare pronto com o gerador em exit 0 e a varredura passando.
 8. PUBLIQUE o artifact e declare em uma linha o que e REAL vs PROPOSTA.
 
 NAO-NEGOCIAVEIS

@@ -1,5 +1,5 @@
 name="revisor-codigo"
-description="Projeção do agente canônico revisor-codigo."
+description="Use IMEDIATAMENTE apos escrever ou alterar codigo. Especialista senior em revisao de qualidade, seguranca e manutenibilidade de um diff. Read-only, nunca altera codigo."
 model="gpt-5.6"
 model_reasoning_effort="high"
 sandbox_mode="read-only"

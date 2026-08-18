@@ -57,6 +57,12 @@ SETTINGS="$ETC/managed-settings.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1   # prefixo vazio = raiz de verdade
 
 MODO="deploy"
+# ONDA 12. Este `case` inspeciona apenas "$1", e o worker e invocavel DIRETO (documentado, e via
+# TOLLENS_MANAGED_WORKER). Medido: `apply-managed.sh --revert --dry-run` chegava aqui com argc=2 e
+# executava um revert REAL e privilegiado, descartando o `--dry-run` em silencio - justamente o
+# habito de seguranca do operador sendo engolido no unico caminho que roda como root. O supervisor
+# passou a contar antes do `exec`; aqui a checagem se repete porque o worker tem entrada propria.
+[ "$#" -le 1 ] || { echo "ERRO: argumentos em excesso ($#): $*" >&2; exit 64; }
 case "${1:-}" in
   --dry-run) MODO="dry" ;;
   --enforce) MODO="enforce" ;;

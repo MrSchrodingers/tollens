@@ -1,5 +1,5 @@
 name="tdd"
-description="Projeção do agente canônico tdd."
+description="Use PROATIVAMENTE para escrever e conduzir o ciclo red-green de testes que verificam comportamento observavel. Especialista em testar comportamento real, nunca tautologia. Pode editar testes e codigo minimo para passar."
 model="gpt-5.6"
 model_reasoning_effort="high"
 sandbox_mode="workspace-write"

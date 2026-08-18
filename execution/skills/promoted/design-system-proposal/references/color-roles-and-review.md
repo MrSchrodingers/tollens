@@ -23,12 +23,12 @@ Regras de distribuicao (convencao, nao spec — declarar como tal):
 - Acento usado com PARCIMONIA (uma acao primaria por vista); excesso de acento mata a hierarquia.
 - Status nunca comunicado SO por cor (1.4.1): reforcar com icone/rotulo/luminosidade.
 
-## Rubrica da banca -> a fase 7 DELEGA a /direcao-de-arte (P10a: nao repetir a rubrica dela aqui)
+## Rubrica da banca -> a fase 7 DELEGA ao agente `revisor-frontend` (P10a: nao repetir a rubrica dele aqui)
 A banca de arte e DONA da hierarquia de autoridade da fonte (WCAG=spec > Nielsen/Gestalt/tokens=convencao
 > Refactoring UI/8pt=opiniao; F/Z=hipotese) e das lentes UX/composicao/tipografia/acessibilidade/harmonia-
 com-irmas. Aciona-la, nao reimplementa-la.
 
-O DELTA que ESTA skill acrescenta a banca (nao coberto por /direcao-de-arte): a checagem de
+O DELTA que ESTA skill acrescenta a banca (nao coberto pelo `revisor-frontend`): a checagem de
 DISTRIBUICAO DE COR contra a tabela cor->papel acima. Passar a tabela PREENCHIDA como insumo, e exigir:
 - acento parcimonioso: no maximo uma acao primaria (a9) por vista; excesso mata a hierarquia;
 - cada cor no papel declarado (fundo/superficie/borda/texto/solido/hover/foco/link/status), sem cor orfa;

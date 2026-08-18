@@ -14,7 +14,7 @@ Este e o outro lado do `/forge`: criar exige benchmark, **manter exige uso**.
 ## Passo 1 - MEDIR, os dois canais
 
 ```
-bash scripts/medir-skills.sh
+bash evidence/telemetry/medir-skills.sh
 ```
 
 **A armadilha que este passo existe para evitar, e ela ja custou uma decisao errada:** skill
