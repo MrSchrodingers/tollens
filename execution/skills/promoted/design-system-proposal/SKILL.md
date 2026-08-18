@@ -23,7 +23,7 @@ tem um PAPEL declarado no UI (ver fase 6). Falha em qualquer item BLOQUEIA a pub
 SE o usuario pede propor/criar um design system, tokens/tema, paleta multi-marca, ou "um DS como o
 do amaral" -> FAZER as Fases.
 SE a duvida e so revisar UI ja existente (nao propor DS novo) -> delegar ao `revisor-frontend` direto,
-NAO esta skill (evita custo sem retorno, Diretriz 13).
+NAO esta skill (evita custo sem retorno).
 SE o pedido e um artefato PONTUAL (uma cor, um token OKLCH avulso) sem proposta de DS -> resolver
 direto, NAO rodar o pipeline de 9 fases.
 SE o usuario quer um prompt colavel para disparar isto em outro repo -> entregar references/kickoff-prompt.md.
@@ -46,7 +46,7 @@ no repo) ou PROPOSTA (derivado por voce). VERIFICAR: toda cor/fonte tem origem c
 Perguntar 2-4 opcoes MUTUAMENTE EXCLUSIVAS, cada uma com o trade-off, para: refinar paleta, escolher
 o fundo escuro (renderizar candidatos e deixar escolher por OLHO), e a tipografia por marca. Antes de
 perguntar, renderizar os candidatos num comparador e capturar screenshot (decisao por evidencia
-visual). NAO perguntar o obvio (Diretriz 5). SE o select do AskUserQuestion falhar -> apresentar os
+visual). NAO perguntar o obvio. SE o select do AskUserQuestion falhar -> apresentar os
 candidatos por imagem e aceitar a escolha em prosa.
 VERIFICAR: cada decisao de gosto (paleta/fundo/tipo) registrada com o candidato escolhido + o
 screenshot que a fundamentou; nenhuma decisao sem evidencia visual.
@@ -72,7 +72,7 @@ Acionar a skill importada: parecer por severidade, gate WCAG binario, harmonia c
 de telas-irmas. Aplicar achados material antes de seguir. VERIFICAR: parecer com veredito.
 
 ### 8. VALIDAR (banca academica) -> agente `refutador`
-Tratar a proposta como TESE: 3 portoes logicos + varredura de erro obvio (C1-C10 da Diretriz 13.1)
+Tratar a proposta como TESE: 3 portoes logicos + varredura de erro obvio
 sobre o HTML/gerador BRUTOS, MAIS o checklist de dominio L1-L10 (references/lessons.md). VERIFICAR:
 veredito calibrado; "aprovar" so com as DUAS varreduras passando e evidencia colada.
 
@@ -95,6 +95,6 @@ declarado; parecer do `revisor-frontend` e veredito do `refutador` anexados; cad
 
 ## Porque (P7)
 - Duas bancas importadas: o review de arte e o gate de tese ja existem e sao caros de refazer (P10a).
-- Fidelidade a tela real: o valor do DS e ser reconhecivelmente o produto; generico e ruido (Diretriz 3.1).
+- Fidelidade a tela real: o valor do DS e ser reconhecivelmente o produto; generico e ruido.
 - Portao WCAG no gerador (nao no review): erro obvio barrado por poka-yoke, nao por memoria (ADR 0005).
 - REAL vs PROPOSTA: honestidade epistemica; nunca vender derivado como se fosse do repo (anti-bajulacao).

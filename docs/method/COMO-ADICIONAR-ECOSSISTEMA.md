@@ -31,6 +31,7 @@ Casos que enganam, todos ja pagos:
 5. `extensoes`: usadas para decidir se o diff tocou este ecossistema.
 6. `rejeitados`: comandos que voce considerou e descartou, com o motivo. Evita que alguem os
    adicione depois por parecerem analisadores.
-7. `bash tests/run.sh` - a suite valida o contrato do adaptador.
+7. `python3 evidence/validate-adapters.py` - conformidade de schema; e
+   `bash tests/mutation/adaptadores.sh` - validacao por mutacao do contrato. Os dois rodam na CI.
 
 Nenhuma linha de shell e necessaria.

@@ -1,7 +1,7 @@
 # Licoes aprendidas (erros ja pagos -> regras). Cada uma: sintoma -> regra -> verificacao.
 
-Este e o checklist de dominio L1-L10 (os 10 itens abaixo, na ordem), COMPLEMENTAR ao C1-C10 canonico
-da Diretriz 13.1 / /defesa-de-tese — nao o substitui. Rodar as DUAS varreduras antes de publicar (fase 8).
+Este e o checklist de dominio L1-L10 (os 10 itens abaixo, na ordem), COMPLEMENTAR a varredura
+generica do agente `refutador` — nao a substitui. Rodar as DUAS varreduras antes de publicar (fase 8).
 
 1. **Status isoluminante quebra WCAG 1.4.1.** Sintoma: ok/warn/bad com mesmo L/C, so matiz diferente,
    1.04:1 entre si -> daltonico nao separa. Regra: cada status com SUA luminosidade (STATUS_L por tema).

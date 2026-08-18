@@ -25,6 +25,7 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/conformidade-managed.sh tests/unit/arnes-de-mutacao.sh \
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
            tests/unit/capabilities.sh tests/unit/cobertura.sh \
+           tests/unit/contrato-de-instalador.sh \
            tests/unit/run.sh; do
     bash "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi

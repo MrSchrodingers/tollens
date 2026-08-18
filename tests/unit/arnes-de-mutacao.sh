@@ -173,9 +173,11 @@ echo "== AM4. a arena isola a arvore candidata do experimento =="
 # janela que so abre aos ~16.7s (medido em AM3), e o controle de direcao acusou.
 ALVO4="evidence/hooks/verify-gate.sh"
 SHA4="$(sha256sum "$ALVO4" | cut -d' ' -f1)"
-setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
+TAG4="$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+TOLLENS_ARENA_TAG="$TAG4" setsid bash tests/mutation/run.sh >/dev/null 2>&1 9>&- &
 C4=$!
 ARENA_MUTOU=nao
+_AD4="${TMPDIR:-/tmp}/tollens-$(id -u)"   # icado do laco: 1800 voltas nao precisam forkar `id`
 for _ in $(seq 1 1800); do   # ate ~90s, mesmo orcamento medido de AM3
   sleep 0.05
   # A ARENA VEM DA ATRIBUICAO DO FILHO, nao de `ls -dt | head -1`. A versao anterior adivinhava
@@ -184,9 +186,19 @@ for _ in $(seq 1 1800); do   # ate ~90s, mesmo orcamento medido de AM3
   # filho morto antes de mutar) e travar em arena alheia ILEGIVEL de outro usuario (inanicao).
   # Agravado porque o `tar` restaurava o mtime da fonte em todas as arenas, entao elas empatavam
   # e o `ls -dt` degenerava para ordem alfabetica.
-  # `tests/lib/arena.sh` publica `$TMPDIR/tollens-arena-of.<pid>`; aqui lemos pelo pid do NOSSO
-  # filho, que e a unica atribuicao que nao depende de relogio nem de ordem.
-  A4="$(cat "${TMPDIR:-/tmp}/tollens-arena-of.$C4" 2>/dev/null)"
+  # `tests/lib/arena.sh` publica `$TMPDIR/tollens-<uid>/arena-of.<pid>`; aqui lemos pelo pid do
+  # NOSSO filho, que e a unica atribuicao que nao depende de relogio nem de ordem. O diretorio e
+  # 0700 do usuario corrente (M1 da onda 12): se ele nao existir ou o escritor tiver recusado
+  # publicar, `A4` fica vazio e o caso cai em NOT_VERIFIED abaixo - nunca em passe vazio.
+  # FRESCOR POR NONCE, e a primeira tentativa disto era TAUTOLOGICA - registro porque o erro e
+  # instrutivo. Ela comparava o pid do nome `arena-of.<pid>` com o `.arena-pid` da arena apontada;
+  # a arena escreve o MESMO `$$` nos dois, entao sob reuso de pid - exatamente o caso que a guarda
+  # dizia fechar - eles coincidem por construcao. O portao final reproduziu o falso positivo
+  # atravessando a guarda intacto. Guarda que nao pode falhar no caso bom nem detectar o caso ruim
+  # nao e guarda.
+  # `$TAG4` nao deriva do pid: arena de execucao anterior tem tag diferente ou nenhuma.
+  A4="$(cat "$_AD4/arena-of.$C4" 2>/dev/null)"
+  [ -n "$A4" ] && [ "$(cat "$A4/.arena-tag" 2>/dev/null)" = "$TAG4" ] || A4=""
   [ -n "$A4" ] && [ -f "$A4/$ALVO4" ] \
     && [ "$(sha256sum "$A4/$ALVO4" 2>/dev/null | cut -d' ' -f1)" != "$SHA4" ] \
     && { ARENA_MUTOU=sim; break; }

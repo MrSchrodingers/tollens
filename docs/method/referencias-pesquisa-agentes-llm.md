@@ -37,14 +37,23 @@
 
 ---
 
-### AOrchestra: Adaptive Orchestration for Multi-Agent LLM Systems
-- **Identificador:** arXiv:2602.03786 (fevereiro 2025)
+### AOrchestra: Automating Sub-Agent Creation for Agentic Orchestration
+- **Identificador:** arXiv:2602.03786 (submetido 3 fev 2026, revisado 7 fev 2026)
 - **Status:** Preprint
 - **Resultados principais:**
   - Especializacao dinamica via quadrupla (Instruction, Context, Tools, Model)
-  - Ablacao: contexto curado atingiu 96% vs 84-86% sem curadoria de contexto
+  - Ablacao de contexto (secao 4.3.1, tabela 2): curado 96.00, full-context 84.00, no-context 86.00
   - Orquestrador seleciona e comprime apenas historico relevante antes de delegar ao subagente
+  - Abstract: "16.28% relative improvement against the strongest baseline when paired with
+    Gemini-3-Flash". O numero 22.13% (pass@1 sobre os tres benchmarks) esta na secao 4.2, NAO no
+    cabecalho - a primeira redacao desta errata trocou os dois de lugar
 - **Confianca:** Media
+- **ERRATA 2026-08-17.** Ate esta data a entrada trazia o titulo "Adaptive Orchestration for
+  Multi-Agent LLM Systems" e a data "fevereiro 2025". Ambos falsos: o titulo foi inventado e a
+  data contradizia o proprio identificador, ja que `2602` codifica fevereiro de 2026. A ablacao
+  96 vs 84-86, conferida agora na fonte, estava CORRETA - o defeito era so a moldura. Uma
+  citacao com numero certo e titulo errado e o pior caso: o numero sobrevive a conferencia por
+  amostragem e a moldura falsa passa junto.
 
 ---
 

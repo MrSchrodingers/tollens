@@ -14,7 +14,23 @@ cd "$(dirname "$0")/.." || exit 1
 REPO="$PWD"
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
 MAN="install/manifest.lock"
-DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
+# ONDA 12. ARGUMENTO DESCONHECIDO APLICAVA. A linha anterior era
+# `DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1`: qualquer coisa que nao fosse exatamente
+# `--dry-run` caia em DRY=0, isto e, em INSTALAR. Medido, nao inferido:
+#
+#   $ CLAUDE_HOME="$(mktemp -d)" bash install/apply.sh --help
+#   exit=0 ; arquivos escritos no destino: 66
+#
+# O modo "ajuda" instalava o sistema inteiro. Um typo (`--dryrun`, `--dry_run`) fazia o mesmo, em
+# silencio e com exit 0 - indistinguivel de sucesso do que o operador pediu.
+DRY=0
+case "${1:-}" in
+  "")         : ;;
+  --dry-run)  DRY=1 ;;
+  --help|-h)  printf 'uso: %s [--dry-run]\n  --dry-run  mostra o plano, NAO escreve nada\n' "$0"; exit 0 ;;
+  *)          printf 'ERRO: argumento desconhecido: %s\nuso: %s [--dry-run]\n' "$1" "$0" >&2; exit 2 ;;
+esac
+[ "$#" -le 1 ] || { printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run]\n' "$#" "$0" >&2; exit 2; }
 
 [ -f "$MAN" ] || bash install/manifest.sh >/dev/null
 
@@ -50,7 +66,14 @@ BK="$DEST/backups/apply-$TS"
 if [ "$DRY" -eq 0 ]; then
   mkdir -p "$BK"
   for d in hooks agents skills; do [ -d "$DEST/$d" ] && cp -a "$DEST/$d" "$BK/" 2>/dev/null; done
-  [ -f "$DEST/settings.json" ] && cp -a "$DEST/settings.json" "$BK/" 2>/dev/null
+  # ONDA 12. `CLAUDE.md` entrou aqui junto com o tipo `config`, e o conjunto de backup NAO o
+  # cobria. Medido: destino com CLAUDE.md divergente -> apply sobrescreve -> zero copia
+  # recuperavel. A semeadura byte-exata torna o PRIMEIRO apply um no-op; ela nao protege o
+  # segundo, e o segundo e exatamente o caso que `install/manifest.sh` descreve por escrito
+  # ("o proximo apply.sh SOBRESCREVE essa edicao"). Reconhecer a consequencia em comentario e
+  # nao estender o mecanismo que existe para ela e o defeito que este repositorio persegue.
+  # Sao 288 linhas de politica escrita a mao, e a perda seria irreversivel.
+  for f in settings.json CLAUDE.md; do [ -f "$DEST/$f" ] && cp -a "$DEST/$f" "$BK/" 2>/dev/null; done
   echo "backup: $BK"
 fi
 
@@ -85,8 +108,19 @@ while IFS=$'\t' read -r tipo origem destino digest; do
   case "$tipo" in ''|'#'*) continue;; esac
   alvo="$DEST/$destino"
   mkdir -p "$(dirname "$alvo")"
-  if [ -d "$origem" ]; then rm -rf "$alvo"; cp -a "$origem" "$alvo"
-  else cp -a "$origem" "$alvo"; case "$destino" in hooks/*|*/document-tools/*) chmod +x "$alvo";; esac; fi
+  # ONDA 12, defeito PRE-EXISTENTE achado ao provar outra coisa: `cp -a` nao tinha retorno
+  # conferido, e `N` somava de qualquer jeito. Com a origem ausente o instalador imprimia
+  # "componentes instalados: 49" e o componente NAO estava no destino - medido num clone sem
+  # `execution/config/CLAUDE.md`. Contar como instalado o que falhou e a forma exata que este
+  # repositorio persegue: o numero verde declarando um estado que nao existe.
+  if ! [ -e "$origem" ]; then
+    echo "ERRO: origem do manifesto ausente: [$origem] -> [$destino]" >&2
+    echo "      Instalacao ABORTADA. Regenere com 'bash install/manifest.sh'." >&2
+    exit 1
+  fi
+  if [ -d "$origem" ]; then rm -rf "$alvo"; cp -a "$origem" "$alvo" || { echo "ERRO: falha ao copiar [$origem]" >&2; exit 1; }
+  else cp -a "$origem" "$alvo" || { echo "ERRO: falha ao copiar [$origem]" >&2; exit 1; }
+    case "$destino" in hooks/*|*/document-tools/*) chmod +x "$alvo";; esac; fi
   N=$((N+1))
 done < "$MAN"
 echo "componentes instalados: $N"

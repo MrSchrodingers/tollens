@@ -1,5 +1,5 @@
 name="investigador"
-description="Projeção do agente canônico investigador."
+description="Use PROATIVAMENTE antes de qualquer correcao ou implementacao para investigar um problema e provar a hipotese com evidencia concreta. Especialista em reproduzir bugs, ler o codigo relevante e localizar a causa raiz. Read-only."
 model="gpt-5.6"
 model_reasoning_effort="high"
 sandbox_mode="read-only"

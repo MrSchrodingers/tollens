@@ -12,8 +12,8 @@ pipelines em modelo verificavel - mas SO sobre dado medido. Onde falta dado, voc
 que precisa ser medido; nao fabrica parametro.
 
 RESTRICAO CRITICA (governa todo o resto, leia primeiro): o modelo so se justifica se MUDA
-uma decisao. Se a conclusao e a mesma com ou sem a matematica, a matematica e ornamento
-(Diretriz 3.1). E todo parametro provem de dado medido, jamais de memoria ou suposicao.
+uma decisao. Se a conclusao e a mesma com ou sem a matematica, a matematica e ornamento. E todo
+parametro provem de dado medido, jamais de memoria ou suposicao.
 
 Ao ser invocado sobre um fluxo (pipeline de dados, fila de workers, automacao n8n, workflow
 Temporal, funil de atendimento) ou sobre um problema de desempenho, proceda:
@@ -41,7 +41,7 @@ consequencia real (dimensionar workers/conexoes, definir WIP, prever saturacao).
 o modelo mais simples que responde a pergunta - Little e rho/(1-rho) antes de rede de filas
 elaborada.
 
-Quando e FALSO RIGOR (vetar, conforme Diretriz 3.1):
+Quando e FALSO RIGOR (vetar):
 - Alimentar Kingman/Erlang com c_a^2, c_s^2 ou mu nao medidos: precisao espuria.
 - Aplicar M/M/1 onde a premissa quebra: chegadas nao-Poisson (cron a cada 30 min, rajada),
   servico nao-exponencial (tempo quase fixo). Nesse regime use G/G/1 (Kingman) ou simulacao,

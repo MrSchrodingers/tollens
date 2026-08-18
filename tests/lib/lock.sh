@@ -63,10 +63,18 @@ if [ "${TOLLENS_LOCK:-}" != "held" ]; then
       # ninguem mais consegue criar entradas la dentro. Se o diretorio ja existir com outro
       # dono ou modo frouxo, o fallback e RECUSADO em vez de usado: um lock que outro usuario
       # controla nao e lock.
-      _lk_dir="${TMPDIR:-/tmp}/tollens-$(id -u)"
-      mkdir -p -m 700 "$_lk_dir" 2>/dev/null || true
-      if [ ! -d "$_lk_dir" ] || [ "$(stat -c '%u:%a' "$_lk_dir" 2>/dev/null)" != "$(id -u):700" ]; then
-        echo "AVISO: '$_lk_dir' nao e um diretorio 0700 do usuario corrente - fallback de lock" >&2
+      # ONDA 12: o predicado passou para `tests/lib/tmpdir.sh`, fonte unica. `tests/lib/arena.sh`
+      # tinha uma COPIA deste bloco, e duas copias de uma checagem de seguranca divergem em
+      # silencio - apontado pelas duas revisoes independentes da onda. O comportamento aqui nao
+      # muda: recusa continua sendo recusa, e o fallback segue sem protecao com aviso.
+      _lk_dir=""
+      if [ -r "$(dirname "${BASH_SOURCE[0]}")/tmpdir.sh" ]; then
+        . "$(dirname "${BASH_SOURCE[0]}")/tmpdir.sh"
+        _lk_dir="$(tollens_tmpdir_privado)" || _lk_dir=""
+      fi
+      if [ -z "$_lk_dir" ]; then
+        echo "AVISO: '${TMPDIR:-/tmp}/tollens-$(id -u)' nao e um diretorio 0700 do usuario" >&2
+        echo "       corrente, ou tests/lib/tmpdir.sh esta ausente - fallback de lock" >&2
         echo "       RECUSADO. As suites rodam SEM protecao contra corrida (lacuna declarada)." >&2
         _lk_file=""
       else
@@ -83,10 +91,14 @@ if [ "${TOLLENS_LOCK:-}" != "held" ]; then
       {
         echo "LOCK: ja ha uma suite deste repositorio em execucao."
         echo "  arquivo de lock: $_lk_file"
-        echo "As suites NAO sao reentrantes entre si: os runners de mutacao editam arquivos do"
-        echo "repositorio NO LUGAR, e outra suite lendo nesse instante reporta FAIL plausivel e"
-        echo "falso - ou, pior, verde falso. Rode uma por vez; se algo ficou em background,"
-        echo "espere terminar."
+        echo "As suites NAO sao reentrantes entre si. Ate a onda 10 a razao era que os runners de"
+        echo "mutacao editavam arquivos do repositorio NO LUGAR; desde a onda 11 eles rodam em"
+        echo "arena descartavel (tests/lib/arena.sh) e a arvore nao e mais tocada por eles. O lock"
+        echo "continua necessario por TRES razoes que a arena nao cobre:"
+        echo "  - install/manifest.sh LE a arvore para gravar digests de estado desejado;"
+        echo "  - scripts/status.sh ESCREVE docs/status.generated.md nela;"
+        echo "  - TOLLENS_ARENA=off devolve a mutacao para o lugar, e o modo existe."
+        echo "Rode uma por vez; se algo ficou em background, espere terminar."
         echo "exit 3 = corrida detectada. NAO e defeito de codigo e NAO e resultado de teste."
       } >&2
       exit 3
