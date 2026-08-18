@@ -61,8 +61,12 @@ Apresente ao usuario, para cada candidata:
   proposta: ARQUIVAR | MANTER | CORRIGIR DESCRICAO
 ```
 
-**Arquivar e sempre REVERSIVEL:** mover para `backups/skills-arquivadas-<data>/`, nunca apagar.
-Uma skill arquivada por engano precisa voltar em um comando - e ja precisou.
+**Arquivar e sempre REVERSIVEL, e o git ja e o mecanismo:** APAGAR o diretorio da capability e
+registrar o tombstone em `orchestration/registry.json:capabilities` (`state: deprecated`,
+`retired_at`, `superseded_by`, `reason`). `git revert` devolve o conteudo em um comando.
+NAO criar `backups/skills-arquivadas-<data>/`: manter capability aposentada na arvore ativa e
+cemiterio, e este repositorio ja pagou por isso - `defesa-de-tese` sobreviveu meses depois de
+declarada absorvida, com SKILL.md executavel intacto.
 
 ## O mesmo vale para AGENTE
 

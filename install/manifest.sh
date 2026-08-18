@@ -61,7 +61,6 @@ _MTMP="$(mktemp "${TMPDIR:-/tmp}/tollens-manifest.XXXXXX")" || exit 1
 trap 'rm -f "$_MTMP"' EXIT
 
 emit(){ # $1=tipo $2=origem $3=destino
-  [ -e "$1" ] 2>/dev/null
   local d
   if [ -d "$2" ]; then
     # diretorio (skill): digest do conteudo ordenado, para detectar qualquer alteracao interna
@@ -85,9 +84,60 @@ emit(){ # $1=tipo $2=origem $3=destino
   for f in execution/agents/*.md; do
     [ -f "$f" ] || continue; emit agent "$f" "agents/$(basename "$f")"
   done
-  for d in execution/skills/promoted/*/; do
-    [ -d "$d" ] || continue; emit skill "${d%/}" "skills/$(basename "${d%/}")"
-  done
+  # ONDA 13. O ESTADO DE LIFECYCLE DEIXA DE SER O NOME DO DIRETORIO. Antes este laco
+  # varria `execution/skills/promoted/*/`, e com isso tres conceitos distintos ficavam
+  # colapsados num unico caminho:
+  #
+  #     lifecycle state  ~  filesystem location  ~  installation eligibility
+  #
+  # A consequencia foi MEDIDA antes de ser corrigida: reclassificar as oito skills de
+  # `promoted` para `candidate` - uma correcao puramente epistemologica, porque nenhuma
+  # jamais cumpriu os sete `promotion_requires` da policy - levava o manifesto de 49 para
+  # 41 componentes e instalava ZERO skills. Rebaixar era desinstalar, e o operador perdia
+  # a ferramenta em vez de ganhar um rotulo de "nao comprovada".
+  #
+  # Agora a fonte de verdade e `orchestration/registry.json:capabilities`, onde `state` e
+  # `installed` sao campos independentes. Uma capability pode ser `candidate` e continuar
+  # instalada: isso significa "disponivel experimentalmente, nao certificada como
+  # beneficial". O diretorio volta a ser apenas armazenamento.
+  # O PRODUTOR E MATERIALIZADO ANTES DO LACO, e falha em erro E em vazio. A primeira versao
+  # desta onda punha `$(python3 ...)` dentro de `<<EOF`: heredoc e EXPANSAO, nao comando, entao
+  # o status de saida da substituicao e DESCARTADO - `set -uo pipefail` nao alcanca, e nao ha
+  # `-e`. Tres modos medidos pela revisao, TODOS com exit 0 e manifesto gravado:
+  #
+  #   JSON invalido ............... traceback em stderr, 0 skills, 41 componentes, exit 0
+  #   `source` ausente no meio .... traceback, 2 skills (PARCIAL), 43 componentes, exit 0
+  #   registry sem `capabilities` . ZERO bytes em stderr, 0 skills, 41 componentes, exit 0
+  #
+  # O terceiro e o pior e a cadeia foi executada ponta a ponta: `apply.sh` le o manifesto sem
+  # skills, imprime "removido (saiu do manifesto)" oito vezes, apaga `~/.claude/skills/` inteiro,
+  # e `verify.sh` responde "41/41 ok | 0 divergentes | ESTADO: conforme". Veredito VERDE sobre um
+  # sistema que acabou de perder oito capabilities.
+  #
+  # E a mesma classe do `exit 1` dentro de `{ } > "$OUT"` da onda 12, um degrau adiante: o
+  # `_MTMP` protege contra o produtor que ABORTA e nao protegia contra o produtor que devolve
+  # VAZIO. `r["capabilities"]` sem default para que a ausencia da chave seja erro, nao silencio.
+  _CAPS="$(python3 - <<'PYEOF'
+import json
+r = json.load(open("orchestration/registry.json"))
+for nome, c in sorted(r["capabilities"].items()):
+    if c.get("installed") and c.get("kind") == "skill":
+        print(f"{nome}\t{c['source']}")
+PYEOF
+)" || { echo "ERRO: leitura de orchestration/registry.json:capabilities falhou." >&2; exit 1; }
+  if [ -z "$_CAPS" ]; then
+    echo "ERRO: o registry nao declarou NENHUMA skill instalada." >&2
+    echo "      Isso quase sempre e registry corrompido, e nao intencao - o destino nao sera tocado." >&2
+    exit 1
+  fi
+  while IFS=$'\t' read -r _cap _csrc; do
+    [ -n "$_cap" ] || continue
+    if [ ! -d "$_csrc" ]; then
+      echo "ERRO: capability '$_cap' declara installed mas a fonte '$_csrc' nao existe." >&2
+      exit 1
+    fi
+    emit skill "$_csrc" "skills/$_cap"
+  done <<< "$_CAPS"
   for f in execution/adapters/code/*.json; do
     [ -f "$f" ] || continue; emit adapter "$f" "tollens/adapters/code/$(basename "$f")"
   done

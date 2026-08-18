@@ -9,7 +9,15 @@ OUT="docs/status.generated.md"
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1 || OUT="${1:-$OUT}"
 
-conta(){ bash "$1" 2>&1 | grep -oE 'PASS=[0-9]+' | tail -1 | cut -d= -f2; }
+# INTERPRETADOR PELO SUFIXO. Achado da revisao da onda 13: a lista abaixo era invocada com
+# `bash "$t"` e ganhou um `.py`. Bash sobre Python devolve exit 2 com stdout vazio - a coluna de
+# assercoes virava `?` e a de exit virava `2` PERMANENTE no artefato publicado, que e
+# normalizacao de desvio. Pior: o bash executa as crases do docstring como substituicao de
+# comando; `python3 tests/unit/methodology.py` entre crases foi de fato invocado.
+# Verificar o artefato nao e verificar a integracao (regra 3 da §6.3): os sete mutantes do portao
+# novo morreram porque eu o chamei a mao. O mutante que faltava era o do WIRING.
+roda_suite(){ case "$1" in *.py) python3 "$1" ;; *) bash "$1" ;; esac; }
+conta(){ roda_suite "$1" 2>&1 | grep -oE 'PASS=[0-9]+|TOTAL=[0-9]+' | tail -1 | cut -d= -f2; }
 TMP="$(mktemp)" || exit 1
 trap 'rm -f "$TMP"' EXIT
 
@@ -26,8 +34,9 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
            tests/unit/capabilities.sh tests/unit/cobertura.sh \
            tests/unit/contrato-de-instalador.sh \
+           tests/unit/capability-conformance.py \
            tests/unit/run.sh; do
-    bash "$t" >/dev/null 2>&1; rc=$?
+    roda_suite "$t" >/dev/null 2>&1; rc=$?
     if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
     printf '| `%s` | %s | %s |\n' "$t" "${n:-?}" "$rc"
   done
@@ -129,6 +138,27 @@ trap 'rm -f "$TMP"' EXIT
 } > "$TMP"
 
 if [ "$CHECK" -eq 1 ]; then
+  # EXIT NAO-ZERO REPROVA, e nao apenas "o artefato mudou". Ate a onda 13 este portao era
+  # SO `cmp -s`: o documento registra o exit de cada suite como VALOR numa tabela, entao uma
+  # suite vermelha gravada como `| 30 | 1 |` batia com a regeneracao e o `--check` aprovava.
+  #
+  # Nao e hipotese. Aconteceu nesta onda: `tests/unit/propriedades.sh` foi de 31/0 para 30/1
+  # por uma colisao de nome de mutante que eu introduzi, a regeneracao assou o vermelho no
+  # artefato, `--check` fechou exit 0, e so o passo dedicado da CI pegou. O portao final desta
+  # mesma onda tinha nomeado a forma - "enforcement por comparacao de bytes de uma tabela e
+  # lavavel" - e a instrucao publicada logo abaixo ("rode scripts/status.sh e commite") era o
+  # mecanismo de lavagem: seguir a instrucao ao pe da letra grava o vermelho e devolve o verde.
+  #
+  # Rotulo nao-numerico ("variavel (sudo)", "passo dedicado no CI", "OK") e ambiente-dependente
+  # por decisao ja registrada acima e NAO entra nesta checagem.
+  _vermelhas="$(awk -F'|' '/^\| `/ {e=$(NF-1); gsub(/ /,"",e); if (e ~ /^[0-9]+$/ && e+0 != 0) {s=$2; gsub(/ |`/,"",s); print s" (exit="e")"}}' "$TMP")"
+  if [ -n "$_vermelhas" ]; then
+    echo 'SUITE VERMELHA - o artefato nao pode ser aceito com exit nao-zero:'
+    printf '  %s\n' $_vermelhas
+    echo 'Regenerar o documento NAO resolve: ele registra o exit, entao gravar o vermelho'
+    echo 'devolveria este portao ao verde. Conserte a suite.'
+    exit 1
+  fi
   if cmp -s "$TMP" docs/status.generated.md; then
     echo 'status atualizado'
     exit 0

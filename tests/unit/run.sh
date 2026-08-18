@@ -365,7 +365,7 @@ printf '%s' "$RO" | jq -e '.hookSpecificOutput.updatedToolOutput | type == "obje
 chk "output-budget emite OBJETO (string era rejeitada pelo runtime)" $? 0
 
 echo "== 9. ciclo de vida de skill: criar E depreciar =="
-SK="$PWD/execution/skills/promoted"
+SK="$PWD/execution/skills"
 for k in forge depreciar; do
   [ -f "$SK/$k/SKILL.md" ]; chk "skill $k presente" $? 0
   head -1 "$SK/$k/SKILL.md" | grep -q '^---$'; chk "  $k tem frontmatter" $? 0
