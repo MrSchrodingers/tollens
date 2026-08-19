@@ -18,13 +18,14 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/managed.sh` | 65 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 7 | 0 |
-| `tests/unit/schedule.sh` | 29 | 0 |
+| `tests/unit/schedule.sh` | 34 | 0 |
 | `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
 | `tests/unit/contrato-de-instalador.sh` | 34 | 0 |
-| `tests/unit/capability-conformance.py` | 16 | 0 |
+| `tests/unit/hooks-de-guarda.sh` | 46 | 0 |
+| `tests/unit/capability-conformance.py` | 30 | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -44,8 +45,9 @@ O README referencia este arquivo em vez de duplicar numeros.
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
-| capability-conformance (auto) | 11 | passo dedicado no CI |
+| capability-conformance (auto) | 27 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
+| hooks-de-guarda (auto) | 18 | passo dedicado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 
@@ -59,7 +61,7 @@ assercao).
 | `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
 | `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
-| `orchestration/schedule.py` | 88.4% | 88.4% | OK |
+| `orchestration/schedule.py` | 89.3% | 89.3% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
 
 ## Componentes

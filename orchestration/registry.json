@@ -8,7 +8,10 @@
     "read_parallelism_cap": 4,
     "correction_round_cap": 2,
     "terminal_state": "CANDIDATE",
-    "external_certifier": "verify-pr"
+    "external_certifier": "verify-pr",
+    "write_confinement": "none",
+    "single_writer_is_scheduling_only": true,
+    "_confinement_note": "ONDA 15. `single_writer` e `writes: false` descrevem PAPEL e ESCALONAMENTO, nunca confinamento tecnico: os dez agentes recebem Bash, entao um agente sem Write/Edit ainda pode sed -i, rm, git apply. Declarar `write_confinement: none` e o que impede a leitura de que ha isolamento onde ha apenas mandato. Sandbox real exigiria worktree read-only, mount namespace ou restricao de shell no nivel da ferramenta - nenhum existe aqui."
   },
   "agents": {
     "investigador": {
@@ -59,6 +62,140 @@
     "adr": "docs/adr/0025-skills-evidence-gated.md"
   },
   "capabilities": {
+    "analista-fluxos": {
+      "kind": "agent",
+      "source": "execution/agents/analista-fluxos.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "analista-otimalidade": {
+      "kind": "agent",
+      "source": "execution/agents/analista-otimalidade.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "artifact-discipline.sh": {
+      "kind": "hook_gate",
+      "source": "control/hooks/artifact-discipline.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PreToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_S": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          }
+        }
+      }
+    },
+    "auditor-seguranca": {
+      "kind": "agent",
+      "source": "execution/agents/auditor-seguranca.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "claude-md": {
+      "kind": "guidance_document",
+      "source": "execution/config/CLAUDE.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "always",
+      "measured_size_bytes": 18274,
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
+      },
+      "note": "nome em minusculo por exigencia de CC3; o caminho real esta em `source`."
+    },
+    "defesa-de-tese": {
+      "kind": "skill",
+      "source": null,
+      "state": "deprecated",
+      "installed": false,
+      "activation": "none",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {}
+      },
+      "retired_at": "2026-08-14",
+      "superseded_by": "refutador",
+      "reason": "validava na MESMA resposta que propos - auto-correcao intrinseca; o agente refutador faz a mesma pergunta com contexto separado (ADR 0011)"
+    },
     "depreciar": {
       "kind": "skill",
       "source": "execution/skills/depreciar",
@@ -67,7 +204,21 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
       }
     },
     "design-system-proposal": {
@@ -78,7 +229,62 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "ds4-notify.sh": {
+      "kind": "hook_instrument",
+      "source": "execution/hooks/ds4-notify.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "UserPromptSubmit|Stop|SubagentStop|Notification",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          }
+        }
+      }
+    },
+    "fable-guard.sh": {
+      "kind": "hook_gate",
+      "source": "control/hooks/fable-guard.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PreToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_S": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          }
+        }
       }
     },
     "forge": {
@@ -89,7 +295,21 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
       }
     },
     "graphify": {
@@ -100,7 +320,45 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "graphify-scout-mode.sh": {
+      "kind": "hook_guidance",
+      "source": "execution/hooks/graphify-scout-mode.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "UserPromptSubmit",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
       }
     },
     "grill-me": {
@@ -111,7 +369,167 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "implementador": {
+      "kind": "agent",
+      "source": "execution/agents/implementador.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "investigador": {
+      "kind": "agent",
+      "source": "execution/agents/investigador.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "lentes.sh": {
+      "kind": "hook_guidance",
+      "source": "execution/hooks/lentes.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "UserPromptSubmit",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "mapeador-dependencias": {
+      "kind": "agent",
+      "source": "execution/agents/mapeador-dependencias.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "output-budget.sh": {
+      "kind": "hook_guidance",
+      "source": "execution/hooks/output-budget.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PostToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "poka-yoke-lint.sh": {
+      "kind": "hook_gate",
+      "source": "execution/hooks/poka-yoke-lint.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PostToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_S": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          }
+        }
       }
     },
     "prd-to-issues": {
@@ -122,7 +540,21 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
       }
     },
     "prd-to-plan": {
@@ -133,7 +565,274 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "read-budget.sh": {
+      "kind": "hook_gate",
+      "source": "execution/hooks/read-budget.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PreToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/document-tools.sh"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "refutador": {
+      "kind": "agent",
+      "source": "execution/agents/refutador.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "revisor-codigo": {
+      "kind": "agent",
+      "source": "execution/agents/revisor-codigo.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "revisor-frontend": {
+      "kind": "agent",
+      "source": "execution/agents/revisor-frontend.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "risk-trigger.sh": {
+      "kind": "hook_guidance",
+      "source": "control/hooks/risk-trigger.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PostToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "self-mod-audit.sh": {
+      "kind": "hook_guidance",
+      "source": "control/hooks/self-mod-audit.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "PreToolUse",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "session-integrity.sh": {
+      "kind": "hook_guidance",
+      "source": "control/hooks/session-integrity.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "SessionStart",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/conformidade-managed.sh"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "subagent-contract.sh": {
+      "kind": "hook_gate",
+      "source": "evidence/hooks/subagent-contract.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "SubagentStop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/reprodutibilidade.sh"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "subagent-probe.sh": {
+      "kind": "hook_instrument",
+      "source": "evidence/hooks/subagent-probe.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "SubagentStart|SubagentStop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          }
+        }
+      }
+    },
+    "tdd": {
+      "kind": "agent",
+      "source": "execution/agents/tdd.md",
+      "state": "candidate",
+      "installed": true,
+      "activation": "delegated",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
+      }
+    },
+    "verify-gate.sh": {
+      "kind": "hook_gate",
+      "source": "evidence/hooks/verify-gate.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "Stop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/regressao-gate.sh"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
       }
     },
     "write-a-prd": {
@@ -144,22 +843,22 @@
       "activation": "contextual",
       "evidence": {
         "dossier": null,
-        "status": "absent"
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "absent"
+          },
+          "E_U": {
+            "status": "absent"
+          },
+          "E_C": {
+            "status": "absent"
+          },
+          "E_S": {
+            "status": "absent"
+          }
+        }
       }
-    },
-    "defesa-de-tese": {
-      "kind": "skill",
-      "source": null,
-      "state": "deprecated",
-      "installed": false,
-      "activation": "none",
-      "evidence": {
-        "dossier": null,
-        "status": "absent"
-      },
-      "retired_at": "2026-08-14",
-      "superseded_by": "refutador",
-      "reason": "validava na MESMA resposta que propos - auto-correcao intrinseca; o agente refutador faz a mesma pergunta com contexto separado (ADR 0011)"
     }
   },
   "workflows": [

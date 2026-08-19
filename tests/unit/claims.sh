@@ -373,7 +373,14 @@ echo "== L-FRESCOR: ancora obsoleta reprova conforme o status =="
 # apontando para o conteudo pre-edicao, e o validador saiu 0. `not-verified` nao e registro
 # historico: e alegacao ABERTA, que sera relida. `refuted`/`superseded` sao terminais e a isencao
 # ali permanece correta - sem ela seria impossivel preservar o registro de uma alegacao derrubada.
-FALSO="$(git -C "$REPO" hash-object README.md)"
+# A ancora falsa precisa EXISTIR e estar ERRADA - o validador tem duas recusas distintas
+# ("nao tem lastro" para sha inexistente, "obsoleta" para sha valido porem defasado), e so a
+# segunda e isenta por status terminal. `git hash-object README.md` calcula o hash do ARQUIVO
+# DE TRABALHO: com README.md modificado e nao commitado, o objeto nao existe no banco e o
+# validador recusava pelo motivo errado, derrubando os dois casos de isencao. Fragilidade
+# pre-existente, descoberta na onda 15 porque esta onda edita o README. `HEAD:README.md` e o
+# blob COMMITADO - existe sempre, e nunca e o da observacao citada por C-018.
+FALSO="$(git -C "$REPO" rev-parse HEAD:README.md)"
 frescor(){ # $1=status  -> exit code do validador com a ancora quebrada
   local d="$T/fresc-$1"; mkdir -p "$d"
   python3 - "$REPO/evidence/claims/C-018.yaml" "$d/C-018.yaml" "$1" "$FALSO" <<'PY2'

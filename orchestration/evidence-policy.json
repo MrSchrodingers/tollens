@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "purpose": "Obrigacao de prova por TIPO de capability. A divida de avaliacao deixa de ser um escalar de skills e passa a ser um vetor por dimensao.",
+  "why": [
+    "A onda 13 mediu a divida como |{skills sem dossie}| = 8, e a onda 14 a tornou monotonica contra a base. Auditoria externa apontou o limite seguinte: 8 e a divida de UMA classe. Os dez agentes nao tinham dossie e nao entravam na conta; os catorze hooks tampouco. O numero 18 citado como 'divida real' era piso, nao total.",
+    "Somar tudo num escalar seria pior que o escalar anterior: skill, agente, portao deterministico e guidance sao intervencoes DIFERENTES e nao devem a mesma prova. Exigir avaliacao pareada de um portao que bloqueia por exit 2 confunde 'melhora o resultado' com 'faz o que diz'.",
+    "Dai as quatro dimensoes: E_M mecanismo, E_U utilidade, E_C custo, E_S seguranca. Cada tipo deve um subconjunto delas, declarado abaixo com a razao."
+  ],
+  "dimensions": {
+    "E_M": {
+      "label": "mecanismo",
+      "question": "o componente faz o que declara fazer?",
+      "satisfied_by": [
+        "executed_suite",
+        "dossier"
+      ],
+      "note": "Unica dimensao pagavel por suite executada: 'faz o que diz' e proposicao sobre o artefato, e uma suite que INVOCA o componente e evidencia direta dela."
+    },
+    "E_U": {
+      "label": "utilidade",
+      "question": "o resultado da tarefa melhora com o componente ativo?",
+      "satisfied_by": [
+        "dossier"
+      ],
+      "note": "Exige comparacao entre condicoes (A/B pareado). Nenhuma suite deste repositorio a produz hoje, e nenhuma capability a tem paga - por construcao, nao por esquecimento."
+    },
+    "E_C": {
+      "label": "custo",
+      "question": "quanto o componente custa por acionamento, em tokens e em latencia?",
+      "satisfied_by": [
+        "dossier"
+      ],
+      "note": "Custo de guidance universal (hook de UserPromptSubmit) e pago em TODA sessao, esteja a orientacao correta ou nao."
+    },
+    "E_S": {
+      "label": "seguranca",
+      "question": "que risco novo o componente cria, e ele erra fechado?",
+      "satisfied_by": [
+        "executed_suite",
+        "dossier"
+      ],
+      "note": "Pagavel por suite quando a suite exercita o modo de falha - controle negativo e caso hostil, nao so o caminho feliz."
+    }
+  },
+  "requirement_dimensions": {
+    "_comment": "Os SETE promotion_requires de skill-policy.json mapeados nas quatro dimensoes. Nada de novo foi inventado: o dossie de skill continua exigindo os mesmos sete itens, agora com a dimensao que cada um sustenta.",
+    "paired_evaluation": "E_U",
+    "fixed_repository_snapshot": "E_U",
+    "negative_control": "E_U",
+    "deterministic_requirement_verifier": "E_M",
+    "compatibility_manifest": "E_M",
+    "cost_measurement": "E_C",
+    "context_interference_check": "E_S"
+  },
+  "proof_obligations": {
+    "skill": [
+      "E_M",
+      "E_U",
+      "E_C",
+      "E_S"
+    ],
+    "agent": [
+      "E_M",
+      "E_U",
+      "E_C",
+      "E_S"
+    ],
+    "hook_gate": [
+      "E_M",
+      "E_S"
+    ],
+    "hook_guidance": [
+      "E_M",
+      "E_U",
+      "E_C"
+    ],
+    "hook_instrument": [
+      "E_M"
+    ],
+    "guidance_document": [
+      "E_U",
+      "E_C"
+    ]
+  },
+  "obligation_rationale": {
+    "skill": "Instrucao injetada no contexto para mudar como a tarefa e resolvida. Deve as quatro: faz o que diz, melhora o desfecho, a que custo, e sem abrir risco novo.",
+    "agent": "Mesmo caso da skill, com uma diferenca que NAO reduz a obrigacao: o agente traz contexto separado e ferramentas proprias, o que amplia tanto o ganho possivel quanto a superficie.",
+    "hook_gate": "A claim primaria de um portao deterministico e 'diante da condicao X, bloqueia' - proposicao de MECANISMO, falseavel por execucao, e de SEGURANCA, porque um portao que erra aberto e pior que portao nenhum. E_U nao e dispensada por ser irrelevante: e que 'bloquear melhora o desfecho' e proposicao sobre a POLITICA que o portao aplica, nao sobre o portao. LIMITE DECLARADO: esta separacao e um julgamento desta policy, nao um resultado medido.",
+    "hook_guidance": "Guidance nao bloqueia nada - a unica razao para existir e que a decisao seguinte melhora. Sem E_U e texto pago em toda sessao com beneficio suposto, e E_C e o que torna a suposicao cara.",
+    "hook_instrument": "Instrumento que so mede e registra, sem alterar decisao nem bloquear. Deve E_M - a medicao mede o que diz medir. Nao deve E_U porque nao pretende mudar desfecho algum; se um dia pretender, muda de classe.",
+    "guidance_document": "Documento injetado no contexto de TODA sessao. Nao deve E_M: um documento nao tem mecanismo proprio - ele e texto entregue ao modelo, e que a entrega ocorre ja e conferido por install/verify.sh contra o digest do manifesto. Restam as duas perguntas que importam e que ninguem respondeu: a decisao seguinte melhora, e a que custo. Registrar o CLAUDE.md aqui nao o reduz nem o defende; torna visivel que a maior intervencao de guidance do repositorio e a que tem menos evidencia."
+  },
+  "evidence_kinds": {
+    "executed_suite": {
+      "requires": [
+        "ref"
+      ],
+      "valid_when": [
+        "o arquivo em `ref` existe na arvore",
+        "a suite em `ref` INVOCA o componente (nao apenas o menciona)",
+        "`ref` e ENUMERADA por scripts/status.sh - isto e, o gerador de relatorio de fato a executa"
+      ],
+      "note": "A segunda condicao existe porque mencao nao e execucao: a medicao que abriu esta onda encontrou hooks citados por nome em suites que nunca os rodavam. A terceira condicao mudou na propria onda 15: a redacao original falava em 'aparece em docs/status.generated.md com exit 0', que e circular (a suite nova nao esta no documento antes da primeira geracao). Enumeracao no gerador e o que de fato garante execucao."
+    },
+    "dossier": {
+      "requires": [
+        "ref"
+      ],
+      "valid_when": [
+        "o arquivo em `ref` existe na arvore",
+        "declara todos os promotion_requires da dimensao, sem valor vazio",
+        "declara `evaluated_with` e ele ainda casa com o ambiente corrente"
+      ]
+    }
+  },
+  "staleness": {
+    "_comment": "EvidenceValidity temporal. Valid(c, t0) NAO implica Valid(c, t1): um dossie legitimo deixa de valer quando muda aquilo sobre o que ele concluiu.",
+    "invalidated_by": [
+      "artifact_digest: o proprio componente mudou desde a avaliacao",
+      "policy_digest: a policy que define o que conta como evidencia mudou",
+      "runtime: a versao declarada do runtime saiu do conjunto suportado",
+      "model: o modelo declarado saiu do conjunto suportado"
+    ],
+    "mechanically_checked": [
+      "artifact_digest",
+      "policy_digest"
+    ],
+    "declared_only": [
+      "runtime",
+      "model"
+    ],
+    "limit": "Um portao nao consegue observar de dentro qual modelo ou runtime executa a sessao. `runtime` e `model` sao portanto campos OBRIGATORIOS no dossie e nao conferidos contra nada: exigi-los torna a dependencia VISIVEL no artefato, nao a torna medida. Uma versao anterior desta linha dizia que eles eram 'conferidos contra orchestration/environment.json' - arquivo que nunca existiu. Mecanismo declarado e ausente e exatamente o defeito que esta policy existe para tornar caro; a linha foi corrigida em vez de o arquivo ser inventado."
+  }
+}

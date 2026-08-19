@@ -34,6 +34,7 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
            tests/unit/capabilities.sh tests/unit/cobertura.sh \
            tests/unit/contrato-de-instalador.sh \
+           tests/unit/hooks-de-guarda.sh \
            tests/unit/capability-conformance.py \
            tests/unit/run.sh; do
     roda_suite "$t" >/dev/null 2>&1; rc=$?
@@ -102,7 +103,16 @@ trap 'rm -f "$TMP"' EXIT
     # E exatamente o que o comentario 30 linhas acima ja explicava sobre `install.sh`, e que eu
     # li antes de escrever isto. Enunciar a regra nao a executa.
     # A execucao real acontece no passo dedicado do workflow, que e onde o veredito importa.
-    printf '| %s (auto) | %s | passo dedicado no CI |\n' "$_b" "${_n:-?}"
+    # ROTULO COMPUTADO, NAO LITERAL (onda 15, achado do portao final). Esta linha imprimia
+    # "passo dedicado no CI" para todo arnes, sem conferir que o passo existisse - e para dois
+    # deles nao existia. Claim publicada que ninguem recalcula envelhece em silencio, que e a
+    # forma que este arquivo ja pagou em outra linha (ver o comentario sobre lavagem, abaixo).
+    if grep -qF "tests/mutation/$_b" .github/workflows/verify-pr.yml 2>/dev/null; then
+      _onde='passo dedicado no CI'
+    else
+      _onde='NAO executado no CI'
+    fi
+    printf '| %s (auto) | %s | %s |\n' "$_b" "${_n:-?}" "$_onde"
   done
 
   printf '\n## Cobertura de decisao (branch), medida via subprocesso instrumentado\n\n'

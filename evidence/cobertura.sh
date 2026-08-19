@@ -153,7 +153,7 @@ evidence/probes/github-ruleset.py:86.0
 evidence/validate-claims.py:81.4
 evidence/validate-literature.py:92.3
 evidence/runtime-probes/declared-capabilities.py:92.6
-orchestration/schedule.py:88.4
+orchestration/schedule.py:89.3
 evidence/validate-adapters.py:69.3
 EOF
 )}"
@@ -191,42 +191,57 @@ EOF
 # missing_branches a partir de aqui NAO herda esta isencao (o numero de linha novo nao esta
 # nesta lista) e reprova ate ganhar cobertura ou uma entrada com motivo ESPECIFICO - nunca
 # "heranca-piso-absoluto-2026-08-11", que descreve so o que ja existia nesta data.
+# ISENCOES DE orchestration/schedule.py REANCORADAS NA ONDA 15. A insercao do bloco de
+# separacao de oraculo em `_valida_metadados` deslocou o arquivo, e esta lista e por NUMERO
+# DE LINHA - exatamente o modo de falha que o comentario de ABSOLUTO_PENDENTE preve. Nada
+# foi ACRESCENTADO nem removido: os itens continuam 35, com os MESMOS alvos em numeros de linha
+# novos, e o bloco inserido esta coberto pelas fixtures F16-F18. A contagem identica antes e
+# depois e a evidencia de que houve deslocamento e nao descoberta de codigo sem teste. A
+# etiqueta de heranca segue a mesma, para que a procedencia nao se perca na reancoragem.
+#
+# ARMADILHA MEDIDA AQUI: `${COBERTURA_ISENCOES:-...}` substitui tambem quando a variavel esta
+# VAZIA, entao `COBERTURA_ISENCOES=""` NAO zera a lista - usa a do arquivo. Medir o conjunto
+# cru exige um valor nao-nulo que nao case com nada.
+#
+# NOTA DE FORMATO, aprendida aqui: este heredoc so aceita linhas `caminho|tipo|item|motivo`.
+# Comentario dentro dele vira entrada malformada e derruba dezessete casos de
+# tests/unit/cobertura.sh de uma vez, com diagnostico que aponta para outro lugar.
 ISENCOES="${COBERTURA_ISENCOES:-$(cat <<'EOF'
-orchestration/schedule.py|linha|102|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|103|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|223|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|227|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|107|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|108|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|linha|228|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|236|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|240|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|232|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|233|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|linha|241|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|339|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|343|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|348|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|350|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|355|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|356|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|357|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|358|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|359|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|360|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|361|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|linha|362|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|220->222|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|222->223|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|226->227|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|235->236|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|239->240|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|338->339|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|342->343|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|347->348|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|349->350|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|354->355|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|358->359|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|358->360|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|360->361|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|360->362|heranca-piso-absoluto-2026-08-11
-orchestration/schedule.py|ramo|388->-1|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|245|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|246|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|387|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|391|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|396|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|398|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|403|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|404|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|405|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|406|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|407|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|408|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|409|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|linha|410|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|225->227|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|227->228|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|231->232|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|240->241|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|244->245|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|386->387|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|390->391|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|395->396|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|397->398|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|402->403|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|406->407|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|406->408|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|408->409|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|408->410|heranca-piso-absoluto-2026-08-11
+orchestration/schedule.py|ramo|436->-1|heranca-piso-absoluto-2026-08-11
 EOF
 )}"
 

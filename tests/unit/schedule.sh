@@ -11,7 +11,7 @@
 # concorrentes nos 3 workflows de producao e em ZERO deles a checagem de conflito de escrita (2)
 # chega a ser avaliada (todo no de codigo declara writes:["**"], os demais writes:[] - a
 # condicao `writes_a and writes_b` nunca fica verdadeira entre dois nos concorrentes reais). O
-# poder discriminante demonstrado abaixo vem inteiramente das fixtures SINTETICAS F1-F15,
+# poder discriminante demonstrado abaixo vem inteiramente das fixtures SINTETICAS F1-F18,
 # construidas sob TOLLENS_ROOT (mesma convencao de tests/unit/methodology.py e do
 # `_prepara` de tests/mutation/fronteira.sh): sem elas, um validador inerte (que sempre sai 0)
 # passaria despercebido, porque os dados reais nunca exercitam o caminho de rejeicao.
@@ -26,7 +26,7 @@ chk(){ if [ "$2" = "$3" ]; then echo "  PASS  $1"; P=$((P+1)); else echo "  FAIL
 
 command -v jq >/dev/null 2>&1 || { echo "NAO VERIFICADO: jq ausente - oraculo de ondas exatas nao pode ser avaliado." >&2; exit 2; }
 
-echo "== fixtures sinteticas: F1-F15 sob TOLLENS_ROOT proprio =="
+echo "== fixtures sinteticas: F1-F18 sob TOLLENS_ROOT proprio =="
 python3 - "$TMP" <<'PY'
 import json, os, sys
 root = sys.argv[1]
@@ -145,6 +145,31 @@ write("f14-aresta-destino-fantasma", 4,
 write("f15-aresta-origem-fantasma", 4,
       ["a", "b"], [["a", "b"], ["fantasma", "b"]],
       {"a": node(), "b": node()})
+
+# F16-F18 - SEPARACAO DE ORACULO (onda 15). Tres artefatos declaravam coisas diferentes sobre o
+# mesmo no RED: o schedule dizia `writes: ["**"]`, o README dizia `writes: tests/`, e o contrato
+# do agente `tdd` dizia que ele mesmo fechava o GREEN. Nenhum verificava o outro. A regra entrou
+# no VALIDADOR, e estas tres fixtures sao o que a torna falseavel.
+
+# F16 - ilegal: o no que produz o oraculo declara escrita irrestrita.
+write("f16-oraculo-irrestrito", 4,
+      ["r", "i"], [["r", "i"]],
+      {"r": node(actor="tdd", writes=["**"], produces=["failing-test"]),
+       "i": node(actor="implementador", writes=["**"], produces=["diff"])})
+
+# F17 - ilegal: o MESMO ator escreve o teste que julga e o codigo julgado.
+write("f17-oraculo-e-autor", 4,
+      ["r", "i"], [["r", "i"]],
+      {"r": node(actor="tdd", writes=["tests/**"], produces=["failing-test"]),
+       "i": node(actor="tdd", writes=["**"], produces=["diff"])})
+
+# F18 - CONTROLE NEGATIVO de F16 e F17: escopo confinado e atores distintos passam. Sem ele, a
+# regra podia estar recusando QUALQUER grafo com `failing-test` e as duas recusas acima nao
+# distinguiriam nada.
+write("f18-oraculo-separado", 4,
+      ["r", "i"], [["r", "i"]],
+      {"r": node(actor="tdd", writes=["tests/**"], produces=["failing-test"]),
+       "i": node(actor="implementador", writes=["**"], produces=["diff"])})
 PY
 
 roda(){ TOLLENS_ROOT="$TMP/$1" python3 "$SCHED" --check; }
@@ -211,6 +236,19 @@ chk "  F14 erro estruturado, sem KeyError cru" $? 0
 
 OUT15="$(roda f15-aresta-origem-fantasma 2>&1)"; RC15=$?
 chk "F15 aresta com origem fora de 'nodes': RECUSADO" "$RC15" 1
+
+OUT16="$(roda f16-oraculo-irrestrito 2>&1)"; RC16=$?
+chk "F16 no que produz failing-test com escrita irrestrita: RECUSADO" "$RC16" 1
+printf '%s' "$OUT16" | grep -qF "declara escrita irrestrita"
+chk "  F16 nomeia o escopo, nao so o no" $? 0
+
+OUT17="$(roda f17-oraculo-e-autor 2>&1)"; RC17=$?
+chk "F17 mesmo ator produzindo failing-test e diff: RECUSADO" "$RC17" 1
+printf '%s' "$OUT17" | grep -qF "sem separacao de oraculo"
+chk "  F17 diagnostica a falta de separacao de oraculo" $? 0
+
+OUT18="$(roda f18-oraculo-separado 2>&1)"; RC18=$?
+chk "F18 CONTROLE: escopo confinado e atores distintos: legal" "$RC18" 0
 printf '%s' "$OUT15" | grep -qF "aresta referencia no inexistente em 'nodes': 'fantasma' (origem)"
 chk "  F15 diagnostica aresta invalida" $? 0
 ! printf '%s' "$OUT15" | grep -qF "ciclo detectado"
@@ -232,7 +270,7 @@ chk "  ondas exatas de standard-change (nivelamento de precedencia correto)" "$G
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=29
+EXPECTED=34   # onda 15: +5 com F16-F18 (separacao de oraculo)
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

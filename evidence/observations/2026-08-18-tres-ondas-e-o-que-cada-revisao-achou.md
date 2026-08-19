@@ -224,3 +224,31 @@ Delta Q_externo > 0  NAO VERIFICADO
 ```
 
 Confundir as duas seria exatamente o erro que as tres ondas existem para tornar dificil.
+
+---
+
+## ERRATA - 2026-08-19
+
+Este registro e datado e nao se reescreve; o que segue corrige, sem apagar, duas afirmacoes da
+secao 8 que as ondas 14 e 15 tornaram falsas.
+
+**1. `teto D_MAX=8` deixou de existir.** A onda 14 removeu o teto depois de a auditoria externa
+medir duas fugas: o mesmo PR podia adicionar capability e elevar a constante, e pagar um dossie
+abria vaga para outra divida entrar sem que o numero subisse. A fronteira passou a ser relacional
+contra o SHA-base. Ver ADR 0034.
+
+**2. `a divida real e 18` era piso de UMA leitura, e a leitura estava errada em forma, nao so em
+tamanho.** A onda 15 decompos a divida em quatro dimensoes com obrigacao de prova por tipo de
+capability. Medido depois da decomposicao:
+
+```
+D_E = 89 obrigacoes em aberto sobre 34 capabilities
+      E_M 18   E_U 25   E_C 25   E_S 21
+```
+
+O `18` reaparece, e nao por coincidencia: e exatamente a divida de E_M das 8 skills e dos 10
+agentes. O que a frase original nao via e que os catorze hooks deviam prova de OUTRAS dimensoes,
+e que oito deles nao tinham sequer E_M - nenhuma suite os executava. Ver ADR 0035.
+
+O numero subiu de 8 para 89 porque a medicao melhorou, nao porque o estado piorou. Um instrumento
+que so melhora quando o numero cai mede o numero, nao o fenomeno.

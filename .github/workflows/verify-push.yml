@@ -73,6 +73,17 @@ jobs:
             # A imagem do runner costuma trazer listas apt utilizaveis; quando traz, o `update`
             # inteiro e custo puro. Entao: tenta instalar, e so paga a operacao lenta se a
             # primeira tentativa falhar. O caminho comum deixa de depender dela.
+            #
+            # ONDA 15 - MEDIDO EM DUAS EXECUCOES, e a segunda refuta a leitura da primeira:
+            #   run 32192196023   verify-pr 21m50s, apt 53s (4%)
+            #   run 32290684256   `install` bateu o timeout 300; o `update` seguinte estourou o
+            #                     teto de 12min do passo e MATOU o job
+            # O ramo `else` abaixo NUNCA executa: ubuntu-24.04 nao traz nenhuma das tres.
+            # O custo do apt e BIMODAL, nao ~4%: uma amostra dizia que containerizar valia so
+            # por hermeticidade, e a amostra seguinte mostrou o passo derrubando o build. A
+            # imagem OCI pinada por digest e o fix nos dois eixos, e fica declarada como
+            # BLOQUEIO conhecido. Subir o limite NAO entra - ver as duas tentativas acima. Ver
+            # ADR 0035.
             if ! sudo timeout 300 apt-get install -y -qq "${missing[@]}"; then
               echo "install direto falhou (listas apt provavelmente ausentes) - rodando update"
               sudo timeout 300 apt-get -o Acquire::Retries=3 update -qq
@@ -158,6 +169,15 @@ jobs:
         run: bash tests/mutation/schedule.sh
       - name: validacao por mutacao (fronteira viva)
         run: bash tests/mutation/fronteira-viva.sh
+      # ONDA 15, achado do portao final (F3). `docs/status.generated.md` publicava "passo
+      # dedicado no CI" para TODO arnes de `tests/mutation/`, e para estes dois nao havia passo
+      # algum: 43 mutantes rodavam so na estacao do autor enquanto o artefato afirmava o
+      # contrario. Custo medido antes de decidir - 37s e 42s -, entao a saida certa e executar,
+      # nao ajustar o rotulo.
+      - name: validacao por mutacao (conformidade de capability)
+        run: bash tests/mutation/capability-conformance.sh
+      - name: validacao por mutacao (hooks de guarda)
+        run: bash tests/mutation/hooks-de-guarda.sh
       - name: validacao por mutacao (camada de literatura)
         run: bash tests/mutation/literatura.sh
       - name: validacao por mutacao (claim ledger)

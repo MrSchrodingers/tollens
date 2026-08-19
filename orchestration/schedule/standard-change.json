@@ -5,23 +5,33 @@
     "holds_suite_lock": false,
     "reads": [],
     "writes": [],
-    "produces": ["risk-classification"]
+    "produces": [
+      "risk-classification"
+    ]
   },
   "investigate": {
     "actor": "investigador",
     "isolation": "shared",
     "holds_suite_lock": false,
-    "reads": ["**"],
+    "reads": [
+      "**"
+    ],
     "writes": [],
-    "produces": ["root-cause-evidence"]
+    "produces": [
+      "root-cause-evidence"
+    ]
   },
   "map": {
     "actor": "mapeador-dependencias",
     "isolation": "shared",
     "holds_suite_lock": false,
-    "reads": ["**"],
+    "reads": [
+      "**"
+    ],
     "writes": [],
-    "produces": ["dependency-graph"]
+    "produces": [
+      "dependency-graph"
+    ]
   },
   "plan": {
     "actor": "orchestrator",
@@ -29,47 +39,73 @@
     "holds_suite_lock": false,
     "reads": [],
     "writes": [],
-    "produces": ["mini-prd"]
+    "produces": [
+      "mini-prd"
+    ]
   },
   "red": {
     "actor": "tdd",
     "isolation": "shared",
     "holds_suite_lock": false,
-    "reads": ["**"],
-    "writes": ["**"],
-    "produces": ["failing-test"]
+    "reads": [
+      "**"
+    ],
+    "writes": [
+      "tests/**"
+    ],
+    "produces": [
+      "failing-test"
+    ]
   },
   "implement": {
     "actor": "implementador",
     "isolation": "shared",
     "holds_suite_lock": false,
-    "reads": ["**"],
-    "writes": ["**"],
-    "produces": ["diff"]
+    "reads": [
+      "**"
+    ],
+    "writes": [
+      "**"
+    ],
+    "produces": [
+      "diff"
+    ]
   },
   "test": {
     "actor": "implementador",
     "isolation": "shared",
     "holds_suite_lock": true,
-    "reads": ["**"],
+    "reads": [
+      "**"
+    ],
     "writes": [],
-    "produces": ["suite-result"]
+    "produces": [
+      "suite-result"
+    ]
   },
   "review": {
     "actor": "revisor-codigo",
     "isolation": "shared",
     "holds_suite_lock": false,
-    "reads": ["**"],
+    "reads": [
+      "**"
+    ],
     "writes": [],
-    "produces": ["review-verdict"]
+    "produces": [
+      "review-verdict"
+    ]
   },
   "refute": {
     "actor": "refutador",
     "isolation": "shared",
     "holds_suite_lock": false,
-    "reads": ["**"],
+    "reads": [
+      "**"
+    ],
     "writes": [],
-    "produces": ["refutation-verdict"]
+    "produces": [
+      "refutation-verdict"
+    ]
   },
   "evidence": {
     "actor": "orchestrator",
@@ -77,7 +113,9 @@
     "holds_suite_lock": false,
     "reads": [],
     "writes": [],
-    "produces": ["evidence-package"]
+    "produces": [
+      "evidence-package"
+    ]
   },
   "candidate": {
     "actor": "orchestrator",
@@ -85,6 +123,8 @@
     "holds_suite_lock": false,
     "reads": [],
     "writes": [],
-    "produces": ["candidate-state"]
+    "produces": [
+      "candidate-state"
+    ]
   }
 }
