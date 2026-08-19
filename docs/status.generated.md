@@ -23,8 +23,8 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
-| `tests/unit/contrato-de-instalador.sh` | 33 | 0 |
-| `tests/unit/capability-conformance.py` | 15 | 0 |
+| `tests/unit/contrato-de-instalador.sh` | 34 | 0 |
+| `tests/unit/capability-conformance.py` | 16 | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -44,7 +44,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
-| capability-conformance (auto) | 9 | passo dedicado no CI |
+| capability-conformance (auto) | 11 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado

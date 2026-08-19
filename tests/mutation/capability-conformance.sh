@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=9
+P=0; F=0; EXPECTED_MUTANTS=11
 REG="orchestration/registry.json"
 LOCK="install/manifest.lock"
 POR="tests/unit/capability-conformance.py"
@@ -102,6 +102,29 @@ mutante MCAP6 "capability nova em QUARANTINE tambem estoura o teto" 1 \
 mutante MCAP7 "capability em quarantine INSTALADA reprova" 1 \
   "$_PY"'c["graphify"]["state"]="quarantine"'"$_SAVE"
 
+# ONDA 14. AS DUAS FUGAS DO TETO CONSTANTE, medidas por auditoria externa. `D_MAX` era numero
+# literal DENTRO do arquivo que o PR edita, entao a proibicao de levanta-lo era prosa no objeto
+# governado - `PolicyDeclared`, nao `PolicyEnforced`. Agora o criterio e o SHA-base.
+mutante MCAP10 "capability nova + o PR levantando o proprio teto reprova" 1 \
+  "$_PY"'
+import os
+os.makedirs("execution/skills/nova",exist_ok=True)
+open("execution/skills/nova/SKILL.md","w").write("---\nname: nova\ndescription: x\n---\n")
+c["nova"]={"kind":"skill","source":"execution/skills/nova","state":"candidate","installed":False,"activation":"contextual","evidence":{"dossier":None,"status":"absent"}}'"$_SAVE"
+
+# A FUGA MAIS SUTIL: paga um dossie e adiciona outra sem dossie. O TAMANHO da divida nao muda
+# (8 -> 8), entao qualquer regra baseada em contagem aprova. So a regra de SUBCONJUNTO pega.
+mutante MCAP11 "trocar uma divida por outra reprova (tamanho constante nao basta)" 1 \
+  "$_PY"'
+import os
+reqs=json.load(open("orchestration/skill-policy.json"))["lifecycle"]["promotion_requires"]
+os.makedirs("evidence/skills",exist_ok=True)
+open("evidence/skills/graphify.json","w").write(json.dumps({k:{"ok":True} for k in reqs}))
+c["graphify"]["evidence"]={"dossier":"evidence/skills/graphify.json","status":"valid"}
+os.makedirs("execution/skills/nova",exist_ok=True)
+open("execution/skills/nova/SKILL.md","w").write("---\nname: nova\ndescription: x\n---\n")
+c["nova"]={"kind":"skill","source":"execution/skills/nova","state":"candidate","installed":False,"activation":"contextual","evidence":{"dossier":None,"status":"absent"}}'"$_SAVE"
+
 echo "== mutantes do par registry x manifesto =="
 mutante MCAP8 "manifesto sem uma skill do registry reprova" 1 \
   'import pathlib
@@ -114,7 +137,7 @@ mutante MCAP9 "manifesto com a ORIGEM do layout antigo reprova" 1 \
 p=pathlib.Path("install/manifest.lock")
 p.write_text(p.read_text().replace("\texecution/skills/forge\t","\texecution/skills/promoted/forge\t"))'
 
-rm -rf evidence/skills 2>/dev/null
+rm -rf evidence/skills execution/skills/nova 2>/dev/null
 echo
 echo "baseline=ok  mutantes_esperados=$EXPECTED_MUTANTS  mortos=$P  sobreviventes=$F"
 if [ "$F" -eq 0 ] && [ "$P" -eq "$EXPECTED_MUTANTS" ]; then

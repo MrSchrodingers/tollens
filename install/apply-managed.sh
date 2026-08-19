@@ -59,10 +59,26 @@ WORKER="${TOLLENS_MANAGED_WORKER:-$DEFAULT_WORKER}"
   exit 2
 }
 case "${1:-}" in
-  --verify|--revert)
+  # ONDA 14. `--dry-run` PASSA A SAIR AQUI, antes de qualquer maquinaria transacional.
+  #
+  # A onda 13 corrigiu a mensagem falsa ("managed transaction committed" num ensaio) com um
+  # guard DEPOIS do snapshot, e trocou uma claim falsa por outra ligeiramente ampla demais: o
+  # texto dizia "NENHUMA escrita foi feita" enquanto o script ja havia executado
+  # `mktemp -d` e, com destino existente, `cp -a "$OPT" "$REC/opt"` - a arvore managed inteira
+  # copiada para o temporario. Provado por auditoria externa e reproduzido aqui: com TMPDIR
+  # nao-gravavel, `--dry-run` morre com exit 1 no `mktemp`, o que so e possivel se o mktemp
+  # roda antes do guard.
+  #
+  # O teste media `find "$MANAGED_PREFIX" -type f` = 0, entao o que estava demonstrado era
+  # "nenhum destino managed foi alterado" - verdadeiro - e nao "nenhuma escrita ocorreu".
+  # Diferenca de AMPLITUDE DA CLAIM, que e a classe que este repositorio persegue.
+  #
+  # A correcao nao e estreitar a frase: e tornar a frase desnecessaria. Ensaio nao abre
+  # transacao, entao nao atravessa o mecanismo transacional.
+  --verify|--revert|--dry-run)
     exec "$WORKER" "$@"
     ;;
-  --dry-run|--enforce|"")
+  --enforce|"")
     # Seguem para o corpo do supervisor, que invoca o worker em "$WORKER" "$@" com
     # snapshot e rollback ao redor. --enforce DEPENDE desse rollback; nao mova para o `exec`.
     : ;;
@@ -109,29 +125,6 @@ rollback(){
 rc=$?
 if [ "$rc" -ne 0 ]; then
   rollback && exit "$rc" || exit 70
-fi
-
-# `--dry-run` NAO E TRANSACAO, e ate a onda 13 ele afirmava que era. O worker imprimia
-# "PLANO (nada sera escrito)" e saia 0; o supervisor seguia para as pos-condicoes de modo e
-# terminava com `managed transaction committed`. Observado na saida real de um deploy do
-# operador, DUAS vezes seguidas:
-#
-#   $ sudo bash install/apply-managed.sh --dry-run
-#   PLANO (nada sera escrito). prefixo='/'
-#   ...
-#   managed transaction committed        <- nada foi escrito
-#
-# O revisor da onda 12 nomeou isto como defeito irmao ao consertar o `case`, e nao foi
-# corrigido ali. E a forma exata que este repositorio persegue - mensagem verde declarando
-# um estado que nao existe - e ela morava no caminho PRIVILEGIADO, que roda como root.
-#
-# Aqui o ensaio termina onde deve: sem pos-condicao (nao ha o que verificar - nada mudou) e
-# sem declaracao de commit. O `cleanup` do trap continua valendo.
-if [ "${1:-}" = "--dry-run" ]; then
-  cleanup
-  trap - EXIT
-  echo "plano exibido; NENHUMA escrita foi feita e nenhuma transacao foi aberta"
-  exit 0
 fi
 
 # Exact mode contract. The delegated installer intends directories and executable policy material
