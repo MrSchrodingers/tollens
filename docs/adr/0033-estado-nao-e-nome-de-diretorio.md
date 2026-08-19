@@ -132,6 +132,11 @@ A sexta auditoria propos torna-la verificavel, e a proposta e adotada:
 D_E = |{ c : state(c) em {candidate, promoted} e nao Valid(dossier(c)) }|
 ```
 
+ERRATA 2026-08-19: o teto descrito neste paragrafo foi REMOVIDO pela onda 14, que mediu duas
+fugas nele (o PR podia elevar a propria constante; pagar um dossie abria vaga). A fronteira e
+hoje relacional contra o SHA-base - ADR 0034 -, e a divida virou vetor por dimensao - ADR 0035.
+O paragrafo fica como registro do que se acreditou em 2026-08-18.
+
 Medido hoje: **D_E = 8**, e `D_MAX = 8`. O teto inicial e o valor corrente, o que congela sem
 exigir quitar a divida inteira antes de qualquer trabalho. Cada dossie fechado o abaixa;
 levantar o teto para acomodar capability nova e a forma de fingir que a divida nao existe, e

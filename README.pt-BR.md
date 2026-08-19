@@ -226,7 +226,7 @@ Essa separação evita um erro categorial recorrente: o mecanismo que **produz**
 
 `orchestration/registry.json` define a arquitetura atual e invariantes críticos:
 
-- escritor único;
+- escritor único **no escalonamento** — `single_writer_is_scheduling_only: true`. Não é confinamento: `write_confinement: "none"`, porque os dez agentes recebem `Bash` e um agente sem `Write`/`Edit` ainda pode `sed -i`, `rm`, `git apply`. `writes: false` expressa MANDATO, não ausência de capacidade de escrita, e `tests/unit/capability-conformance.py` reprova o registry que declare confinamento maior que o medido;
 - revisão independente;
 - autor não certifica a própria mudança;
 - paralelismo read-only limitado;
@@ -378,7 +378,9 @@ Para todo grupo paralelo `G`:
 
 Isso reduz condições de corrida, patches conflitantes e ambiguidade sobre autoria no workspace ativo.
 
-`orchestration/schedule.py` formaliza quando dois nós do grafo de um workflow podem legalmente compartilhar um grupo paralelo: nenhuma dependência entre eles, direta ou transitiva; conjuntos de escrita disjuntos; e, para um checkout compartilhado, no máximo um dos dois segurando o lock de suíte (nós isolados em worktree próprio ficam isentos dessa última restrição, porque não competem pelo mesmo arquivo de lock). A checagem é um validador de configuração, não uma auditoria do paralelismo efetivamente observado em produção: todo nó de escrita hoje declara um conjunto de escrita que cobre todos os caminhos, e todo nó read-only declara um conjunto vazio, então a cláusula de disjunção de escrita nunca chega a comparar dois conjuntos não vazios nos workflows que este repositório publica hoje. Ela passa a ter peso real no dia em que um nó de escrita restringir o escopo declarado.
+`orchestration/schedule.py` formaliza quando dois nós do grafo de um workflow podem legalmente compartilhar um grupo paralelo: nenhuma dependência entre eles, direta ou transitiva; conjuntos de escrita disjuntos; e, para um checkout compartilhado, no máximo um dos dois segurando o lock de suíte (nós isolados em worktree próprio ficam isentos dessa última restrição, porque não competem pelo mesmo arquivo de lock). A checagem é um validador de configuração, não uma auditoria do paralelismo efetivamente observado em produção. Até a onda 15 todo nó de escrita declarava um conjunto que cobria todos os caminhos, e a cláusula de disjunção nunca chegava a comparar dois conjuntos não vazios. O nó `red` passou a declarar `tests/**` — o primeiro escopo real —, e a cláusula continua inerte sobre o dado real porque `red` e `implement` têm dependência entre si e a checagem de precedência decide antes.
+
+Nada disso é confinamento. O invariante `single_writer` é de **escalonamento** — o registry o declara como `single_writer_is_scheduling_only: true` — e `writes: false` num agente expressa **mandato**, não ausência de capacidade de escrita: os dez agentes recebem `Bash`, então um agente sem `Write`/`Edit` ainda pode `sed -i`, `rm`, `git apply`. O registry declara `write_confinement: "none"` e `tests/unit/capability-conformance.py` reprova qualquer declaração de confinamento maior que o medido.
 
 Uma instância representativa de `standard-change`, anotada com conjuntos de escrita:
 
@@ -390,6 +392,7 @@ flowchart LR
     end
     RO1 --> RED["tdd: estado RED<br/>writes: tests/"]
     RED --> IMPL["implementador<br/>writes: todo o caminho"]
+    RED -.->|"oráculo separado do autor:<br/>quem escreve o teste não escreve o código julgado"| IMPL
     IMPL --> RUN["executa testes<br/>writes: vazio"]
     subgraph RO2["grupo paralelo: read-only, writes = conjunto vazio"]
         REV["revisor-codigo"]

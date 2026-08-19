@@ -27,10 +27,15 @@ isso este modulo NAO e descrito como "garantia mecanica de paralelismo": esse ti
 implicaria auditoria do paralelismo em uso, e o poder demonstrado ate aqui vem inteiramente
 de fixtures SINTETICAS (tests/unit/schedule.sh), nunca do dado real. O que ele entrega,
 medido, e um validador de CONFIGURACAO de escalonamento: barra `schedule/<id>.json`
-malformado ou logicamente inconsistente hoje, e continua util no dia em que um no de
-codigo parar de declarar `writes: ["**"]` e passar a escopo real - so nao se pode alegar
-que audita o paralelismo hoje em producao, porque hoje ele nunca chega a comparar duas
-escritas reais.
+malformado ou logicamente inconsistente hoje.
+
+ONDA 15 - O PRIMEIRO NO DE CODIGO COM ESCOPO REAL. O paragrafo acima previa "o dia em que um
+no de codigo parar de declarar `writes: ["**"]`". Esse dia e este: `red` passa a declarar
+`["tests/**"]`, porque o estado RED produz TESTE e nada mais. Remedido depois da mudanca: os
+pares concorrentes continuam sem dois escritores simultaneos, entao a checagem (2) SEGUE
+inerte sobre o dado real - `red` e `implement` tem relacao `<` e (1) decide antes. A frase
+honesta continua sendo que este modulo valida CONFIGURACAO; o que mudou e que a configuracao
+passou a dizer algo falseavel sobre o no RED.
 
 FONTE DA RELACAO (1): somente `orchestration/workflows/<id>.json` (nodes/edges), o mesmo
 arquivo que `orchestration/render.py --check` ja valida estruturalmente. Este modulo NAO
@@ -248,6 +253,49 @@ def _valida_metadados(wf_id: str, wf_nodes: list[str], sched: dict) -> list[str]
                             f"suportado ({ch!r} em {padrao!r}) - aceito: literais, '*', "
                             f"'?', '[...]'"
                         )
+
+    # SEPARACAO DE ORACULO (onda 15). Ate aqui `produces` era rotulo puramente documental, "sem
+    # uso algoritmico" pelo proprio contrato deste modulo. Passa a ter DOIS usos, e os dois
+    # nascem de uma divergencia medida entre artefatos: schedule dizia que o no RED escrevia em
+    # qualquer lugar, README dizia que escrevia em tests/, e o contrato do agente `tdd` dizia
+    # que ele mesmo fechava o GREEN. Tres fontes, tres afirmacoes, nenhum verificador.
+    #
+    # SO NOS BEM-FORMADOS ENTRAM AQUI. Achado de revisao independente (A1): a primeira versao
+    # iterava todo no com a chave `produces` e estourava `TypeError: 'int' object is not
+    # iterable` quando o campo nao era lista - porque a validacao de tipo acima faz `continue`
+    # do laco de CAMPO, nao do laco de NO. A base devolvia `SCHEDULE_ERROR ... produces precisa
+    # ser lista de strings`; o HEAD saia por traceback, sem a linha que `tests/unit/schedule.sh`
+    # usa como oraculo. Validador que QUEBRA em vez de recusar e o erro simetrico do fail-open.
+    _bem_formados = {
+        nid: meta for nid, meta in sched.items()
+        if isinstance(meta, dict)
+        and isinstance(meta.get("produces"), list)
+        and isinstance(meta.get("writes"), list)
+        and all(isinstance(v, str) for v in meta["produces"] + meta["writes"])
+    }
+
+    # TODOS OS PRODUTORES, nao o primeiro. Achado de revisao independente (A6): `setdefault`
+    # fazia o primeiro produtor de `diff` vencer, entao um grafo com dois produtores - o
+    # primeiro com ator distinto, o segundo com o mesmo ator do oraculo - passava.
+    _autores = defaultdict(set)
+    for nid, meta in _bem_formados.items():
+        for rotulo in meta["produces"]:
+            _autores[rotulo].add(nid)
+        if "failing-test" in meta["produces"]:
+            _irrestrito = [w for w in meta["writes"] if _glob_base(w) == ""]
+            if _irrestrito:
+                erros.append(
+                    f"{wf_id}:{nid}: no que produz `failing-test` declara escrita irrestrita "
+                    f"({_irrestrito}) - o estado RED produz teste, e escopo irrestrito ali "
+                    f"apaga a distincao entre escrever o oraculo e escrever o codigo julgado")
+    for _r in sorted(_autores.get("failing-test", ())):
+        for _i in sorted(_autores.get("diff", ())):
+            if _bem_formados[_r].get("actor") == _bem_formados[_i].get("actor"):
+                erros.append(
+                    f"{wf_id}: o mesmo ator ({_bem_formados[_r].get('actor')!r}) produz "
+                    f"`failing-test` em {_r!r} e `diff` em {_i!r} - sem separacao de oraculo, "
+                    f"quem escreve o teste que decide o veredito e quem escreve o codigo que o "
+                    f"teste julga")
     return erros
 
 

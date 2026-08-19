@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=11
+P=0; F=0; EXPECTED_MUTANTS=25
 REG="orchestration/registry.json"
 LOCK="install/manifest.lock"
 POR="tests/unit/capability-conformance.py"
@@ -74,12 +74,41 @@ c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graph
 
 # CONTROLE POSITIVO, e ele e o que impede o portao de ser "reprova tudo". Sem este caso,
 # "nunca aprova" seria indistinguivel de "verifica corretamente".
-mutante MCAP3 "dossie cobrindo os 7 requisitos APROVA" 0 \
-  "$_PY"'
-import os
-reqs=json.load(open("orchestration/skill-policy.json"))["lifecycle"]["promotion_requires"]
+# CONTROLE POSITIVO. Sem ele o portao podia ser `return FAIL` e todos os mutantes negativos
+# "morreriam". Desde a onda 15 o dossie tambem precisa de `evaluated_with` que ainda case com o
+# ambiente - o controle passa a exercitar a validade TEMPORAL no sentido de que ela APROVA.
+#
+# O digest e recalculado aqui com o mesmo algoritmo do portao. Isso NAO testa o algoritmo (um
+# erro nele passaria nos dois lados); testa a POLITICA - dossie casado aprova, dossie
+# descasado reprova, que e o par MCAP3/MCAP18. Limite declarado, nao disfarcado.
+_DIG='
+import hashlib, pathlib
+def dig(rel):
+    c = pathlib.Path(rel)
+    if c.is_file(): return hashlib.sha256(c.read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    for f in sorted(x for x in c.rglob("*") if x.is_file()):
+        h.update(str(f.relative_to(c)).encode()); h.update(hashlib.sha256(f.read_bytes()).digest())
+    return h.hexdigest()
+def digpol():
+    h = hashlib.sha256()
+    for rel in ("orchestration/skill-policy.json","orchestration/evidence-policy.json"):
+        h.update(pathlib.Path(rel).read_bytes())
+    return h.hexdigest()
+import os, json as _j
+reqs=_j.load(open("orchestration/skill-policy.json"))["lifecycle"]["promotion_requires"]
 os.makedirs("evidence/skills",exist_ok=True)
-open("evidence/skills/graphify.json","w").write(json.dumps({k:{"ok":True} for k in reqs}))
+def dossie(extra=None, fonte="execution/skills/graphify"):
+    d={k:{"ok":True} for k in reqs}
+    d["evaluated_with"]={"runtime":{"claude_code":"2.1.0"},"model":{"name":"opus-5"},
+                         "artifact_digest":dig(fonte),"policy_digest":digpol()}
+    if extra is not None: d["evaluated_with"].update(extra)
+    open("evidence/skills/graphify.json","w").write(_j.dumps(d))
+'
+
+mutante MCAP3 "dossie 7/7 com evaluated_with casado APROVA (controle positivo)" 0 \
+  "$_PY$_DIG"'
+dossie()
 c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graphify.json","status":"valid"})'"$_SAVE"
 
 mutante MCAP4 "dossie com os 7 nomes e valores VAZIOS reprova" 1 \
@@ -137,7 +166,76 @@ mutante MCAP9 "manifesto com a ORIGEM do layout antigo reprova" 1 \
 p=pathlib.Path("install/manifest.lock")
 p.write_text(p.read_text().replace("\texecution/skills/forge\t","\texecution/skills/promoted/forge\t"))'
 
-rm -rf evidence/skills execution/skills/nova 2>/dev/null
+echo "== onda 15: vetor de evidencia, amplitude da claim e bijecao com o manifesto =="
+mutante MCAP12 "confinamento declarado como sandbox com agentes de shell" 1 \
+  "$_PY"'r["invariants"]["write_confinement"]="sandbox"
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+mutante MCAP13 "single_writer deixa de ser declarado como escalonamento" 1 \
+  "$_PY"'del r["invariants"]["single_writer_is_scheduling_only"]
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+# MENCAO NAO E EXECUCAO - o achado que abriu a onda 15. `tests/unit/run.sh` cita quatro hooks
+# dentro de um conjunto de classificacao estatica e nunca roda nenhum; creditar E_M por citacao
+# reproduziria, DENTRO do instrumento, o defeito que o instrumento existe para medir.
+mutante MCAP14 "E_M creditado a suite que apenas MENCIONA o hook" 1 \
+  "$_PY"'c["lentes.sh"]["evidence"]["dimensions"]["E_M"]["ref"]="tests/unit/run.sh"
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+mutante MCAP15 "E_M creditado a suite inexistente" 1 \
+  "$_PY"'c["verify-gate.sh"]["evidence"]["dimensions"]["E_M"]["ref"]="tests/unit/nao-existe.sh"
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+mutante MCAP16 "hook instalado sai do registry e some do instrumento" 1 \
+  "$_PY"'del c["read-budget.sh"]
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+mutante MCAP17 "hook registrado com o kind de skill (obrigacao de prova errada)" 1 \
+  "$_PY"'c["read-budget.sh"]["kind"]="skill"
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+
+echo "== onda 15: EvidenceValidity - o dossie tem data de validade =="
+mutante MCAP18 "dossie valido, mas o ARTEFATO mudou depois: STALE, reprova" 1 \
+  "$_PY$_DIG"'
+dossie()
+open("execution/skills/graphify/SKILL.md","a").write("\n<!-- mudanca posterior a avaliacao -->\n")
+c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graphify.json","status":"valid"})'"$_SAVE"
+mutante MCAP19 "dossie 7/7 SEM evaluated_with: nao ha como saber se ainda vale, reprova" 1 \
+  "$_PY$_DIG"'
+import json as _j2
+d={k:{"ok":True} for k in reqs}
+open("evidence/skills/graphify.json","w").write(_j2.dumps(d))
+c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graphify.json","status":"valid"})'"$_SAVE"
+mutante MCAP20 "dossie avaliado sob OUTRA policy: STALE, reprova" 1 \
+  "$_PY$_DIG"'
+dossie({"policy_digest":"0"*64})
+c["graphify"].update(state="promoted",evidence={"dossier":"evidence/skills/graphify.json","status":"valid"})'"$_SAVE"
+
+echo "== onda 15, segunda rodada: as regras que a revisao independente exigiu =="
+# C1 - o `kind` e a chave de entrada na tabela de obrigacoes e mora no objeto governado.
+# Reclassificar para um tipo que deve MENOS derrubava a divida com o portao verde.
+mutante MCAP21 "hook_guidance reclassificado para hook_instrument (deve menos prova)" 1 \
+  "$_PY"'c["lentes.sh"]["kind"]="hook_instrument"
+c["lentes.sh"]["evidence"]["dimensions"]={"E_M":c["lentes.sh"]["evidence"]["dimensions"]["E_M"]}
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+# C2 - "a fonte ja existia na base" nao amarra a fonte ao ARTEFATO: o PR escolhe o caminho.
+mutante MCAP22 "capability nova apontando para fonte preexistente fora da forma do tipo" 1 \
+  "$_PY"'c["intruso"]={"kind":"agent","source":"README.md","state":"candidate",
+  "installed":False,"activation":"delegated",
+  "evidence":{"dossier":None,"status":"absent","dimensions":{k:{"status":"absent"} for k in ("E_M","E_U","E_C","E_S")}}}
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+mutante MCAP23 "duas capabilities compartilhando a mesma fonte" 1 \
+  "$_PY"'c["clone-do-refutador"]=json.loads(json.dumps(c["refutador"]))
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+# C3 - confinamento declarado maior que o medido, com o rotulo `writes` esvaziando a condicao.
+mutante MCAP24 "sandbox declarado depois de esvaziar a condicao via writes: true" 1 \
+  "$_PY"'for a in r["agents"].values(): a["writes"]=True
+r["invariants"]["write_confinement"]="sandbox"
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+# A2 - a policy declarava tres condicoes para `executed_suite` e o portao aplicava duas.
+mutante MCAP25 "E_M creditado a suite que invoca o hook mas nao e executada pelo gerador" 1 \
+  "$_PY"'import pathlib as _pl
+_pl.Path("tests/unit/nao-enumerada.sh").write_text(
+  "#!/usr/bin/env bash\nbash control/hooks/artifact-discipline.sh\n")
+c["artifact-discipline.sh"]["evidence"]["dimensions"]["E_M"]["ref"]="tests/unit/nao-enumerada.sh"
+p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+
+rm -rf evidence/skills execution/skills/nova tests/unit/nao-enumerada.sh 2>/dev/null
 echo
 echo "baseline=ok  mutantes_esperados=$EXPECTED_MUTANTS  mortos=$P  sobreviventes=$F"
 if [ "$F" -eq 0 ] && [ "$P" -eq "$EXPECTED_MUTANTS" ]; then

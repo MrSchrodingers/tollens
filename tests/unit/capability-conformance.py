@@ -58,17 +58,33 @@ sejam validas. E oraculo de conformidade, nao de veracidade experimental.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import subprocess
 from pathlib import Path
 
+try:
+    import yaml
+except ModuleNotFoundError:                                     # pragma: no cover
+    # MESMO PRECEDENTE de evidence/runtime-probes/declared-capabilities.py: sem PyYAML o portao
+    # NAO adivinha o frontmatter - ele se declara NAO VERIFICADO. Parser artesanal de YAML erra
+    # fail-open, e foi assim que C3/A4 nasceram.
+    print("NAO VERIFICADO: pyyaml ausente - o frontmatter dos agentes nao pode ser lido.")
+    raise SystemExit(2)
+
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 ROOT = Path(os.environ.get("TOLLENS_ROOT", DEFAULT_ROOT)).resolve()
 
 registry = json.loads((ROOT / "orchestration/registry.json").read_text(encoding="utf-8"))
 policy = json.loads((ROOT / "orchestration/skill-policy.json").read_text(encoding="utf-8"))
+# ONDA 15. A obrigacao de prova por tipo de capability vive FORA deste arquivo, em
+# `orchestration/evidence-policy.json`. Um portao que carrega o proprio criterio e a
+# forma que a onda 14 acabou de remover: quem edita o portao edita a regra.
+evpolicy = json.loads((ROOT / "orchestration/evidence-policy.json").read_text(encoding="utf-8"))
+OBRIGACOES = evpolicy["proof_obligations"]
+DIMENSOES = set(evpolicy["dimensions"])
 
 checks: list[tuple[bool, str]] = []
 
@@ -138,7 +154,87 @@ def _le_do_git(ref: str):
         r = subprocess.run(["git", "-C", str(ROOT), "show", f"{ref}:{rel}"],
                            capture_output=True, text=True)
         return r.stdout if r.returncode == 0 else None
+    # A REF VIAJA COM O LEITOR. Achado de revisao independente (C5): `_digest_de` declarava
+    # receber o leitor e nunca o usava - lia sempre do disco. Ao avaliar a BASE, o dossie vinha
+    # do blob-base e o digest do artefato vinha do HEAD, entao qualquer PR que tocasse o
+    # componente invalidava os dossies DA BASE, inflando `d_base` e AFROUXANDO a monotonicidade.
+    # Fail-open, na direcao exata que a onda 14 existiu para fechar.
+    leitor.ref = ref
     return leitor
+
+
+def _bytes_do_git(ref: str, rel: str) -> bytes | None:
+    r = subprocess.run(["git", "-C", str(ROOT), "show", f"{ref}:{rel}"], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def _arquivos_do_git(ref: str, rel: str) -> list[str] | None:
+    """Caminhos de arquivo sob `rel` na ref, relativos a `rel`. None se `rel` nao e arvore."""
+    r = subprocess.run(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", f"{ref}:{rel}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    return sorted(l for l in r.stdout.splitlines() if l)
+
+
+def _digest_de(rel: str, leitor) -> str | None:
+    """Digest deterministico de um componente, arquivo ou diretorio, NA ARVORE DO LEITOR.
+
+    Para diretorio, o digest e sobre a lista ORDENADA de (caminho relativo, sha256 do arquivo):
+    ordenar e o que torna o valor reproduzivel entre maquinas, e incluir o caminho e o que faz
+    renomear dentro do diretorio mudar o digest.
+
+    O MESMO ALGORITMO nos dois lados, por exigencia do ADR 0034: comparar predicados diferentes
+    no head e na base produziria diferenca sem significado. Por isso o lado git NAO usa o OID
+    nativo do objeto - ele e content-addressed, mas de outro algoritmo, e um dossie escrito sob
+    um nao validaria sob o outro.
+    """
+    ref = getattr(leitor, "ref", None)
+    if ref is None:
+        caminho = ROOT / rel
+        if caminho.is_file():
+            return hashlib.sha256(caminho.read_bytes()).hexdigest()
+        if caminho.is_dir():
+            h = hashlib.sha256()
+            for f in sorted(x for x in caminho.rglob("*") if x.is_file()):
+                h.update(str(f.relative_to(caminho)).encode())
+                h.update(hashlib.sha256(f.read_bytes()).digest())
+            return h.hexdigest()
+        return None
+    bruto = _bytes_do_git(ref, rel)
+    filhos = _arquivos_do_git(ref, rel)
+    if filhos is None and bruto is not None:
+        return hashlib.sha256(bruto).hexdigest()
+    if filhos is not None:
+        h = hashlib.sha256()
+        for nome in filhos:
+            conteudo = _bytes_do_git(ref, f"{rel}/{nome}")
+            if conteudo is None:
+                return None
+            h.update(nome.encode())
+            h.update(hashlib.sha256(conteudo).digest())
+        return h.hexdigest()
+    return None
+
+
+_POLICIES = ("orchestration/skill-policy.json", "orchestration/evidence-policy.json")
+
+
+def _digest_da_policy(leitor=None) -> str | None:
+    """Digest das policies NA ARVORE DO LEITOR. A policy define o que conta como evidencia; um
+    dossie avaliado sob outra policy nao vale, e isso tem de ser decidido no mesmo lado em que o
+    dossie esta sendo lido."""
+    ref = getattr(leitor, "ref", None) if leitor is not None else None
+    h = hashlib.sha256()
+    for rel in _POLICIES:
+        if ref is None:
+            h.update((ROOT / rel).read_bytes())
+        else:
+            b = _bytes_do_git(ref, rel)
+            if b is None:
+                return None
+            h.update(b)
+    return h.hexdigest()
 
 
 def dossie_valido(cap: dict, leitor=_le_do_disco) -> bool:
@@ -165,7 +261,37 @@ def dossie_valido(cap: dict, leitor=_le_do_disco) -> bool:
     # campo nenhum, e o cabecalho promete verificar que o dossie DECLARA os campos.
     if not isinstance(doc, dict):
         return False
-    return all(r in doc and doc[r] not in (None, "", [], {}) for r in requisitos)
+    if not all(r in doc and doc[r] not in (None, "", [], {}) for r in requisitos):
+        return False
+
+    # EVIDENCEVALIDITY (onda 15). Valid(c, t0) NAO implica Valid(c, t1). Um dossie e o registro
+    # de um experimento PASSADO; quando muda aquilo sobre o que ele concluiu, ele deixa de valer
+    # e passa a STALE. Sem isto, "avaliado uma vez" viraria "avaliado para sempre" - e a forma
+    # temporal do mesmo defeito que este repositorio persegue, porque a garantia seguiria escrita
+    # depois de o fenomeno ter mudado.
+    #
+    # DUAS DEPENDENCIAS SAO CONFERIDAS DE FATO, por digest computado aqui:
+    #   artifact_digest  o proprio componente mudou desde a avaliacao
+    #   policy_digest    a policy que define o que conta como evidencia mudou
+    # DUAS SAO APENAS DECLARADAS, e a distincao esta em evidence-policy.json:
+    #   runtime, model   um portao nao observa de dentro qual modelo executa a sessao. Exigir o
+    #                    campo torna a dependencia VISIVEL no artefato; nao a torna medida.
+    #
+    # NAO SE APLICA A `executed_suite`. Evidencia por suite nao envelhece pelo mesmo motivo:
+    # ela e REPRODUZIDA a cada execucao da CI. Se o componente mudar e a suite continuar
+    # passando, a evidencia continua valida porque acabou de ser produzida de novo. Dossie e
+    # registro; suite e producao. So o registro precisa de data de validade.
+    av = doc.get("evaluated_with")
+    if not isinstance(av, dict):
+        return False
+    if any(k not in av or not av[k] for k in ("runtime", "model")):
+        return False
+    fonte = cap.get("source") or ""
+    if av.get("artifact_digest") != _digest_de(fonte, leitor):
+        return False
+    if av.get("policy_digest") != _digest_da_policy(leitor):
+        return False
+    return True
 
 
 promovidas_sem_prova = [n for n, cap in sorted(caps.items())
@@ -231,20 +357,145 @@ check(em_disco == declaradas_com_fonte,
               f" so no registry: {sorted(declaradas_com_fonte - em_disco)}"))
 
 # ---------------------------------------------------------------------------------------
-print("== CC4. divida de avaliacao: monotonica contra a base, sem teto autodeclarado ==")
-# `quarantine` ENTRA NA CONTAGEM, e a omissao dela era o furo anterior. A policy declara
-# `initial_state: quarantine`: toda capability NASCE nesse estado, e conta-lo fora da divida
-# deixava a porta de entrada inteira fora do mecanismo.
+print("== CC3b. a fonte e amarrada ao tipo, e nenhuma capability compartilha fonte ==")
+# ACHADO DE REVISAO INDEPENDENTE (C2). CC4 admite capability nova cuja FONTE ja existia na base,
+# porque registrar um componente que ja rodava MEDE divida preexistente. A defesa dizia que "a
+# fonte ja existir na base" e um fato que o PR nao pode forjar - e e -, mas o PR escolhe QUAL
+# caminho declarar. Medido pela revisao: uma capability nova com `kind: agent` e
+# `source: "README.md"` entrava com +4 obrigacoes e o portao imprimia PASS pelo nome. Apontar
+# para `execution/agents` (o diretorio, que existe na base) tinha o mesmo efeito e cobria um
+# `.md` criado no proprio PR.
+#
+# A fonte passa a ter de casar com a FORMA canonica do tipo. Isso nao e cosmetico: e o que liga
+# o nome declarado ao artefato real, sem o qual "descoberta" vira porta de entrada.
+FORMA_POR_KIND = {
+    "skill": (re.compile(r"^execution/skills/[^/]+$"), "dir"),
+    "agent": (re.compile(r"^execution/agents/[^/]+\.md$"), "file"),
+    "hook_gate": (re.compile(r"^(control|evidence|execution)/hooks/[^/]+\.sh$"), "file"),
+    "hook_guidance": (re.compile(r"^(control|evidence|execution)/hooks/[^/]+\.sh$"), "file"),
+    "hook_instrument": (re.compile(r"^(control|evidence|execution)/hooks/[^/]+\.sh$"), "file"),
+    "guidance_document": (re.compile(r"^execution/config/[^/]+\.md$"), "file"),
+}
+_forma_ruim = []
+for _n, _c in sorted(caps.items()):
+    _src = _c.get("source")
+    if _src is None:
+        # Tombstone: capability aposentada nao tem fonte, e nao pode estar instalada nem em
+        # divida. As duas condicoes ja sao conferidas em CC1/CC3.
+        if _c.get("state") in {"deprecated", "rejected"} and not _c.get("installed"):
+            continue
+        _forma_ruim.append(f"{_n}: source ausente em estado {_c.get('state')!r}")
+        continue
+    _regra = FORMA_POR_KIND.get(_c.get("kind"))
+    if _regra is None:
+        _forma_ruim.append(f"{_n}: kind {_c.get('kind')!r} sem forma canonica declarada")
+        continue
+    _rx, _tipo = _regra
+    if not _rx.match(_src):
+        _forma_ruim.append(f"{_n}: source {_src!r} fora da forma de {_c.get('kind')}")
+        continue
+    _cam = ROOT / _src
+    if _tipo == "dir" and not _cam.is_dir():
+        _forma_ruim.append(f"{_n}: source {_src!r} deveria ser diretorio")
+    if _tipo == "file" and not _cam.is_file():
+        _forma_ruim.append(f"{_n}: source {_src!r} deveria ser arquivo")
+check(not _forma_ruim, "toda fonte casa com a forma canonica do seu tipo"
+      + ("" if not _forma_ruim else f" - fora de forma: {_forma_ruim}"))
+
+# FONTE UNICA. Duas capabilities apontando para o mesmo artefato passariam na bijecao de CC5
+# (que compara CONJUNTOS) e contariam divida em dobro sobre o mesmo componente - ou, pior,
+# permitiriam registrar uma entrada nova reaproveitando a fonte de outra ja conhecida.
+_fontes = [c["source"] for c in caps.values() if c.get("source")]
+_dup = sorted({s for s in _fontes if _fontes.count(s) > 1})
+check(not _dup, "nenhuma fonte e compartilhada por duas capabilities"
+      + ("" if not _dup else f" - duplicadas: {_dup}"))
+
+print("== CC4. divida de avaliacao: VETOR por dimensao, monotonico contra a base ==")
+# ONDA 15. Ate aqui a divida era um escalar sobre skills: |{skill sem dossie}| = 8. A auditoria
+# externa apontou o limite seguinte, e ele e de MEDIDA, nao de mecanismo: 8 e a divida de UMA
+# classe. Dez agentes e catorze hooks nao entravam na conta, e o numero 18 citado como "divida
+# real" era piso, nao total.
+#
+# Somar tudo num escalar maior seria pior que o escalar anterior. Skill, agente, portao
+# deterministico e guidance sao intervencoes DIFERENTES e nao devem a mesma prova: exigir
+# avaliacao pareada de um portao que bloqueia por exit 2 confunde "melhora o resultado" com "faz
+# o que diz". Dai o vetor (E_M, E_U, E_C, E_S) e a obrigacao por `kind`, ambos declarados em
+# `orchestration/evidence-policy.json` - fora deste arquivo, para que o portao nao carregue o
+# criterio que ele aplica.
+#
+#     divida = { (c, d) : d em obrigacoes(kind(c)) e nao Pago(c, d) }
 _EM_DIVIDA = {"quarantine", "candidate", "promoted"}
 
 
+def _pagas(cap: dict, leitor) -> set:
+    """Dimensoes com evidencia VALIDA para esta capability."""
+    dims = ((cap.get("evidence") or {}).get("dimensions") or {})
+    if not isinstance(dims, dict):
+        return set()
+    out = set()
+    for d, reg in dims.items():
+        if not isinstance(reg, dict) or reg.get("status") != "paid":
+            continue
+        ref = reg.get("ref")
+        if reg.get("by") == "executed_suite":
+            # MENCAO NAO E EXECUCAO. A medicao que abriu esta onda achou quatro hooks citados
+            # pelo NOME dentro de um conjunto de classificacao em `tests/unit/run.sh` - a suite
+            # sabia o nome deles, sabia em que categoria caiam, e nunca rodou nenhum. Exigir que
+            # o texto da suite contenha o CAMINHO da fonte e o que separa citar de exercitar.
+            texto = leitor(ref) if ref else None
+            fonte = cap.get("source") or ""
+            # TERCEIRA CONDICAO (A2): a suite tem de ser ENUMERADA pelo gerador de relatorio.
+            # Sem ela, retirar a linha de `scripts/status.sh` deixava a suite de rodar e nenhum
+            # E_M era rebaixado - evidencia paga por uma suite que ninguem executa e a mesma
+            # forma de "mencao nao e execucao", um nivel acima. A policy declarava tres
+            # condicoes e o portao implementava duas; declarar sem aplicar e o defeito que este
+            # repositorio persegue, e ele estava dentro do portao que o persegue.
+            # DUAS FORMAS DE SER EXECUTADA pelo gerador: estar na lista literal de suites de
+            # unidade, ou cair na varredura `for _mf in tests/mutation/*.sh` que ele faz. Exigir
+            # so a primeira reprovaria arnes de mutacao que o gerador de fato roda.
+            _ger = _le_do_disco("scripts/status.sh") or ""
+            enumerada = bool(ref) and (
+                ref in _ger
+                or (ref.startswith("tests/mutation/") and ref.endswith(".sh")
+                    and "tests/mutation/*.sh" in _ger))
+            if texto is not None and fonte and fonte in texto and enumerada:
+                out.add(d)
+        elif reg.get("by") == "dossier":
+            if dossie_valido(cap, leitor):
+                out.add(d)
+    return out
+
+
 def _divida(registro: dict, leitor) -> set:
-    return {n for n, cap in (registro.get("capabilities") or {}).items()
-            if cap.get("state") in _EM_DIVIDA and not dossie_valido(cap, leitor)}
+    pares = set()
+    for n, cap in (registro.get("capabilities") or {}).items():
+        if cap.get("state") not in _EM_DIVIDA:
+            continue
+        obrigadas = OBRIGACOES.get(cap.get("kind")) or []
+        pagas = _pagas(cap, leitor)
+        pares |= {(n, d) for d in obrigadas if d not in pagas}
+    return pares
 
 
-d_e = sorted(_divida(registry, _le_do_disco))
-print(f"        D_E(head)={len(d_e)} de {len(caps)} capabilities")
+# DECLARAR `paid` E UMA AFIRMACAO, NAO UM ROTULO. Sem este caso, uma dimensao marcada `paid`
+# com `ref` inexistente - ou apontando para uma suite que apenas MENCIONA o componente - seria
+# silenciosamente rebaixada a "nao paga" e apenas engordaria a divida. Isso basta enquanto a
+# capability existe nos dois lados da comparacao, e NAO basta no commit que a DESCOBRE: ali ela
+# esta fora de `_comuns` e a monotonicidade nao a alcanca. Uma capability recem-registrada podia,
+# portanto, nascer com evidencia falsa sem que nada reprovasse. Reprovar a afirmacao FALSA, e nao
+# so deixar de credita-la, e o que fecha essa janela - e e a mesma regra que o repositorio aplica
+# a si mesmo desde a onda 13: claim maior que a observacao e defeito, nao ruido.
+_falsas = sorted(
+    f"{n}:{d}" for n, cap in caps.items()
+    for d, reg in (((cap.get("evidence") or {}).get("dimensions")) or {}).items()
+    if isinstance(reg, dict) and reg.get("status") == "paid" and d not in _pagas(cap, _le_do_disco))
+check(not _falsas, "toda dimensao declarada `paid` tem evidencia que de fato valida"
+      + ("" if not _falsas else f" - declaradas sem lastro: {_falsas}"))
+
+d_head = _divida(registry, _le_do_disco)
+_por_dim = {d: sum(1 for _, dd in d_head if dd == d) for d in sorted(DIMENSOES)}
+print(f"        D_E(head)={len(d_head)} obrigacoes em aberto sobre {len(caps)} capabilities")
+print(f"        por dimensao: {_por_dim}")
 
 # A BASE E O CRITERIO. Sem ela nao ha comparacao, e "nao reprovou" seria indistinguivel de
 # "nao foi medido" - exit 2 = NAO VERIFICADO, a convencao ja usada em tests/unit/concorrencia.sh
@@ -263,21 +514,96 @@ if _bruto_base is None:
     print(f"\nTOTAL={len(checks)} FAIL={sum(not ok for ok, _ in checks)} BASE=ausente")
     raise SystemExit(2)
 
-d_base = _divida(json.loads(_bruto_base), _le_do_git(_base))
-_novos = sorted(set(d_e) - d_base)
+# AUTOTESTE DO PROPRIO MECANISMO DE VALIDADE TEMPORAL. Achado C5 de revisao independente: a
+# primeira versao de `_digest_de` declarava receber o leitor e LIA SEMPRE DO DISCO. Ao avaliar a
+# base, o dossie vinha do blob-base e o digest do artefato vinha do HEAD - fail-open, porque
+# inflava `d_base` e afrouxava a monotonicidade. Nenhum mutante alcancava: MCAP18/19/20 exercitam
+# `dossie_valido` por CC2, que usa o leitor de disco de qualquer forma.
+#
+# O DISCRIMINANTE E O PROPRIO PR. Todo PR muda pelo menos um arquivo contra a base; para esse
+# arquivo, o digest do disco e o da base TEM de diferir. Com o defeito presente eles coincidiam,
+# porque os dois vinham do disco. Quando a arvore e identica a base nao ha o que discriminar, e o
+# caso se declara NAO VERIFICADO em vez de passar vazio.
+_mudados = subprocess.run(["git", "-C", str(ROOT), "diff", "--name-only", _base],
+                          capture_output=True, text=True)
+_cand = [f for f in _mudados.stdout.splitlines()
+         if f and (ROOT / f).is_file() and _digest_de(f, _le_do_git(_base)) is not None]
+if not _cand:
+    print("  NAO VERIFICADO  o digest honra o leitor: arvore identica a base, nada a discriminar")
+else:
+    _f = _cand[0]
+    check(_digest_de(_f, _le_do_disco) != _digest_de(_f, _le_do_git(_base)),
+          f"o digest honra o leitor: disco e base diferem para {_f}")
+    _iguais = [f for f in _cand
+               if _digest_de(f, _le_do_disco) == _digest_de(f, _le_do_git(_base))]
+    check(not _iguais,
+          "nenhum arquivo modificado produz digest identico ao da base"
+          + ("" if not _iguais else f" - suspeitos: {_iguais[:3]}"))
 
-# CONGELAMENTO: havendo divida, capability nova sem dossie e proibida. E a regra que "congelar
-# a expansao" sempre quis dizer, e que nenhuma constante poderia expressar - porque constante
-# mede TAMANHO, e trocar uma divida por outra mantem o tamanho.
-check(not (_novos and d_base),
-      f"nenhuma capability nova entra sem dossie enquanto ha divida (base={len(d_base)})"
-      + ("" if not (_novos and d_base) else f" - novas sem dossie: {_novos}"))
+_reg_base = json.loads(_bruto_base)
+d_base = _divida(_reg_base, _le_do_git(_base))
+_caps_base = set(_reg_base.get("capabilities") or {})
+_novas = set(caps) - _caps_base
 
-# MONOTONICIDADE: a divida nunca cresce. Redundante com a regra acima quando ha divida, e
-# necessaria quando NAO ha - senao o primeiro debito apos a quitacao entraria livre.
-check(len(d_e) <= len(d_base),
-      f"a divida nao cresce contra {_base}: head={len(d_e)} base={len(d_base)}"
-      + ("" if len(d_e) <= len(d_base) else f" - novas: {_novos}"))
+
+def _existe_na_base(rel: str) -> bool:
+    if not rel:
+        return False
+    return subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{_base}:{rel}"],
+                          capture_output=True).returncode == 0
+
+
+# DESCOBERTA NAO E CRIACAO, e a distincao e decidida por um fato que o PR NAO pode forjar: a
+# fonte da capability ja existir na arvore-base. Registrar um hook que ja rodava na maquina do
+# operador MEDE divida preexistente; e o oposto de contrai-la. Esta onda registrou 25
+# componentes de uma vez por esse caminho, e a divida medida saltou de 8 para dezenas - o
+# numero piorou porque a medicao melhorou.
+#
+# CRIACAO continua permitida, com uma condicao unica e forte: a capability nova precisa NASCER
+# COM A DIVIDA ZERADA. Sem essa valvula o portao congelaria o repositorio inteiro, porque um
+# componente novo tambem reprovaria em CC3 se ficasse fora do registry - nao haveria movimento
+# legal algum. Com ela, expandir continua possivel exatamente na forma que este repositorio
+# defende: trazendo a evidencia junto.
+_criadas_com_divida = sorted({n for (n, _) in d_head
+                              if n in _novas and not _existe_na_base((caps[n] or {}).get("source") or "")})
+check(not _criadas_com_divida,
+      "capability de fonte NOVA so entra com a divida zerada (descoberta e permitida, criacao endividada nao)"
+      + ("" if not _criadas_com_divida else f" - criadas endividadas: {_criadas_com_divida}"))
+
+# MONOTONICIDADE sobre o que ja era conhecido nos DOIS lados. Restringir ao comum e o que
+# permite descobrir divida sem que a descoberta seja lida como piora; o que a regra proibe e
+# uma capability ja registrada ficar MAIS endividada do que estava.
+_comuns = set(caps) & _caps_base
+_dh = {(n, d) for (n, d) in d_head if n in _comuns}
+_db = {(n, d) for (n, d) in d_base if n in _comuns}
+# ACHADO DE REVISAO INDEPENDENTE (C1), e e a mesma classe da onda 14 um nivel acima. A tabela
+# de obrigacoes saiu do portao e foi para `orchestration/evidence-policy.json` - correto -, mas
+# a CHAVE de entrada nela, o campo `kind`, continuou dentro de `orchestration/registry.json`,
+# editavel pelo mesmo PR. Medido pela revisao: reclassificar seis `hook_guidance` para
+# `hook_instrument` derruba a divida de 89 para 77 com o portao VERDE, porque a monotonicidade
+# proibe CRESCER e reclassificar ENCOLHE.
+#
+# A regra e de conjunto, nao de igualdade: reclassificar para um tipo MAIS exigente e progresso
+# e continua permitido; reclassificar para um tipo que deve MENOS, nao. Capability nova fica de
+# fora porque nao ha base com que comparar - e quem a limita e CC3b, que amarra a fonte a forma
+# do tipo declarado.
+_rebaixadas = []
+for _n in sorted(set(caps) & _caps_base):
+    _ob_h = set(OBRIGACOES.get(caps[_n].get("kind")) or [])
+    _ob_b = set(OBRIGACOES.get((_reg_base["capabilities"][_n] or {}).get("kind")) or [])
+    if not _ob_h >= _ob_b:
+        _rebaixadas.append(f"{_n}: {(_reg_base['capabilities'][_n] or {}).get('kind')} -> "
+                           f"{caps[_n].get('kind')} perde {sorted(_ob_b - _ob_h)}")
+check(not _rebaixadas,
+      "nenhuma capability e reclassificada para um tipo que deve MENOS prova"
+      + ("" if not _rebaixadas else f" - rebaixadas: {_rebaixadas}"))
+
+_regrediram = sorted(_dh - _db)
+check(not _regrediram,
+      f"nenhuma capability ja conhecida ganha obrigacao nova em aberto (comuns={len(_comuns)})"
+      + ("" if not _regrediram else f" - regressoes: {_regrediram}"))
+check(len(_dh) <= len(_db),
+      f"a divida das ja conhecidas nao cresce contra {_base}: head={len(_dh)} base={len(_db)}")
 
 # ---------------------------------------------------------------------------------------
 print("== CC5. o manifesto reflete o registry (o par que faltava) ==")
@@ -306,6 +632,140 @@ else:
           + ("" if _no_manifesto == _instaladas
              else f" - so no manifesto: {sorted(_no_manifesto - _instaladas)};"
                   f" so no registry: {sorted(_instaladas - _no_manifesto)}"))
+
+    # ONDA 15 - A BIJECAO SOBRE OS QUATRO TIPOS GOVERNADOS, e ela e o que torna a DESCOBERTA de
+    # divida limitada.
+    #
+    # PARCIAL, E O LIMITE E DITO AQUI (achado A3 de revisao independente): dos 49 componentes do
+    # manifesto, 33 sao cobertos (8 skill + 10 agent + 14 hook + 1 config) e 16 NAO sao - os 11
+    # `adapter` e os 5 `doctool`. Para esses dezesseis continua bastando nao registrar para que
+    # nao haja divida a medir. Nao e descuido: adaptador documental e ferramenta de documento sao
+    # intervencoes de outra natureza (nao injetam instrucao no contexto nem bloqueiam acao), e a
+    # obrigacao de prova delas nao foi modelada. Enquanto nao for, a frase honesta e "o
+    # inventario GOVERNADO e fechado", nao "o inventario instalado e fechado". CC4 admite capability nova cuja fonte ja existia na base, porque registrar um
+    # hook que ja rodava MEDE divida preexistente em vez de contrai-la. Isso so e seguro se for
+    # impossivel um componente instalado ficar FORA do registry: sem esta checagem, bastaria
+    # nao registrar para que a divida sumisse do instrumento. Com ela, o inventario instalado e
+    # o inventario governado sao o mesmo conjunto, verificado por fonte.
+    _TIPO_MANIFESTO = {"skill": "skill", "agent": "agent", "guidance_document": "config",
+                       "hook_gate": "hook", "hook_guidance": "hook", "hook_instrument": "hook"}
+    _linhas = [l for l in _lock.read_text(encoding="utf-8").splitlines()
+               if l and not l.startswith("#") and len(l.split("\t")) >= 3]
+    _fontes_manifesto = {l.split("\t")[1] for l in _linhas
+                         if l.split("\t")[0] in {"skill", "agent", "hook", "config"}}
+    _fontes_registry = {cap["source"] for cap in caps.values()
+                        if cap.get("installed") and cap.get("kind") in _TIPO_MANIFESTO}
+    check(_fontes_manifesto == _fontes_registry,
+          f"skill/agente/hook do manifesto == instalados no registry, por FONTE "
+          f"(manifesto={len(_fontes_manifesto)} registry={len(_fontes_registry)})"
+          + ("" if _fontes_manifesto == _fontes_registry
+             else f" - so no manifesto: {sorted(_fontes_manifesto - _fontes_registry)};"
+                  f" so no registry: {sorted(_fontes_registry - _fontes_manifesto)}"))
+
+    # E o tipo declarado no registry tem de casar com o tipo do manifesto: registrar um hook
+    # como `skill` passaria pela checagem de conjunto acima e mentiria sobre a obrigacao de
+    # prova, que e por `kind`.
+    _tipo_manifesto = {l.split("\t")[1]: l.split("\t")[0] for l in _linhas}
+    _tipo_divergente = sorted(
+        f"{cap['source']}: registry={cap['kind']} manifesto={_tipo_manifesto.get(cap['source'])}"
+        for cap in caps.values()
+        if cap.get("installed") and cap.get("kind") in _TIPO_MANIFESTO
+        and _tipo_manifesto.get(cap["source"]) != _TIPO_MANIFESTO[cap["kind"]])
+    check(not _tipo_divergente, "o `kind` do registry casa com o tipo do manifesto"
+          + ("" if not _tipo_divergente else f" - divergentes: {_tipo_divergente}"))
+
+# ---------------------------------------------------------------------------------------
+print("== CC6. amplitude da claim: o registry nao pode declarar confinamento que nao tem ==")
+# ONDA 15, achado de auditoria externa. `orchestration/registry.json` declara
+# `invariants.single_writer: true` e marca oito agentes com `writes: false`. As duas coisas sao
+# lidas como propriedade de ISOLAMENTO - "estes agentes nao escrevem" - e nenhuma das duas e
+# isso. Medido: os DEZ agentes recebem `Bash`. Um agente sem `Write`/`Edit` continua podendo
+# `sed -i`, `rm`, `git apply`, `python3 -c 'open(...,"w")'`.
+#
+#     writes=false  NAO IMPLICA  ausencia de capacidade de escrita
+#
+# O que `writes: false` de fato expressa e PAPEL: o agente nao recebe ferramenta de escrita e
+# nao tem mandato para editar. O que `single_writer` de fato expressa e ESCALONAMENTO: o
+# validador de `orchestration/schedule.py` recusa configuracao com dois nos de escrita
+# concorrentes. Nenhum dos dois e sandbox, mount namespace ou worktree read-only.
+#
+# Esta e a mesma classe do `--dry-run` da onda 13b - claim mais ampla que a observacao - e a
+# correcao e a mesma: nao estreitar a prosa e sim tornar a amplitude VERIFICAVEL. O registry
+# passa a declarar `write_confinement`, e este portao exige que a declaracao case com o fato
+# medido no frontmatter dos agentes.
+_invar = registry.get("invariants") or {}
+_conf = _invar.get("write_confinement")
+check(_conf in {"none", "tool_grant", "sandbox"},
+      f"invariants.write_confinement declarado e valido (medido: {_conf!r})")
+
+
+def _tools_do_agente(rel: str, leitor=_le_do_disco):
+    """Ferramentas do frontmatter do agente. `None` quando o campo `tools:` esta AUSENTE, que
+    nao e o mesmo que vazio: pela doc primaria da Anthropic, subagente sem `tools:` HERDA todAS
+    as ferramentas - a concessao maxima. Confundir os dois e errar para menos shell, isto e,
+    para menos confinamento aparentemente exigido.
+
+    ACHADO DE REVISAO INDEPENDENTE (A4). A primeira versao lia o frontmatter com parser
+    artesanal e errava CINCO formas de YAML valido - lista em bloco, lista em flow, escalar
+    entre aspas, comentario no fim da linha e `tools:` omitido -, TODAS na direcao fail-open.
+    E o repositorio ja sabia disso: `evidence/runtime-probes/declared-capabilities.py` usa
+    PyYAML e RECUSA rodar sem ele em vez de adivinhar. O portao novo adivinhava, e adivinhava
+    ao contrario.
+    """
+    texto = leitor(rel)
+    if not texto:
+        return None
+    partes = texto.split("---")
+    if len(partes) < 3:
+        return None
+    fm = yaml.safe_load(partes[1]) or {}
+    if not isinstance(fm, dict) or "tools" not in fm:
+        return None
+    bruto = fm["tools"]
+    if isinstance(bruto, str):
+        return {x.strip() for x in bruto.split(",") if x.strip()}
+    if isinstance(bruto, list):
+        return {str(x).strip() for x in bruto if str(x).strip()}
+    return set()
+
+
+_SHELL = {"Bash", "BashOutput", "KillShell"}
+# CONFINAMENTO SE DECIDE PELA CAPACIDADE MEDIDA, NAO PELO ROTULO `writes`. Achado de revisao
+# independente (C3): a versao anterior so exigia `write_confinement: none` quando havia agente
+# `writes: false` COM shell. Marcar os dez agentes como `writes: true` esvaziava a condicao e
+# `write_confinement: "sandbox"` passava - a claim exata que esta secao existe para impedir. E a
+# clausula de antivacuidade imprimia `PASS ha agentes writes:false a conferir (com shell: 0)`,
+# um rotulo afirmando o que a propria contagem negava.
+#
+# A pergunta certa nao e "quem declarou nao escrever", e "existe ator com shell". Se existe,
+# nao ha confinamento a declarar, seja qual for o rotulo.
+_com_shell = []
+_sem_tools = []
+for _n, _a in sorted((registry.get("agents") or {}).items()):
+    _tools = _tools_do_agente(_a.get("source", ""))
+    if _tools is None:
+        _sem_tools.append(_n)      # herda tudo: inclui shell
+        _com_shell.append(_n)
+    elif _tools & _SHELL:
+        _com_shell.append(_n)
+
+# ANTIVACUIDADE REAL: o universo tem de existir e ter sido LIDO. A versao anterior se satisfazia
+# com um disjunto vazio.
+check(len(registry.get("agents") or {}) >= 5,
+      f"ha agentes a conferir (medido: {len(registry.get('agents') or {})})")
+check(len(_com_shell) > 0,
+      f"a leitura do frontmatter produziu resultado: {len(_com_shell)} de "
+      f"{len(registry.get('agents') or {})} agentes tem shell"
+      + (f" ({len(_sem_tools)} sem `tools:`, herdando tudo)" if _sem_tools else ""))
+
+check(not _com_shell or _conf == "none",
+      "havendo QUALQUER ator com shell, o confinamento declarado tem de ser `none`"
+      + ("" if not _com_shell or _conf == "none"
+         else f" - declarado {_conf!r} com {len(_com_shell)} agentes de shell: {_com_shell}"))
+
+check(isinstance(_invar.get("single_writer_is_scheduling_only"), bool)
+      and _invar.get("single_writer_is_scheduling_only") is True,
+      "`single_writer` declarado explicitamente como propriedade de ESCALONAMENTO, nao de isolamento")
 
 # ANTIVACUIDADE. Sem capabilities, todos os casos acima passariam vazios - e um portao que
 # aprova o conjunto vazio nao distingue "conforme" de "nao ha o que conferir". Este

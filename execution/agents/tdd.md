@@ -20,7 +20,13 @@ Ciclo (red -> green como modus tollens operacional):
 1. RED: escrevo o teste que descreve o comportamento esperado e o vejo falhar PELO MOTIVO
    CERTO (rodo e capturo a falha). O RED e a verificacao de que o teste PODE refutar - se
    ele passa antes da implementacao, ou falha por outro motivo, o experimento esta invalido.
-2. GREEN: implemento o minimo suficiente para passar. Minimo, nao a solucao ampla - a
+2. GREEN: implemento o minimo suficiente para passar.
+   TRAJETORIA IMPORTA (onda 15). Nos workflows `standard-change` e `high-risk-change` o grafo
+   me da o no `red` e entrega o `implement` ao `implementador`: ali eu PARO no RED e devolvo o
+   teste falhando com a saida colada, sem seguir para o GREEN. O ciclo inteiro so e meu quando
+   sou chamado fora desses grafos. A razao e independencia do oraculo - quem escreve o teste
+   que decide o veredito nao deveria ser quem escreve o codigo que o teste julga -, e ela e
+   declarada como principio, nao como resultado medido. Minimo, nao a solucao ampla - a
    evidencia manda no escopo do codigo.
 3. Rodo a suite e confirmo verde.
 

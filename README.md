@@ -226,7 +226,7 @@ The separation prevents a common category error: the mechanism that **produces**
 
 `orchestration/registry.json` defines the current architecture and critical invariants:
 
-- single writer;
+- single writer **in scheduling** — `single_writer_is_scheduling_only: true`. Not confinement: `write_confinement: "none"`, because all ten agents receive `Bash`, so an agent without `Write`/`Edit` can still `sed -i`, `rm`, `git apply`. `writes: false` expresses MANDATE, not absence of write capability, and `tests/unit/capability-conformance.py` rejects a registry declaring more confinement than measured;
 - independent review;
 - author cannot certify their own change;
 - bounded read-only parallelism;
@@ -378,7 +378,9 @@ For every parallel group `G`:
 
 This reduces race conditions, conflicting patches, and ambiguity about authorship of the active workspace.
 
-`orchestration/schedule.py` formalizes when two nodes of a workflow graph may legally share a parallel group: no dependency edge between them, direct or transitive; disjoint write sets; and, for a shared checkout, at most one of the two holding the suite lock (worktree-isolated nodes are exempt from that last constraint, since they do not compete for the same lock file). The check is a configuration validator, not an audit of parallelism actually observed in production: every current writing node declares a write set covering all paths, and every read-only node declares an empty one, so the write-set-disjointness clause never has to compare two non-empty sets on the workflows this repository ships today. It becomes load-bearing the day a writing node narrows its declared scope.
+`orchestration/schedule.py` formalizes when two nodes of a workflow graph may legally share a parallel group: no dependency edge between them, direct or transitive; disjoint write sets; and, for a shared checkout, at most one of the two holding the suite lock (worktree-isolated nodes are exempt from that last constraint, since they do not compete for the same lock file). The check is a configuration validator, not an audit of parallelism actually observed in production. Until wave 15 every writing node declared a write set covering all paths, and the disjointness clause never had to compare two non-empty sets. The `red` node now declares `tests/**` — the first real scope — and the clause remains inert on real data because `red` and `implement` have a dependency between them and the precedence check decides first.
+
+None of this is confinement. The `single_writer` invariant is about **scheduling** — the registry declares it as `single_writer_is_scheduling_only: true` — and an agent's `writes: false` expresses **mandate**, not absence of write capability: all ten agents receive `Bash`, so an agent without `Write`/`Edit` can still `sed -i`, `rm`, `git apply`. The registry declares `write_confinement: "none"`, and `tests/unit/capability-conformance.py` rejects any confinement claim larger than what was measured.
 
 A representative `standard-change` instance, annotated with write sets:
 
@@ -390,6 +392,7 @@ flowchart LR
     end
     RO1 --> RED["tdd: RED state<br/>writes: tests/"]
     RED --> IMPL["implementador<br/>writes: all paths"]
+    RED -.->|"oracle separated from author:<br/>whoever writes the test does not write the code it judges"| IMPL
     IMPL --> RUN["execute tests<br/>writes: empty"]
     subgraph RO2["parallel group: read-only, writes = empty set"]
         REV["revisor-codigo"]

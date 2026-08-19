@@ -121,19 +121,30 @@ if bloco not in s:
 s = s.replace(bloco, "", 1)
 # dois `chk` removidos - a copia precisa continuar se autovalidando (EXPECTED) para que o
 # oraculo de "suite falhou" de evidence/cobertura.sh nao mascare o resultado que queremos medir.
-s = s.replace("EXPECTED=29", "EXPECTED=27", 1)
+#
+# A SUBSTITUICAO FALHA ALTO. Ate a onda 15 isto era um `str.replace` mudo: quando
+# `tests/unit/schedule.sh` ganhou os casos F16-F18 e a linha virou `EXPECTED=34`, o replace
+# deixou de casar, nao reclamou, e a copia ficou exigindo 34 acertos com 32 casos. Sete
+# assercoes desta suite cairam em cascata e o diagnostico apontava para o mecanismo de
+# cobertura, nao para a ancora perdida. Ancora que nao casa e defeito, nao no-op.
+import re
+m = re.search(r"^EXPECTED=(\d+)", s, re.M)
+if not m:
+    print("EXPECTED_NAO_ENCONTRADO", file=sys.stderr)
+    sys.exit(1)
+s = s[:m.start()] + f"EXPECTED={int(m.group(1)) - 2}" + s[m.end():]
 open(p, "w", encoding="utf-8").write(s)
 PY
 chk "bloco F12 removido da copia" $? 0
 
 echo
 echo "== CB3. cobertura MEDIDA cai na copia mutada =="
-# controle: a copia mutada ainda precisa se autovalidar (PASS=27/27) - senao o proximo --check
+# controle: a copia mutada ainda precisa se autovalidar (dois casos a menos) - senao o --check
 # reprovaria por SUITE QUEBRADA (NOT_VERIFIED, exit 2), nao pelo piso, e o caso deixaria de ser
 # atribuivel ao mecanismo de cobertura.
 bash "$SCRATCH/tests/unit/schedule.sh" >"$SCRATCH/copia-mutada.log" 2>&1
 RC_SUITE_MUTADA=$?
-chk "copia mutada ainda se autovalida (PASS=27/27, exit 0)" "$RC_SUITE_MUTADA" 0
+chk "copia mutada ainda se autovalida (dois casos a menos, exit 0)" "$RC_SUITE_MUTADA" 0
 BASE2="$(medido)"
 [ -n "$BASE2" ] && python3 -c "import sys; sys.exit(0 if float('$BASE2') < float('$BASE') else 1)"
 chk "medido caiu apos remover F12 (antes=$BASE depois=$BASE2)" $? 0
@@ -240,10 +251,17 @@ python3 - "$SCRATCH2/evidence/cobertura.sh" "$FALTAS" <<'PY'
 import sys
 p, faltas = sys.argv[1], sys.argv[2]
 s = open(p, encoding="utf-8").read()
-ancora = "orchestration/schedule.py|ramo|388->-1|heranca-piso-absoluto-2026-08-11\nEOF"
-if ancora not in s:
+# ANCORA NO FIM DO HEREDOC, NAO NUMA LINHA DE ISENCAO. Ate a onda 15 isto casava a ULTIMA
+# entrada literal da lista (`...|ramo|388->-1|...`), e a lista e por numero de linha: quando
+# `orchestration/schedule.py` ganhou o bloco de separacao de oraculo, todos os numeros
+# deslocaram, a ancora sumiu e os dois casos CB-ABS2 reprovaram apontando para o mecanismo de
+# cobertura em vez de para a ancora. Ancorar no delimitador do heredoc nao desloca.
+import re as _re
+m = _re.search(r"(ISENCOES=\"?\$\{COBERTURA_ISENCOES:-\$\(cat <<'EOF'\n.*?\n)EOF\n", s, _re.S)
+if not m:
     print("ANCORA_ISENCOES_AUSENTE", file=sys.stderr)
     sys.exit(1)
+ancora = m.group(0)
 novas = []
 for item in faltas.split(", "):
     if item.startswith("linha "):
@@ -253,8 +271,7 @@ for item in faltas.split(", "):
     else:
         print(f"ITEM_INESPERADO {item!r}", file=sys.stderr)
         sys.exit(1)
-substituto = ("orchestration/schedule.py|ramo|388->-1|heranca-piso-absoluto-2026-08-11\n"
-              + "\n".join(novas) + "\nEOF")
+substituto = m.group(1) + "\n".join(novas) + "\nEOF\n"
 s = s.replace(ancora, substituto, 1)
 open(p, "w", encoding="utf-8").write(s)
 PY

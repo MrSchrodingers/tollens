@@ -34,6 +34,7 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/schedule.sh tests/unit/fronteira-viva.sh tests/unit/literatura.sh \
            tests/unit/capabilities.sh tests/unit/cobertura.sh \
            tests/unit/contrato-de-instalador.sh \
+           tests/unit/hooks-de-guarda.sh \
            tests/unit/capability-conformance.py \
            tests/unit/run.sh; do
     roda_suite "$t" >/dev/null 2>&1; rc=$?
