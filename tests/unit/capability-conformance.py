@@ -27,16 +27,30 @@ O QUE MUDOU NA ONDA 13, e o que este arquivo passa a exigir:
   - `state` e `installed` sao INDEPENDENTES, porque colapsa-los tornava a reclassificacao
     epistemologica uma desinstalacao (medido: 49 -> 41 componentes, 0 skills);
   - `promoted` sem dossie valido REPROVA;
-  - a divida de avaliacao vira numero com teto.
+  - a divida de avaliacao vira grandeza medida, e nao mais prosa.
 
-DIVIDA DE AVALIACAO (D_E), e ela e o mecanismo que faltava para "congelar a expansao":
+DIVIDA DE AVALIACAO (D_E), o mecanismo que faltava para "congelar a expansao":
 
-    D_E = |{ c : state(c) in {candidate, promoted} and not Valid(dossier(c)) }|
+    D_E = { c : state(c) in {quarantine, candidate, promoted} and not Valid(dossier(c)) }
 
-Congelar expansao por prosa e norma sem portao - exatamente o defeito que este repositorio
-persegue. Com D_E e um teto, admitir capability nova exige antes pagar dossie de outra. O teto
-inicial e o valor corrente, o que congela sem exigir quitar a divida inteira de uma vez; cada
-dossie fechado o abaixa.
+ONDA 14 - O TETO FOI REMOVIDO, e o motivo importa mais que o mecanismo. A onda 13 comparava
+`|D_E| <= D_MAX` com `D_MAX` literal NESTE arquivo, isto e, DENTRO do objeto governado. Duas
+fugas foram medidas por auditoria externa e reproduzidas aqui antes de serem aceitas: o mesmo
+PR podia adicionar capability e escrever `D_MAX = 9`; e pagar um dossie liberava vaga (8 -> 7)
+para outra divida entrar (7 -> 8) sem que nada reprovasse. Teto autodeclarado dentro do que ele
+governa e `PolicyDeclared`, nao `PolicyEnforced` - a classe que a onda 13 fechou um nivel
+abaixo, cometida um nivel acima pela propria correcao.
+
+A fronteira e agora RELACIONAL, contra o SHA-base:
+
+    D_E(head) SUBCONJUNTO DE D_E(base)      e      |D_E(head)| <= |D_E(base)|
+
+Um PR nao pode editar o proprio criterio, porque o criterio e o estado anterior do repositorio.
+As duas regras sao necessarias: a de subconjunto pega a troca de uma divida por outra (que
+mantem o TAMANHO), e a de nao-crescimento e o que impede o primeiro debito de entrar livre
+depois que a divida chega a zero - conjunto vazio nao tem subconjunto proprio a violar. Sem ref
+de base o portao sai 2 (NAO VERIFICADO): "nao reprovou" nao pode ser indistinguivel de "nao foi
+medido". Ver ADR 0034.
 
 LIMITE DECLARADO: este portao verifica que o dossie EXISTE e declara os campos exigidos. Nao
 verifica que o experimento descrito nele tenha sido de fato executado, nem que suas conclusoes
@@ -47,6 +61,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
@@ -71,10 +86,26 @@ estados_policy = set(policy["lifecycle"]["states"])
 requisitos = list(policy["lifecycle"]["promotion_requires"])
 CAMPOS = ("kind", "source", "state", "installed", "activation", "evidence")
 
-# TETO DA DIVIDA DE AVALIACAO. Ver cabecalho. Abaixar quando um dossie for fechado; NUNCA
-# levantar para acomodar capability nova - levantar o teto e a forma de fingir que a divida
-# nao existe, e o numero perde a funcao que justifica sua existencia.
-D_MAX = 8
+# ONDA 14. O TETO CONSTANTE FOI REMOVIDO, e a razao e que ele nao era fronteira.
+#
+# `D_MAX = 8` era numero literal NESTE arquivo, isto e, dentro do objeto governado. Auditoria
+# externa mediu as duas fugas, e ambas passavam pela assercao de divida:
+#
+#   1. o MESMO PR que adiciona capability sem dossie pode escrever `D_MAX = 9`
+#      -> "PASS divida de avaliacao D_E=9 nao excede o teto D_MAX=9"
+#   2. dossie pago derruba D_E de 8 para 7, o teto continua 8, e abre uma VAGA:
+#      adicionar capability nova sem dossie devolve D_E a 8 -> "PASS 8 <= 8"
+#
+# O cabecalho proibia levantar o teto por escrito. Proibicao em prosa dentro do arquivo que o
+# PR edita e `PolicyDeclared`, nao `PolicyEnforced` - exatamente a classe que a onda 13 fechou
+# um nivel abaixo, cometida um nivel acima pela propria correcao.
+#
+# A fronteira agora e RELACIONAL, medida contra o SHA-base e nao contra uma constante:
+#
+#     divida(head) SUBCONJUNTO DE divida(base)      e      |divida(head)| <= |divida(base)|
+#
+# Um PR nao pode editar o proprio criterio, porque o criterio e o estado anterior do
+# repositorio. Levantar teto deixa de ser possivel: nao ha teto.
 
 # ---------------------------------------------------------------------------------------
 print("== CC1. forma: toda capability declara os campos do schema ==")
@@ -97,18 +128,31 @@ check(not evid_ruim, "todo bloco `evidence` declara `status` e `dossier`"
 print("== CC2. a proposicao que faltava: promoted exige dossie valido ==")
 
 
-def dossie_valido(cap: dict) -> bool:
+def _le_do_disco(rel: str):
+    caminho = ROOT / rel
+    return caminho.read_text(encoding="utf-8") if caminho.is_file() else None
+
+
+def _le_do_git(ref: str):
+    def leitor(rel: str):
+        r = subprocess.run(["git", "-C", str(ROOT), "show", f"{ref}:{rel}"],
+                           capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else None
+    return leitor
+
+
+def dossie_valido(cap: dict, leitor=_le_do_disco) -> bool:
     ev = cap.get("evidence") or {}
     if ev.get("status") != "valid":
         return False
     d = ev.get("dossier")
     if not d:
         return False
-    caminho = ROOT / d
-    if not caminho.is_file():
+    bruto = leitor(d)
+    if bruto is None:
         return False
     try:
-        doc = json.loads(caminho.read_text(encoding="utf-8"))
+        doc = json.loads(bruto)
     except Exception:
         return False
     # O dossie tem de cobrir os SETE requisitos que a propria policy declara. Aceitar um
@@ -187,20 +231,53 @@ check(em_disco == declaradas_com_fonte,
               f" so no registry: {sorted(declaradas_com_fonte - em_disco)}"))
 
 # ---------------------------------------------------------------------------------------
-print("== CC4. divida de avaliacao com teto ==")
-# `quarantine` ENTRA NA CONTAGEM, e a omissao dela era o furo. A policy declara
-# `initial_state: quarantine`: toda capability NASCE nesse estado. Contar so
-# {candidate, promoted} deixava a porta de entrada inteira fora do teto - capability nova
-# em `quarantine` + `installed: true` passava, medido pelo portao final (rc=0, D_E=8 de 10).
-# Ninguem precisava levantar o teto; bastava usar o estado default. A proibicao do cabecalho
-# ("nunca levantar D_MAX") foi escrita contra o ataque errado.
+print("== CC4. divida de avaliacao: monotonica contra a base, sem teto autodeclarado ==")
+# `quarantine` ENTRA NA CONTAGEM, e a omissao dela era o furo anterior. A policy declara
+# `initial_state: quarantine`: toda capability NASCE nesse estado, e conta-lo fora da divida
+# deixava a porta de entrada inteira fora do mecanismo.
 _EM_DIVIDA = {"quarantine", "candidate", "promoted"}
-d_e = sorted(n for n, cap in caps.items()
-             if cap.get("state") in _EM_DIVIDA and not dossie_valido(cap))
-check(len(d_e) <= D_MAX,
-      f"divida de avaliacao D_E={len(d_e)} nao excede o teto D_MAX={D_MAX}"
-      + ("" if len(d_e) <= D_MAX else f" - sem dossie: {d_e}"))
-print(f"        D_E={len(d_e)} de {len(caps)} capabilities; teto={D_MAX}")
+
+
+def _divida(registro: dict, leitor) -> set:
+    return {n for n, cap in (registro.get("capabilities") or {}).items()
+            if cap.get("state") in _EM_DIVIDA and not dossie_valido(cap, leitor)}
+
+
+d_e = sorted(_divida(registry, _le_do_disco))
+print(f"        D_E(head)={len(d_e)} de {len(caps)} capabilities")
+
+# A BASE E O CRITERIO. Sem ela nao ha comparacao, e "nao reprovou" seria indistinguivel de
+# "nao foi medido" - exit 2 = NAO VERIFICADO, a convencao ja usada em tests/unit/concorrencia.sh
+# quando o oraculo nao existe no ambiente.
+_base = None
+for _ref in ("origin/main", "main"):
+    if subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--verify", _ref],
+                      capture_output=True).returncode == 0:
+        _base = _ref
+        break
+
+_bruto_base = _le_do_git(_base)("orchestration/registry.json") if _base else None
+if _bruto_base is None:
+    print("  NAO VERIFICADO: sem ref de base (origin/main ou main). A divida so pode ser")
+    print("                  julgada contra o estado anterior, e ele nao esta disponivel.")
+    print(f"\nTOTAL={len(checks)} FAIL={sum(not ok for ok, _ in checks)} BASE=ausente")
+    raise SystemExit(2)
+
+d_base = _divida(json.loads(_bruto_base), _le_do_git(_base))
+_novos = sorted(set(d_e) - d_base)
+
+# CONGELAMENTO: havendo divida, capability nova sem dossie e proibida. E a regra que "congelar
+# a expansao" sempre quis dizer, e que nenhuma constante poderia expressar - porque constante
+# mede TAMANHO, e trocar uma divida por outra mantem o tamanho.
+check(not (_novos and d_base),
+      f"nenhuma capability nova entra sem dossie enquanto ha divida (base={len(d_base)})"
+      + ("" if not (_novos and d_base) else f" - novas sem dossie: {_novos}"))
+
+# MONOTONICIDADE: a divida nunca cresce. Redundante com a regra acima quando ha divida, e
+# necessaria quando NAO ha - senao o primeiro debito apos a quitacao entraria livre.
+check(len(d_e) <= len(d_base),
+      f"a divida nao cresce contra {_base}: head={len(d_e)} base={len(d_base)}"
+      + ("" if len(d_e) <= len(d_base) else f" - novas: {_novos}"))
 
 # ---------------------------------------------------------------------------------------
 print("== CC5. o manifesto reflete o registry (o par que faltava) ==")
