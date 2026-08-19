@@ -169,6 +169,7 @@ Do log real do run 32192196023 (PR #22):
 
 ```
 run 32192196023 (bom)     verify-pr total 21m50s;  apt 53s  (4%)
+run 32292789516 (lento)   verify-pr total 41m1s - o dobro, mesmo codigo
 run 32290684256 (ruim)    apt-get install bateu o `timeout 300`; o `update` seguinte estourou
                           o teto de 12min do passo e MATOU o job
 ```
@@ -294,6 +295,66 @@ Duas armadilhas de shell foram pagas no caminho e ficam registradas porque nenhu
 da correcao matava o hook em todo conteudo limpo); e `VAR=x funcao` no bash define a variavel
 para a funcao sem exporta-la ao `bash` filho que ela lanca - o caso AD9 passava sem nunca
 exercitar `LC_ALL=C`, e foi o mutante que denunciou.
+
+## A terceira rodada: o portao final derrubou a propria correcao
+
+A versao anterior foi ao `refutador` com os cinco criticos ja fechados. Veredito: **NAO
+MERGEAR**, com tres achados, dois deles reproduzidos com codigo de saida. Os dois primeiros sao,
+outra vez, a familia que esta onda persegue - e o primeiro e a **terceira recorrencia
+consecutiva**.
+
+**F1 - o criterio saiu do portao e continuou editavel pelo PR.** A tabela de obrigacoes foi para
+`evidence-policy.json`, fora do portao, e o ADR celebrou isso: *"A policy vive FORA do portao. Um
+portao que carrega o proprio criterio e a forma que o ADR 0034 acabou de remover."* A frase
+estava errada. O portao carregava a tabela do DISCO e a usava para julgar os DOIS lados:
+
+```
+$ # em copia, com proof_obligations esvaziado no mesmo PR
+D_E(head)=0 obrigacoes em aberto sobre 34 capabilities
+PASS  a divida das ja conhecidas nao cresce contra origin/main: head=0 base=0
+TOTAL=30 FAIL=0
+```
+
+Mover o arquivo nao removeu a forma - trocou o nome da constante. `D_MAX` (onda 14), `kind`
+(segunda rodada), `proof_obligations` (agora): tres vezes o mesmo insumo vindo do lado que o PR
+controla. Fechado pela mesma regra da onda 14, aplicada um nivel acima: **o criterio do lado BASE
+vem da ARVORE BASE**, mais a regra simetrica `obrigacoes_head[kind] SUPERSET obrigacoes_base[kind]`.
+Medido depois do fix, com base sintetica igual ao head: o mesmo ataque sai `TOTAL=31 FAIL=2`.
+
+**F2 - o C5 sobreviveu na funcao vizinha.** A correcao do "leitor ignorado" foi aplicada em
+`_digest_de` e nao em `_pagas`, na condicao que a propria segunda rodada tinha acabado de
+acrescentar:
+
+```python
+_ger = _le_do_disco("scripts/status.sh") or ""     # ignora o leitor
+```
+
+Medido com base==head: retirar a enumeracao de uma suite fazia a divida subir de 89 para 102
+**enquanto o portao imprimia "nao cresce"**. Segunda reincidencia de "leitor ignorado" no mesmo
+arquivo, e ela quebra a monotonicidade, que e a garantia-titulo da onda 14.
+
+**F3 - claim publicada falsa.** `docs/status.generated.md` afirmava "passo dedicado no CI" para
+TODO arnes de mutacao, e para os dois desta onda nao havia passo algum: 43 mutantes rodavam so na
+estacao do autor. O rotulo era literal, impresso sem conferir. Duas correcoes: os dois arneses
+ganharam passo dedicado - custo medido ANTES de decidir, 37s e 42s, o que torna "executar" mais
+barato que "explicar" -, e o rotulo passou a ser COMPUTADO contra o workflow, para que nao possa
+voltar a mentir sem que alguem o veja.
+
+**O limite que o fix de F1 NAO cobre, e ele e deste commit.** A regra compara a tabela do head
+com a da base, e neste commit a base nao TEM tabela - `evidence-policy.json` nasce aqui. O portao
+imprime `bootstrap: ... a tabela do head julga os dois lados NESTE commit`. A excecao e limitada
+por um fato que o PR nao pode forjar (a ausencia do arquivo na arvore anterior) e vale uma unica
+vez; do proximo commit em diante `MCAP26` e `MCAP27` cobrem os dois caminhos. Registrar isso e
+obrigatorio: seria facil publicar "F1 fechado" e omitir que, no commit que fecha, ele ainda esta
+aberto.
+
+E o que o portao final NAO conseguiu derrubar, tentando: a valvula de criacao (enumerou a arvore
+da base e nao achou fonte nao registrada casando as formas canonicas), o portao de emoji, a
+amplitude de `writes: false`, a separacao de oraculo, o autoteste do C5, e a reancoragem das
+isencoes de cobertura - esta ultima com a ressalva de que a justificativa do autor ("contagem
+identica prova deslocamento") e INSUFICIENTE, N adicionados e N removidos dariam o mesmo numero;
+a propriedade se sustenta por outra evidencia, o deslocamento uniforme +5/+48 batendo com os
+hunk headers do diff.
 
 ## Limites, declarados
 

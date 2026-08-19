@@ -169,6 +169,15 @@ jobs:
         run: bash tests/mutation/schedule.sh
       - name: validacao por mutacao (fronteira viva)
         run: bash tests/mutation/fronteira-viva.sh
+      # ONDA 15, achado do portao final (F3). `docs/status.generated.md` publicava "passo
+      # dedicado no CI" para TODO arnes de `tests/mutation/`, e para estes dois nao havia passo
+      # algum: 43 mutantes rodavam so na estacao do autor enquanto o artefato afirmava o
+      # contrario. Custo medido antes de decidir - 37s e 42s -, entao a saida certa e executar,
+      # nao ajustar o rotulo.
+      - name: validacao por mutacao (conformidade de capability)
+        run: bash tests/mutation/capability-conformance.sh
+      - name: validacao por mutacao (hooks de guarda)
+        run: bash tests/mutation/hooks-de-guarda.sh
       - name: validacao por mutacao (camada de literatura)
         run: bash tests/mutation/literatura.sh
       - name: validacao por mutacao (claim ledger)

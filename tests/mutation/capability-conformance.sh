@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=25
+P=0; F=0; EXPECTED_MUTANTS=27
 REG="orchestration/registry.json"
 LOCK="install/manifest.lock"
 POR="tests/unit/capability-conformance.py"
@@ -234,6 +234,44 @@ _pl.Path("tests/unit/nao-enumerada.sh").write_text(
   "#!/usr/bin/env bash\nbash control/hooks/artifact-discipline.sh\n")
 c["artifact-discipline.sh"]["evidence"]["dimensions"]["E_M"]["ref"]="tests/unit/nao-enumerada.sh"
 p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+"\n")'
+
+echo "== onda 15, terceira rodada: o criterio do lado BASE vem da BASE =="
+# F1 e F2 sao a MESMA familia da onda 14 (`D_MAX`) e da segunda rodada (`kind`): um insumo da
+# comparacao vindo do HEAD e usado para julgar os dois lados. Os dois so sao exercitaveis com a
+# base tendo policy, e no commit que a INTRODUZ ela nao tem - dai a base sintetica: commitar a
+# arena e apontar `origin/main` para ela poe head e base em pe de igualdade, que e a condicao de
+# todo commit a partir do proximo.
+_BASE_SINTETICA=0
+if git -C . rev-parse --git-dir >/dev/null 2>&1; then
+  git -C . add -A >/dev/null 2>&1
+  git -C . -c user.email=a@b -c user.name=arnes commit -q -m "base sintetica do arnes" >/dev/null 2>&1
+  git -C . update-ref refs/remotes/origin/main HEAD >/dev/null 2>&1 && _BASE_SINTETICA=1
+fi
+if [ "$_BASE_SINTETICA" != 1 ]; then
+  echo "  INAPLICAVEL MCAP26/MCAP27 - nao foi possivel criar base sintetica na arena"
+  EXPECTED_MUTANTS=$((EXPECTED_MUTANTS-2))
+else
+  _POL="orchestration/evidence-policy.json"
+  _bak_pol(){ cp "$_POL" "$_POL.bak"; }
+  _rst_pol(){ mv -f "$_POL.bak" "$_POL"; }
+  # MCAP26 - a tabela de obrigacoes esvaziada no head zera a divida.
+  _bak_pol
+  python3 -c 'import json,pathlib
+p=pathlib.Path("orchestration/evidence-policy.json"); d=json.loads(p.read_text())
+d["proof_obligations"]={k:[] for k in d["proof_obligations"]}
+p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+  python3 "$POR" >/dev/null 2>&1; _got=$?
+  if [ "$_got" -eq 1 ]; then echo "  MORTO MCAP26 - proof_obligations esvaziado no head (exit=1)"; P=$((P+1))
+  else echo "  SOBREVIVEU MCAP26 - proof_obligations esvaziado no head (exit=$_got, esperado=1)"; F=$((F+1)); fi
+  _rst_pol
+  # MCAP27 - retirar a enumeracao de uma suite do gerador tira o E_M no head e nao na base.
+  cp scripts/status.sh scripts/status.sh.bak
+  grep -v 'tests/unit/hooks-de-guarda.sh' scripts/status.sh.bak > scripts/status.sh
+  python3 "$POR" >/dev/null 2>&1; _got=$?
+  if [ "$_got" -eq 1 ]; then echo "  MORTO MCAP27 - suite deixa de ser enumerada pelo gerador (exit=1)"; P=$((P+1))
+  else echo "  SOBREVIVEU MCAP27 - suite deixa de ser enumerada pelo gerador (exit=$_got, esperado=1)"; F=$((F+1)); fi
+  mv -f scripts/status.sh.bak scripts/status.sh
+fi
 
 rm -rf evidence/skills execution/skills/nova tests/unit/nao-enumerada.sh 2>/dev/null
 echo

@@ -45,7 +45,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | capability declarada | 7 | 0 |
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
-| capability-conformance (auto) | 25 | passo dedicado no CI |
+| capability-conformance (auto) | 27 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
 

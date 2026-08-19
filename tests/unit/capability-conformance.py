@@ -86,6 +86,27 @@ evpolicy = json.loads((ROOT / "orchestration/evidence-policy.json").read_text(en
 OBRIGACOES = evpolicy["proof_obligations"]
 DIMENSOES = set(evpolicy["dimensions"])
 
+# F1, ACHADO DO PORTAO FINAL, E A TERCEIRA RECORRENCIA DA MESMA FAMILIA. A onda 14 removeu
+# `D_MAX` porque a constante morava no arquivo que o PR edita. A onda 15 removeu o rebaixamento
+# de `kind` pela mesma razao. E entao carregou a TABELA DE OBRIGACOES do disco e a usou para
+# julgar os DOIS lados da comparacao - head e base. Medido em copia: esvaziar
+# `proof_obligations` no mesmo PR devolve `D_E(head)=0` com o portao VERDE.
+#
+#   PolicyDeclared vs PolicyEnforced, de novo, um nivel acima da correcao anterior.
+#
+# Mover o arquivo para fora do portao nao removeu a forma: trocou o nome da constante. O que
+# remove a forma e a mesma regra que a onda 14 aplicou a divida - o criterio do lado BASE vem
+# da ARVORE BASE, que o PR nao pode reescrever.
+def _obrigacoes(leitor) -> dict | None:
+    """Tabela de obrigacoes na arvore do leitor. `None` quando a policy nao existe la."""
+    bruto = leitor("orchestration/evidence-policy.json")
+    if bruto is None:
+        return None
+    try:
+        return json.loads(bruto)["proof_obligations"]
+    except Exception:
+        return None
+
 checks: list[tuple[bool, str]] = []
 
 
@@ -453,7 +474,14 @@ def _pagas(cap: dict, leitor) -> set:
             # DUAS FORMAS DE SER EXECUTADA pelo gerador: estar na lista literal de suites de
             # unidade, ou cair na varredura `for _mf in tests/mutation/*.sh` que ele faz. Exigir
             # so a primeira reprovaria arnes de mutacao que o gerador de fato roda.
-            _ger = _le_do_disco("scripts/status.sh") or ""
+            # PELO LEITOR, NAO PELO DISCO. Achado do portao final (F2): esta linha nasceu com o
+            # MESMO defeito de `_digest_de` que a revisao anterior chamou de C5 - o "leitor
+            # ignorado" -, e nasceu DENTRO da condicao que a correcao de C5 acabou de
+            # acrescentar. Medido com base==head: retirar a enumeracao de uma suite fazia a
+            # divida subir de 89 para 102 enquanto o portao imprimia "nao cresce", porque o lado
+            # da BASE consultava o `scripts/status.sh` do HEAD e continuava creditando E_M.
+            # Segunda reincidencia da mesma familia num arquivo so.
+            _ger = leitor("scripts/status.sh") or ""
             enumerada = bool(ref) and (
                 ref in _ger
                 or (ref.startswith("tests/mutation/") and ref.endswith(".sh")
@@ -466,12 +494,13 @@ def _pagas(cap: dict, leitor) -> set:
     return out
 
 
-def _divida(registro: dict, leitor) -> set:
+def _divida(registro: dict, leitor, tabela=None) -> set:
+    tabela = OBRIGACOES if tabela is None else tabela
     pares = set()
     for n, cap in (registro.get("capabilities") or {}).items():
         if cap.get("state") not in _EM_DIVIDA:
             continue
-        obrigadas = OBRIGACOES.get(cap.get("kind")) or []
+        obrigadas = tabela.get(cap.get("kind")) or []
         pagas = _pagas(cap, leitor)
         pares |= {(n, d) for d in obrigadas if d not in pagas}
     return pares
@@ -541,7 +570,25 @@ else:
           + ("" if not _iguais else f" - suspeitos: {_iguais[:3]}"))
 
 _reg_base = json.loads(_bruto_base)
-d_base = _divida(_reg_base, _le_do_git(_base))
+# A TABELA DA BASE VEM DA BASE. Quando ela NAO existe la, este e o commit que a introduz: o
+# fato e do estado anterior do repositorio e o PR nao pode forja-lo, entao a excecao e limitada
+# e temporal. Ela e IMPRESSA, nunca silenciosa, e vale so para o commit de bootstrap.
+_OBRIG_BASE = _obrigacoes(_le_do_git(_base))
+if _OBRIG_BASE is None:
+    print("        bootstrap: `orchestration/evidence-policy.json` nao existe na base; a tabela")
+    print("        do head julga os dois lados NESTE commit, e a regra de nao-rebaixamento fica")
+    print("        vacua. Do proximo commit em diante a base tem tabela propria.")
+    _OBRIG_BASE = OBRIGACOES
+else:
+    _fracas = sorted(
+        f"{k}: base={sorted(set(_OBRIG_BASE[k]))} head={sorted(set(OBRIGACOES.get(k) or []))}"
+        for k in _OBRIG_BASE
+        if not set(OBRIGACOES.get(k) or []) >= set(_OBRIG_BASE[k]))
+    check(not _fracas,
+          "nenhum tipo passa a dever MENOS prova do que devia na base"
+          + ("" if not _fracas else f" - enfraquecidos: {_fracas}"))
+
+d_base = _divida(_reg_base, _le_do_git(_base), _OBRIG_BASE)
 _caps_base = set(_reg_base.get("capabilities") or {})
 _novas = set(caps) - _caps_base
 
@@ -589,8 +636,9 @@ _db = {(n, d) for (n, d) in d_base if n in _comuns}
 # do tipo declarado.
 _rebaixadas = []
 for _n in sorted(set(caps) & _caps_base):
+    # Cada lado com a SUA tabela: usar a do head para julgar a base era metade do defeito F1.
     _ob_h = set(OBRIGACOES.get(caps[_n].get("kind")) or [])
-    _ob_b = set(OBRIGACOES.get((_reg_base["capabilities"][_n] or {}).get("kind")) or [])
+    _ob_b = set(_OBRIG_BASE.get((_reg_base["capabilities"][_n] or {}).get("kind")) or [])
     if not _ob_h >= _ob_b:
         _rebaixadas.append(f"{_n}: {(_reg_base['capabilities'][_n] or {}).get('kind')} -> "
                            f"{caps[_n].get('kind')} perde {sorted(_ob_b - _ob_h)}")
