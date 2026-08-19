@@ -74,15 +74,16 @@ jobs:
             # inteiro e custo puro. Entao: tenta instalar, e so paga a operacao lenta se a
             # primeira tentativa falhar. O caminho comum deixa de depender dela.
             #
-            # ONDA 15 - MEDIDO, e o numero corrige duas leituras. Do log do run 32192196023:
-            #   verify-pr total ......................... 21m50s
-            #   apt install poppler/pandoc/ffmpeg ....... 53s   (4%)
-            # Primeira correcao: o ramo `else` abaixo NUNCA executa - `ubuntu-24.04` nao traz
-            # nenhuma das tres, entao o apt e acionado em TODA execucao. Segunda: a variancia
-            # atribuida ao apt e real mas pequena; o custo dominante da CI e a suite. Imagem OCI
-            # pinada por digest continua sendo o fix correto para HERMETICIDADE - as versoes
-            # servidas sao as do dia (medidas: poppler 24.02.0, pandoc 3.1.3, ffmpeg
-            # 6.1.1-3ubuntu5) -, e nao para tempo. Ver ADR 0035.
+            # ONDA 15 - MEDIDO EM DUAS EXECUCOES, e a segunda refuta a leitura da primeira:
+            #   run 32192196023   verify-pr 21m50s, apt 53s (4%)
+            #   run 32290684256   `install` bateu o timeout 300; o `update` seguinte estourou o
+            #                     teto de 12min do passo e MATOU o job
+            # O ramo `else` abaixo NUNCA executa: ubuntu-24.04 nao traz nenhuma das tres.
+            # O custo do apt e BIMODAL, nao ~4%: uma amostra dizia que containerizar valia so
+            # por hermeticidade, e a amostra seguinte mostrou o passo derrubando o build. A
+            # imagem OCI pinada por digest e o fix nos dois eixos, e fica declarada como
+            # BLOQUEIO conhecido. Subir o limite NAO entra - ver as duas tentativas acima. Ver
+            # ADR 0035.
             if ! sudo timeout 300 apt-get install -y -qq "${missing[@]}"; then
               echo "install direto falhou (listas apt provavelmente ausentes) - rodando update"
               sudo timeout 300 apt-get -o Acquire::Retries=3 update -qq

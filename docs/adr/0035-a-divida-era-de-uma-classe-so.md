@@ -168,16 +168,28 @@ Forcar uma morte aqui teria exigido enfraquecer o hook.
 Do log real do run 32192196023 (PR #22):
 
 ```
-verify-pr total ......................... 21m50s
-apt install poppler-utils/pandoc/ffmpeg ..    53s   (4%)
+run 32192196023 (bom)     verify-pr total 21m50s;  apt 53s  (4%)
+run 32290684256 (ruim)    apt-get install bateu o `timeout 300`; o `update` seguinte estourou
+                          o teto de 12min do passo e MATOU o job
 ```
 
-O ramo "apt nao foi acionado" NUNCA executa: `ubuntu-24.04` nao traz nenhuma das tres. A
-recomendacao de containerizar a CI esta certa quanto a REPRODUTIBILIDADE - as versoes servidas
-sao as do dia (medidas: poppler 24.02.0, pandoc 3.1.3, ffmpeg 6.1.1-3ubuntu5) - e errada quanto
-a EFICIENCIA: o ganho de tempo seria de ~4%, nao dos "dezenas de porcento" atribuidos ao apt. O
-custo dominante e a suite. A imagem OCI pinada por digest continua sendo o fix correto para
-hermeticidade, e passa a estar dimensionada.
+O ramo "apt nao foi acionado" NUNCA executa: `ubuntu-24.04` nao traz nenhuma das tres, entao o
+apt e acionado em toda execucao.
+
+**A PRIMEIRA REDACAO DESTE PARAGRAFO ESTAVA ERRADA, e o erro e de metodo.** Ela dizia, com o
+numero de UMA execucao: "o ganho de tempo seria de ~4%; a recomendacao de containerizar esta
+certa quanto a reprodutibilidade e errada quanto a eficiencia". A revisao independente marcou o
+n=1 como risco, e a execucao seguinte - o proprio PR desta onda - o realizou: o mesmo passo
+consumiu mais de doze minutos e derrubou o build. O custo do apt nao e ~4%: e BIMODAL, ~53s
+quando o mirror coopera e job-killing quando nao. Generalizar de uma amostra e exatamente o
+que este repositorio condena, e foi feito aqui, dentro do ADR que condena.
+
+Corrigido, o veredito muda de lado: a imagem OCI pinada por digest e o fix certo nos DOIS eixos
+- hermeticidade (as versoes servidas sao as do dia: poppler 24.02.0, pandoc 3.1.3, ffmpeg
+6.1.1-3ubuntu5) e disponibilidade. Fica declarado como BLOQUEIO conhecido, nao como
+inconveniencia: ate ela existir, todo PR desta suite depende de um sorteio de mirror. Subir o
+limite de tempo nao entra: o proprio cabecalho do workflow registra duas tentativas anteriores
+de fazer isso (180->420->300), e perseguir uma distribuicao de rede nao e corrigir uma causa.
 
 ## A segunda rodada: cinco criticos DENTRO desta onda
 
