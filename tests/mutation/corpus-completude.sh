@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=4
+P=0; F=0; EXPECTED_MUTANTS=7
 POR="tests/unit/governance-links.py"
 CORPUS="evidence/corpus/agente-x-defeito.json"
 ADR="docs/adr/0035-a-divida-era-de-uma-classe-so.md"
@@ -36,8 +36,10 @@ if ! python3 "$POR" >/dev/null 2>&1; then
 fi
 echo "baseline verde: o portao sai 0 na arvore nao mutada"
 
-_bak(){ cp "$CORPUS" "$CORPUS.bak"; cp "$ADR" "$ADR.bak"; }
-_rst(){ mv -f "$CORPUS.bak" "$CORPUS"; mv -f "$ADR.bak" "$ADR"; }
+# MCC7 muta um ADR DIFERENTE do de referencia, entao o backup cobre a arvore inteira de ADRs.
+_ADRDIR="docs/adr"
+_bak(){ cp "$CORPUS" "$CORPUS.bak"; cp -a "$_ADRDIR" "$_ADRDIR.bak"; }
+_rst(){ mv -f "$CORPUS.bak" "$CORPUS"; rm -rf "$_ADRDIR"; mv -f "$_ADRDIR.bak" "$_ADRDIR"; }
 
 mutante(){ # $1=nome $2=descricao $3=exit esperado $4=programa python
   local nome="$1" desc="$2" want="$3" prog="$4" got
@@ -75,16 +77,48 @@ mutante MCC3 "corpus sem criterio de inclusao explicito" 1 \
   "$_PY"'d.pop("inclusion_criterion",None)
 p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
 
+echo "== onda 17: a prosa derivada, e a negativa universal =="
+# A completude fechou "faltam linhas". Sobrou a forma menor: o corpus foi de 26 para 47 e a
+# PROSA dentro dele continuou dizendo "40 achados". Dado estruturado correto, narrativa derivada
+# obsoleta - e o portao antigo, que so reconferia counts_by_mode, nao via numeral em texto.
+mutante MCC5 "prosa cita contagem que nao bate com os dados" 1 \
+  "$_PY"'d["limits"][0]="N PEQUENO. Sao 40 achados de uma sessao."
+p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+
+# CONTROLE DE DIRECAO: numeral HISTORICO e legitimo. O corpus precisa poder dizer "a primeira
+# versao trazia 26 achados" sem que isso vire violacao, senao a regra proibiria registrar o
+# proprio erro - que e o oposto do que este repositorio faz.
+mutante MCC6 "CONTROLE: numeral marcado como estado ANTERIOR nao e violacao" 0 \
+  "$_PY"'d["limits"][0]="N PEQUENO. A primeira versao trazia 26 achados; hoje sao outros."
+p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+
+# NEGATIVA UNIVERSAL SOBRE LITERATURA. O ADR 0033 afirmava "nenhum trabalho conhecido mede
+# P(declara sucesso | verificador reprova)" enquanto o ledger do MESMO repositorio registrava o
+# paper que mede exatamente isso. Forma inverificavel por construcao: nao se cita evidencia da
+# ausencia de toda a literatura.
+mutante MCC7 "ADR volta a fazer negativa universal sobre literatura, fora de errata" 1 \
+  'import pathlib
+p=pathlib.Path("docs/adr/0030-o-verificador-instalado-que-nunca-observou.md")
+p.write_text(p.read_text()+"\n\nNenhum trabalho conhecido mede esta propriedade.\n")'
+
 echo "== CONTROLE POSITIVO =="
 # Sem ele o portao podia ser `return FAIL` e os tres mutantes acima "morreriam" sem testar nada.
 # O caso tambem fixa a direcao da regra: o corpus pode CONTER MAIS do que os ADRs citam - achado
 # de onda antiga nao tem ID em ADR nenhum -, e isso nao e violacao. A regra e
 # `citados SUBCONJUNTO DE corpus`, nao igualdade.
+# O programa atualiza a PROSA junto, que e o que um contribuidor real faz ao acrescentar um
+# achado - e o que o portao da onda 17 passou a exigir. Sem isso o controle positivo reprovaria
+# pela regra nova, mascarando o que ele existe para medir: que o corpus pode conter MAIS do que
+# os ADRs citam.
 mutante MCC4 "CONTROLE: achado NOVO nao citado em ADR algum - o portao deve PASSAR" 0 \
-  "$_PY"'d["findings"].append({"finding_id":"W99-1","wave":15,"review_round":"medicao",
+  "$_PY"'import re
+d["findings"].append({"finding_id":"W99-1","wave":15,"review_round":"medicao",
   "found_by":"aplicacao-de-instrumento","mode":"aplicacao-de-instrumento",
   "class":"controle","defect":"achado sintetico do controle positivo MCC4",
   "source_ref":"tests/mutation/corpus-completude.sh"})
+n=len(d["findings"])
+for campo in ("limits","reading"):
+    d[campo]=[re.sub(r"\b\d+ achados\b",f"{n} achados",re.sub(r"\bN=\d+\b",f"N={n}",s)) for s in d[campo]]
 salvar()'
 
 echo
