@@ -3,12 +3,11 @@
   "purpose": "Corpus legivel por maquina de qual MODO de revisao encontrou qual defeito, ondas 11 a 15. Pedido por auditoria externa: 'transformem as ondas 11-13 em agent x defect corpus, porque voces ja possuem dado real valioso'.",
   "source_of_truth": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md e docs/adr/0031..0035. Este arquivo NAO adiciona achado nenhum: transcreve o que ja estava registrado em prosa, para que a distribuicao possa ser contada em vez de lida.",
   "limits": [
-    "N PEQUENO. Sao 26 achados de uma sessao, num repositorio. Nenhuma inferencia sobre populacao de repositorios se sustenta aqui.",
-    "ATRIBUICAO NAO E DESENHO EXPERIMENTAL. `found_by` registra quem REPORTOU primeiro, nao quem era capaz de achar. Nao ha contrafactual: nao se sabe se outro modo teria achado o mesmo defeito com mais tempo.",
+    "N PEQUENO. Sao 40 achados de uma sessao, num repositorio. Nenhuma inferencia sobre populacao de repositorios se sustenta aqui.",
+    "ATRIBUICAO NAO E DESENHO EXPERIMENTAL. `found_by` registra quem REPORTOU primeiro, nao quem era capaz de achar. Nao ha contrafactual.",
     "ORDEM CONFUNDE. Os modos rodaram em SEQUENCIA sobre o mesmo diff, nao em paralelo sobre entradas identicas. Um modo posterior ve um diff ja corrigido pelo anterior, e isso muda o que ha para achar.",
     "CORRELACAO NAO MEDIDA. Os revisores internos sao instancias do mesmo modelo com prompts diferentes. Contexto separado compra independencia PROCEDIMENTAL parcial; a dependencia estatistica entre eles nao foi medida aqui.",
-    "O MODO MAIS PRODUTIVO NAO E UM AGENTE. Nas ondas 13 a 15, a auditoria EXTERNA (humana, com acesso ao repositorio publicado) achou o que os tres modos internos nao acharam - inclusive defeitos DENTRO das correcoes que os modos internos tinham acabado de aprovar. Qualquer leitura deste corpus que omita essa linha inverte a conclusao.",
-    "A TABELA `counts_by_mode` FOI ESCRITA A MAO E ESTAVA ERRADA (remedicao 8, medido 9). `tests/unit/governance-links.py` passou a recontar as linhas e reprovar na divergencia: numero declarado que ninguem confere e a forma mais barata do defeito que este repositorio persegue, e ela apareceu dentro do proprio corpus que a documenta."
+    "ESTE ARQUIVO JA ESTEVE INCOMPLETO, E A CONCLUSAO QUE DELE SE TIROU JA ESTEVE INVERTIDA. A primeira versao trazia 26 achados e omitia os DEZESSEIS das rodadas 2 e 3 da onda 15 - os cinco criticos e seis avisos do `revisor-codigo`, e os tres do `refutador` -, apesar de declarar os ADRs como fonte de verdade. Sobre esse universo, um relatorio publicado afirmou que a auditoria externa fora o modo mais produtivo. Com o universo completo a ordem se inverte. `counts_by_mode` estava CORRETO sobre as linhas presentes o tempo todo: consistencia interna nao implica completude, e a conclusao comparativa dependia da segunda."
   ],
   "modes": {
     "leitura-estrutural": "Le o diff e cruza o texto com o codigo. Agente `revisor-codigo`.",
@@ -23,21 +22,30 @@
       "found_by": "revisor-codigo",
       "mode": "leitura-estrutural",
       "class": "contradicao-entre-artefatos",
-      "defect": "ata e commit afirmavam coisas diferentes sobre a mesma mudanca"
+      "defect": "ata e commit afirmavam coisas diferentes sobre a mesma mudanca",
+      "finding_id": "W11-1",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 11,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "guarda-tautologica",
-      "defect": "guarda de arena comparava o pid consigo mesmo"
+      "defect": "guarda de arena comparava o pid consigo mesmo",
+      "finding_id": "W11-2",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 11,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "sinal-ignorado",
-      "defect": "trap sem exit trocava 'morre deixando mutante' por 'ignora o sinal e continua mutando'"
+      "defect": "trap sem exit trocava 'morre deixando mutante' por 'ignora o sinal e continua mutando'",
+      "finding_id": "W11-3",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -45,7 +53,10 @@
       "mode": "leitura-estrutural",
       "class": "referencia-morta",
       "defect": "portao lia 1 arquivo por skill e passava com 4 referencias mortas na propria skill governada",
-      "evidence": "TOTAL=50 FAIL=0"
+      "evidence": "TOTAL=50 FAIL=0",
+      "finding_id": "W12-1",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -53,21 +64,30 @@
       "mode": "leitura-estrutural",
       "class": "comando-publicado-inexistente",
       "defect": "bash scripts/medir-skills.sh",
-      "evidence": "No such file or directory"
+      "evidence": "No such file or directory",
+      "finding_id": "W12-2",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
       "found_by": "revisor-codigo",
       "mode": "leitura-estrutural",
       "class": "referencia-que-resolve-errado",
-      "defect": "8 citacoes de 'Diretriz N': 3 para secao inexistente, 5 resolvendo para secao que diz outra coisa"
+      "defect": "8 citacoes de 'Diretriz N': 3 para secao inexistente, 5 resolvendo para secao que diz outra coisa",
+      "finding_id": "W12-3",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
       "found_by": "revisor-codigo",
       "mode": "leitura-estrutural",
       "class": "roteamento-ausente",
-      "defect": "10 de 10 projecoes de agente com description generica, sem chave de roteamento"
+      "defect": "10 de 10 projecoes de agente com description generica, sem chave de roteamento",
+      "finding_id": "W12-4",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -75,56 +95,80 @@
       "mode": "execucao-hostil",
       "class": "destruicao-por-symlink",
       "defect": "rm -rf de diretorio arbitrario via symlink plantado em /tmp com sticky 1777",
-      "note": "PRE-EXISTENTE da onda 11, no mesmo arquivo, noventa linhas acima do defeito que a onda 12 corrigia. Sobreviveu a DUAS leituras de diff. So apareceu com symlink plantado e execucao do bloco literal."
+      "note": "PRE-EXISTENTE da onda 11, no mesmo arquivo, noventa linhas acima do defeito que a onda 12 corrigia. Sobreviveu a DUAS leituras de diff. So apareceu com symlink plantado e execucao do bloco literal.",
+      "finding_id": "W12-5",
+      "review_round": "auditor-seguranca",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "manifesto-truncado",
-      "defect": "falha de geracao truncava o manifesto de destino em vez de aborta-la"
+      "defect": "falha de geracao truncava o manifesto de destino em vez de aborta-la",
+      "finding_id": "W12-6",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
       "found_by": "revisor-codigo",
       "mode": "leitura-estrutural",
       "class": "heredoc-silencioso",
-      "defect": "$(python3 ...) dentro de heredoc: heredoc e expansao, o exit e descartado. Tres modos saiam 0 com manifesto escrito; o pior tinha stderr vazio e a cadeia apagava as 8 skills enquanto verify dizia 'conforme'"
+      "defect": "$(python3 ...) dentro de heredoc: heredoc e expansao, o exit e descartado. Tres modos saiam 0 com manifesto escrito; o pior tinha stderr vazio e a cadeia apagava as 8 skills enquanto verify dizia 'conforme'",
+      "finding_id": "W13-1",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
       "found_by": "revisor-codigo",
       "mode": "leitura-estrutural",
       "class": "wiring-de-interpretador",
-      "defect": ".py numa lista executada por bash: nunca rodou como Python, e o bash executou crases do docstring como comando"
+      "defect": ".py numa lista executada por bash: nunca rodou como Python, e o bash executou crases do docstring como comando",
+      "finding_id": "W13-2",
+      "review_round": "revisor-codigo",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "mutantes-irreproduziveis",
-      "defect": "7 mutantes rodados a mao num clone descartado; nenhum comando do repositorio os reexecutava"
+      "defect": "7 mutantes rodados a mao num clone descartado; nenhum comando do repositorio os reexecutava",
+      "finding_id": "W13-3",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "teto-que-nao-congela",
-      "defect": "D_E contava {candidate, promoted} enquanto a policy declara initial_state: quarantine - o estado em que toda capability NASCE ficava fora da contagem"
+      "defect": "D_E contava {candidate, promoted} enquanto a policy declara initial_state: quarantine - o estado em que toda capability NASCE ficava fora da contagem",
+      "finding_id": "W13-4",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "documento-lava-vermelho",
-      "defect": "status.sh --check aprovava com duas suites vermelhas: o exit era gravado como VALOR numa tabela e regenerar o documento devolvia o --check ao verde"
+      "defect": "status.sh --check aprovava com duas suites vermelhas: o exit era gravado como VALOR numa tabela e regenerar o documento devolvia o --check ao verde",
+      "finding_id": "W13-5",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
       "found_by": "refutador",
       "mode": "remedicao",
       "class": "colisao-de-nome",
-      "defect": "mutantes MC1..MC9 colidindo entre dois arneses"
+      "defect": "mutantes MC1..MC9 colidindo entre dois arneses",
+      "finding_id": "W13-6",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 14,
@@ -132,14 +176,20 @@
       "mode": "auditoria-externa",
       "class": "criterio-dentro-do-objeto-governado",
       "defect": "D_MAX era literal no arquivo que o PR edita; o mesmo diff podia adicionar capability e elevar a constante",
-      "note": "Estava DENTRO da correcao que os tres modos internos aprovaram na onda 13."
+      "note": "Estava DENTRO da correcao que os tres modos internos aprovaram na onda 13.",
+      "finding_id": "W14-1",
+      "review_round": "auditoria externa",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 14,
       "found_by": "auditoria-externa",
       "mode": "auditoria-externa",
       "class": "contagem-nao-e-conjunto",
-      "defect": "pagar um dossie abria vaga: 8 -> 7 -> 8 passava, porque contagem mede tamanho e trocar uma divida por outra mantem o tamanho"
+      "defect": "pagar um dossie abria vaga: 8 -> 7 -> 8 passava, porque contagem mede tamanho e trocar uma divida por outra mantem o tamanho",
+      "finding_id": "W14-2",
+      "review_round": "auditoria externa",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 14,
@@ -147,76 +197,334 @@
       "mode": "auditoria-externa",
       "class": "amplitude-da-claim",
       "defect": "--dry-run imprimia 'NENHUMA escrita foi feita' depois de mktemp -d e cp -a da arvore managed inteira",
-      "note": "Correcao da onda 13b trocando uma claim falsa por outra ampla demais."
+      "note": "Correcao da onda 13b trocando uma claim falsa por outra ampla demais.",
+      "finding_id": "W14-3",
+      "review_round": "auditoria externa",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "aplicacao-de-instrumento",
       "mode": "aplicacao-de-instrumento",
       "class": "garantia-nunca-executada",
-      "defect": "8 de 14 hooks instalados sem execucao em teste algum; 2 deles bloqueiam escrita e 2 sao citados em CLAUDE.md como garantia ativa"
+      "defect": "8 de 14 hooks instalados sem execucao em teste algum; 2 deles bloqueiam escrita e 2 sao citados em CLAUDE.md como garantia ativa",
+      "finding_id": "W15-1",
+      "review_round": "medicao",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "aplicacao-de-instrumento",
       "mode": "aplicacao-de-instrumento",
       "class": "verificador-classifica-sem-observar",
-      "defect": "tests/unit/run.sh classifica 4 hooks por categoria em conjuntos estaticos e nunca executa nenhum"
+      "defect": "tests/unit/run.sh classifica 4 hooks por categoria em conjuntos estaticos e nunca executa nenhum",
+      "finding_id": "W15-2",
+      "review_round": "medicao",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "aplicacao-de-instrumento",
       "mode": "aplicacao-de-instrumento",
       "class": "contradicao-entre-artefatos",
-      "defect": "no RED: schedule dizia writes ['**'], README dizia 'writes: tests/', agente tdd dizia fechar o GREEN. Tres afirmacoes, nenhum verificador"
+      "defect": "no RED: schedule dizia writes ['**'], README dizia 'writes: tests/', agente tdd dizia fechar o GREEN. Tres afirmacoes, nenhum verificador",
+      "finding_id": "W15-3",
+      "review_round": "medicao",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "auditoria-externa",
       "mode": "auditoria-externa",
       "class": "amplitude-da-claim",
-      "defect": "writes: false e single_writer: true lidos como isolamento; os dez agentes tem Bash, logo nenhum e tecnicamente read-only"
+      "defect": "writes: false e single_writer: true lidos como isolamento; os dez agentes tem Bash, logo nenhum e tecnicamente read-only",
+      "finding_id": "W15-4",
+      "review_round": "auditoria externa",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "auditoria-externa",
       "mode": "auditoria-externa",
       "class": "medida-de-uma-classe-so",
-      "defect": "divida escalar contava apenas skills; agentes e hooks ficavam fora, e o '18' publicado era piso de uma leitura errada em forma"
+      "defect": "divida escalar contava apenas skills; agentes e hooks ficavam fora, e o '18' publicado era piso de uma leitura errada em forma",
+      "finding_id": "W15-5",
+      "review_round": "auditoria externa",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "auditoria-externa",
       "mode": "auditoria-externa",
       "class": "validade-temporal-ausente",
-      "defect": "dossie sem evaluated_with: Valid(c,t0) era tratado como Valid(c,t1) para sempre"
+      "defect": "dossie sem evaluated_with: Valid(c,t0) era tratado como Valid(c,t1) para sempre",
+      "finding_id": "W15-6",
+      "review_round": "auditoria externa",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "remedicao",
       "mode": "remedicao",
       "class": "erro-de-medicao-proprio",
-      "defect": "a propria contagem de hooks sem teste errou DUAS vezes antes de acertar: grep de 'exit 2' no fonte deu 2 falsos positivos em 14 (ocorrencias em comentario), e grep de invocacao perdeu as suites que atribuem o caminho a variavel"
+      "defect": "a propria contagem de hooks sem teste errou DUAS vezes antes de acertar: grep de 'exit 2' no fonte deu 2 falsos positivos em 14 (ocorrencias em comentario), e grep de invocacao perdeu as suites que atribuem o caminho a variavel",
+      "finding_id": "W15-7",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
       "found_by": "remedicao",
       "mode": "remedicao",
       "class": "mutante-equivalente",
-      "defect": "MHG15 sobreviveu por defesa em profundidade real: uma segunda guarda independente preserva o comportamento observavel. Declarado equivalente, com MHG16 removendo as duas para provar sensibilidade"
+      "defect": "MHG15 sobreviveu por defesa em profundidade real: uma segunda guarda independente preserva o comportamento observavel. Declarado equivalente, com MHG16 removendo as duas para provar sensibilidade",
+      "finding_id": "W15-8",
+      "review_round": "refutador",
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+    },
+    {
+      "finding_id": "C1",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "criterio-dentro-do-objeto-governado",
+      "defect": "`kind` virou a chave de entrada na tabela de obrigacoes e ficou editavel pelo mesmo PR",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "reclassificar 6 hooks: divida 89 -> 77 com o portao verde"
+    },
+    {
+      "finding_id": "C2",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "fronteira-contornavel",
+      "defect": "`source` arbitrario apontando para caminho preexistente contornava a regra de criacao",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "+4 obrigacoes, com o caso escrito para pegar isso imprimindo PASS pelo nome"
+    },
+    {
+      "finding_id": "C3",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "amplitude-da-claim",
+      "defect": "o portao aceitava `write_confinement: sandbox` - a claim exata que existia para impedir",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "esvaziar a condicao via `writes: true` nos dez agentes; TOTAL=24 FAIL=0"
+    },
+    {
+      "finding_id": "C4",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "numero-publicado-falso",
+      "defect": "ADR e errata publicavam D_E=87 sobre 33 enquanto o portao do mesmo commit media 89 sobre 34",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "diferenca igual ao registro de `claude-md`, escrito depois da prosa"
+    },
+    {
+      "finding_id": "C5",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "leitor-ignorado",
+      "defect": "`_digest_de` declarava receber o leitor e lia sempre do disco: EvidenceValidity fail-open na base",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "regressao reintroduzida em copia: TOTAL=30 FAIL=2"
+    },
+    {
+      "finding_id": "A1",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "validador-quebra-em-vez-de-recusar",
+      "defect": "TypeError em metadado malformado introduzido pelo bloco novo; a base recusava limpo",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "`produces` nao-lista: 3x TypeError no head, SCHEDULE_ERROR na base"
+    },
+    {
+      "finding_id": "A2",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "policy-declarada-nao-aplicada",
+      "defect": "o portao implementava DUAS das tres condicoes que a propria policy declarava para `executed_suite`",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "A4",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "parser-artesanal-fail-open",
+      "defect": "parser de frontmatter errava cinco formas de YAML valido, todas fail-open, num repo que ja tinha modulo PyYAML",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "5 divergencias contra `yaml.safe_load`, incluindo `tools:` omitido = herda tudo"
+    },
+    {
+      "finding_id": "A5",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "mecanismo-declarado-ausente",
+      "defect": "`orchestration/environment.json` citado na policy e inexistente na arvore",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "A6",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "dependente-de-ordem",
+      "defect": "separacao de oraculo decidida por `setdefault`: o primeiro produtor de `diff` vencia",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "A7",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "contradicao-entre-artefatos",
+      "defect": "o no `mutation`, mesmo ator e escopo irrestrito, ficava fora da regra de separacao de oraculo",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "F1",
+      "wave": 15,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "criterio-dentro-do-objeto-governado",
+      "defect": "a tabela de obrigacoes era lida do disco e usada para julgar OS DOIS lados da comparacao",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "proof_obligations esvaziado: D_E=0 sobre 34, TOTAL=30 FAIL=0"
+    },
+    {
+      "finding_id": "F2",
+      "wave": 15,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "leitor-ignorado",
+      "defect": "`_pagas` lia `scripts/status.sh` do disco, na condicao que a rodada anterior acabara de acrescentar",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "com base==head, divida 89 -> 102 e o portao imprimindo 'nao cresce'"
+    },
+    {
+      "finding_id": "F3",
+      "wave": 15,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "claim-publicada-falsa",
+      "defect": "`status.generated.md` publicava 'passo dedicado no CI' para arneses sem passo algum",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "43 mutantes rodavam so na estacao do autor"
+    },
+    {
+      "finding_id": "A3",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "limite-nao-declarado",
+      "defect": "a bijecao registry-manifesto cobre 33 de 49 componentes e o comentario afirmava inventario fechado",
+      "measured": "11 adapter + 5 doctool fora do inventario governado",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "S6",
+      "wave": 15,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "fronteira-contornavel",
+      "defect": "duas capabilities podiam declarar a mesma `source`; CC5 compara CONJUNTOS e nao veria",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "G1",
+      "wave": 15,
+      "review_round": "auditoria externa (4a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "comparabilidade-de-metrica",
+      "defect": "a prosa apresentava 8 -> 89 como serie temporal; as unidades mudaram de `skill` para par `(capability, dimensao)`",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "G2",
+      "wave": 15,
+      "review_round": "auditoria externa (4a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "identidade-semantica-indevida",
+      "defect": "o `18` antigo e o `E_M = 18` novo foram identificados como a mesma grandeza; sao a mesma populacao, estimandos diferentes",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "G3",
+      "wave": 15,
+      "review_round": "auditoria externa (4a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "universo-incompleto",
+      "defect": "o corpus era internamente consistente e seletivamente incompleto: faltavam 16 achados das rodadas 2 e 3, todos citados no ADR que ele declara como fonte",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "ondas 13-15 antes: externa 6 = remedicao 6; depois: leitura-estrutural 15 > remedicao 9 > externa 6"
+    },
+    {
+      "finding_id": "G4",
+      "wave": 15,
+      "review_round": "auditoria externa (4a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "criterio-dentro-do-objeto-governado",
+      "defect": "capability NOVA declara o proprio `kind` e portanto a propria carga de prova; os tres tipos de hook aceitam a mesma forma de source",
+      "status": "aberto - registrado como alvo da proxima onda",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "measured": "hook que bloqueia (exit 2) declarado hook_instrument: D_E=89 sobre 35, TOTAL=31 FAIL=0"
+    },
+    {
+      "finding_id": "G5",
+      "wave": 15,
+      "review_round": "auditoria externa (4a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "obrigacao-dispensada-sem-fundamento",
+      "defect": "`E_S` dispensado para hook_guidance e guidance_document sem oraculo que sustente a dispensa",
+      "status": "aberto - exige definir o oraculo de E_S para intervencao textual",
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     }
   ],
   "counts_by_mode": {
     "aplicacao-de-instrumento": 3,
-    "auditoria-externa": 6,
+    "auditoria-externa": 11,
     "execucao-hostil": 1,
-    "leitura-estrutural": 7,
-    "remedicao": 9
+    "leitura-estrutural": 20,
+    "remedicao": 12
   },
   "reading": [
-    "Os conjuntos sao DISJUNTOS entre os modos internos: nenhum defeito deste corpus foi reportado por dois modos internos diferentes. Com N=26 e sem contrafactual, isso e compativel com complementaridade e tambem com ordem de execucao; nao decide entre as duas.",
+    "Ondas 13-15, com o universo completo: leitura-estrutural 15, remedicao 9, auditoria-externa 11, aplicacao-de-instrumento 3. Os modos INTERNOS seguem a frente somados (24 contra 11), e a leitura estrutural sozinha supera a auditoria externa. A afirmacao de que a auditoria externa fora o modo mais produtivo, publicada antes desta correcao, era artefato de universo incompleto.",
+    "O que a auditoria externa tem de distinto NAO e volume, e POSICAO: nas ondas 13 a 15 ela achou defeitos DENTRO de correcoes que os modos internos tinham acabado de aprovar, tres vezes seguidas. Isso e complementaridade demonstrada, e nao superioridade quantitativa - a segunda o dado refuta.",
+    "Os conjuntos seguem disjuntos entre modos: nenhum defeito deste corpus foi reportado por dois modos diferentes. Com N=40 e sem contrafactual, isso e compativel com complementaridade e tambem com ordem de execucao; nao decide entre as duas.",
     "O achado de `execucao-hostil` e o unico da sua classe e o mais caro do corpus - destruicao de diretorio arbitrario -, e sobreviveu a duas leituras de diff. Um modo com um unico achado nao pode ser dispensado por baixa contagem: a distribuicao de severidade nao e a distribuicao de frequencia.",
-    "A `auditoria-externa` acha defeitos DENTRO das correcoes recem-aprovadas pelos modos internos. Nas ondas 13 a 15 esse padrao se repetiu tres vezes. E a evidencia mais forte deste corpus, e ela e desconfortavel: aponta para o limite dos revisores internos, nao para a virtude deles.",
-    "`aplicacao-de-instrumento` nao e um agente e nao custa revisao: e o que aparece quando se mede o inventario com um criterio novo. Tres dos 26 achados vieram dai, a custo quase zero."
-  ]
+    "`aplicacao-de-instrumento` nao e um agente e nao custa revisao: e o que aparece quando se mede o inventario com um criterio novo. Tres dos 40 achados vieram dai, a custo quase zero."
+  ],
+  "inclusion_criterion": "TODO defeito identificado numa rodada NOMEADA de revisao que resultou em alteracao de codigo, teste, policy ou documentacao normativa entra neste corpus, com `finding_id`. Sem criterio de inclusao explicito, 'produtividade do revisor' fica vulneravel a selecao retrospectiva - que foi exatamente o que aconteceu na primeira versao deste arquivo.",
+  "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo."
 }

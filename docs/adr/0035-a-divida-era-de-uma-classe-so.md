@@ -235,15 +235,24 @@ ref viajar com o leitor, e o discriminante agora e o proprio PR: todo PR muda um
 esse arquivo os digests de disco e de base TEM de diferir. Medido com o defeito reintroduzido em
 copia: `TOTAL=30 FAIL=2`.
 
-Mais oito avisos, dos quais seis eram defeito e foram corrigidos: `TypeError` em metadado
-malformado introduzido pelo bloco novo (a base recusava limpo, o head quebrava); o portao
-implementando duas das TRES condicoes que a propria policy declarava para `executed_suite`;
-`orchestration/environment.json` citado na policy e inexistente; parser artesanal de frontmatter
-errando cinco formas de YAML valido, todas fail-open, num repositorio que ja tinha um modulo
-PyYAML que RECUSA rodar sem a dependencia; separacao de oraculo decidida por ordem de iteracao;
-e o no `mutation`, mesmo ator e escopo irrestrito, fora da regra. Os dois restantes viraram
-declaracao: a bijecao registry-manifesto cobre 33 dos 49 componentes, e os 16 de fora (`adapter`,
-`doctool`) seguem sem obrigacao de prova modelada.
+Mais oito avisos, dos quais seis eram defeito e foram corrigidos. Eles recebem ID aqui porque
+a rodada seguinte mostrou que achado sem identificador nao entra em contagem nenhuma - e um
+corpus so pode ser conferido quanto a COMPLETUDE contra identificadores que existam:
+
+**A1** - `TypeError` em metadado malformado, introduzido pelo bloco novo: a base recusava limpo
+com `SCHEDULE_ERROR`, o head saia por traceback.
+**A2** - o portao implementava DUAS das tres condicoes que a propria policy declarava para
+`executed_suite`.
+**A4** - parser artesanal de frontmatter errando cinco formas de YAML valido, todas fail-open,
+num repositorio que ja tinha um modulo PyYAML que RECUSA rodar sem a dependencia.
+**A5** - `orchestration/environment.json` citado na policy e inexistente.
+**A6** - separacao de oraculo decidida por ordem de iteracao (`setdefault`: o primeiro produtor
+de `diff` vencia).
+**A7** - o no `mutation`, mesmo ator e escopo irrestrito, fora da regra.
+
+Os dois restantes viraram declaracao: **A3**, a bijecao registry-manifesto cobre 33 dos 49
+componentes, e os 16 de fora (`adapter`, `doctool`) seguem sem obrigacao de prova modelada; e
+**S6**, fonte compartilhada entre capabilities, fechada junto de C2.
 
 E o efeito colateral da onda sobre suites vizinhas foi de mesma natureza, e vale registrar
 porque quase passou por "contaminacao de ambiente": `tests/unit/schedule.sh` tem contagem
@@ -355,6 +364,84 @@ isencoes de cobertura - esta ultima com a ressalva de que a justificativa do aut
 identica prova deslocamento") e INSUFICIENTE, N adicionados e N removidos dariam o mesmo numero;
 a propriedade se sustenta por outra evidencia, o deslocamento uniforme +5/+48 batendo com os
 hunk headers do diff.
+
+## A quarta rodada: o corpus estava consistente e incompleto
+
+Depois do merge, o relatorio publicado para revisao externa voltou com quatro correcoes. Duas
+sao de redacao, uma e de fato, e a quarta e uma fuga nova. A de fato e a que importa, e ela e a
+tese deste repositorio aplicada ao instrumento que a documenta.
+
+**G1 - `8 -> 89` nao e serie temporal.** A prosa dizia "o numero subiu de 8 para 89 porque a
+medicao melhorou". As UNIDADES mudaram: a metrica antiga contava `skill sem dossie`, a nova
+conta pares `(capability, dimensao)`. Sao estimadores diferentes sobre populacoes diferentes, e
+apresenta-los como uma variavel medida em `t0` e `t1` e o mesmo erro de comparabilidade que este
+repositorio cobra da literatura que cita.
+
+**G2 - o `18` antigo e o `E_M = 18` novo sao a mesma POPULACAO, nao a mesma GRANDEZA.** A errata
+dizia "e nao por coincidencia: e exatamente a divida de E_M das 8 skills e dos 10 agentes". Os
+dezoito componentes sao os mesmos; o estimando nao e. Cardinalidade igual nao e identidade
+semantica.
+
+**G3 - o corpus estava internamente consistente e SELETIVAMENTE INCOMPLETO.** Este e o achado.
+`tests/unit/governance-links.py` recontava `counts_by_mode` contra as linhas PRESENTES e nunca
+conferiu se as linhas presentes eram TODOS os achados da fonte que o proprio corpus declara -
+os ADRs. Faltavam dezesseis: os cinco criticos e oito avisos do `revisor-codigo`, e os tres do
+`refutador`, todos da onda 15, todos documentados no ADR que o corpus cita como fonte.
+
+Sobre esse universo, o relatorio publicado afirmou que a auditoria externa fora o modo mais
+produtivo das ondas 13-15. Com o universo completo, a ordem se inverte:
+
+```
+                          antes (26)   depois (42)
+leitura-estrutural            2            15
+remedicao                     6             9
+auditoria-externa             6             6
+aplicacao-de-instrumento      3             3
+                          (ondas 13-15)
+```
+
+Os modos INTERNOS acharam mais que a auditoria externa, e por margem larga. O que a auditoria
+externa tem de distinto nao e volume, e POSICAO: ela acha defeitos DENTRO de correcoes que os
+modos internos acabaram de aprovar, tres vezes seguidas. Isso e complementaridade demonstrada;
+superioridade quantitativa o dado refuta.
+
+    corpus internamente consistente  NAO IMPLICA  corpus completo
+
+Fechado com tres coisas, e a ordem entre elas importa: um CRITERIO DE INCLUSAO explicito - todo
+defeito de rodada nomeada que resultou em alteracao entra -, IDENTIFICADORES nos avisos que ate
+entao viviam em prosa (achado sem identificador nao entra em contagem nenhuma), e um portao que
+exige que todo ID citado com marcador estruturado num ADR exista no corpus. Discriminante
+medido: removendo `F2` e RECONTANDO `counts_by_mode` - isto e, preservando a consistencia
+interna -, o portao novo reprova.
+
+**G4 - a capability nova ainda escolhe a propria carga de prova.** A regra de nao-rebaixamento
+protege capability JA CONHECIDA, comparando contra a base. Para uma capability NOVA nao ha lado
+base, e os tres tipos de hook aceitam a mesma forma de `source`. Reproduzido:
+
+```
+$ # hook novo que BLOQUEIA de verdade (exit 2), declarado hook_instrument
+D_E(head)=89 obrigacoes em aberto sobre 35 capabilities
+TOTAL=31 FAIL=0        <- divida inalterada, portao verde
+```
+
+Devendo so `E_M`, ele paga com uma suite que o invoca e entra com divida zero. E a continuacao
+da familia num quarto nivel: `D_MAX` -> `kind` de capability existente -> `proof_obligations` ->
+**classificacao de capability nova**. Cada correcao subiu um nivel e o parametro restante seguiu
+sob controle do avaliado.
+
+NAO FECHADO NESTA ONDA, e por decisao declarada: fechar exige um estado `hook_unclassified` com
+obrigacao conservadora e uma dimensao de prova de CLASSIFICACAO - propriedades OBSERVADAS
+(`can_block`, `injects_context`) decidindo o tipo, em vez de o autor declara-lo. Isso e desenho
+proprio, nao remendo, e empilha-lo aqui repetiria o padrao de correcao N+1 que este ADR
+documenta em tres niveis. Fica registrado com a reproducao acima, que e o que permite a proxima
+onda comecar do fato e nao da suspeita.
+
+**G5 - `E_S` dispensado para guidance nao esta fundamentado.** `hook_guidance` e
+`guidance_document` nao devem `E_S` hoje. A justificativa da policy fala do portao, nao da
+guidance: uma instrucao injetada em toda sessao pode induzir chamada de tool perigosa, alterar
+confianca ou autorizacao, e interagir com outra guidance. A dispensa e aceita como decisao
+provisoria e nao como conclusao - fechar exige definir o ORACULO de `E_S` para intervencao
+textual, que hoje nao existe.
 
 ## Limites, declarados
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,7 +53,43 @@ if desconhecidos:
 if len(corpus["findings"]) < 10:
     raise SystemExit(f"FAIL corpus com {len(corpus['findings'])} achados - vazio demais para medir")
 
+# COMPLETUDE, NAO SO CONSISTENCIA. Achado de auditoria externa, e ele e a tese deste
+# repositorio aplicada ao proprio instrumento que a documenta: a recontagem acima confere que
+# `counts_by_mode` bate com as linhas PRESENTES, e nunca conferiu se as linhas presentes sao
+# TODOS os achados da fonte declarada. Estavam faltando catorze - os cinco criticos e seis
+# avisos do `revisor-codigo`, e os tres do `refutador`, todos da onda 15. Sobre esse universo
+# incompleto, um relatorio publicado concluiu que a auditoria externa fora o modo mais
+# produtivo; com o universo completo a ordem se inverte.
+#
+#     corpus internamente consistente  NAO IMPLICA  corpus completo
+#
+# A regra: todo identificador citado com MARCADOR ESTRUTURADO num ADR (`**C1 -`, `**F2 -`,
+# `**A4 -`) tem de existir como `finding_id` aqui. Marcador estruturado, e nao qualquer mencao,
+# porque prosa cita identificador de passagem e transformar isso em obrigacao produziria ruido.
+ids_corpus = {f.get("finding_id") for f in corpus["findings"]}
+faltando: dict[str, list[str]] = {}
+for adr in sorted((ROOT / "docs/adr").glob("*.md")):
+    citados = set(re.findall(r"\*\*([A-Z]\d{1,2})\*{0,2} [-\u2014]", adr.read_text(encoding="utf-8")))
+    ausentes = sorted(citados - ids_corpus)
+    if ausentes:
+        faltando[adr.name] = ausentes
+if faltando:
+    raise SystemExit(f"FAIL corpus INCOMPLETO: achados citados em ADR e ausentes do corpus: {faltando}")
+
+# ANTIVACUIDADE: se nenhum ADR citasse identificador algum, a checagem acima passaria vazia e
+# nao distinguiria "completo" de "nada a conferir".
+_citados_total = set()
+for adr in sorted((ROOT / "docs/adr").glob("*.md")):
+    _citados_total |= set(re.findall(r"\*\*([A-Z]\d{1,2})\*{0,2} [-\u2014]", adr.read_text(encoding="utf-8")))
+if len(_citados_total) < 5:
+    raise SystemExit(f"FAIL completude vacua: so {len(_citados_total)} identificadores citados em ADR")
+
+if "inclusion_criterion" not in corpus:
+    raise SystemExit("FAIL corpus sem criterio de inclusao explicito - sem ele, 'produtividade "
+                     "do revisor' fica vulneravel a selecao retrospectiva")
+
 print(f"PASS corpus agente-x-defeito coerente ({len(corpus['findings'])} achados, {len(medido)} modos)")
+print(f"PASS corpus COMPLETO: os {len(_citados_total)} achados citados em ADR estao todos presentes")
 
 # ONDA 15, SEGUNDA RODADA - O NUMERO PUBLICADO NO ADR E RECONFERIDO CONTRA O PORTAO.
 #
@@ -61,7 +98,6 @@ print(f"PASS corpus agente-x-defeito coerente ({len(corpus['findings'])} achados
 # fora escrita antes de a ultima capability entrar, e nada reconferia - a mesma classe do
 # `counts_by_mode` do corpus, corrigida logo acima, reaparecendo no arquivo que JUSTIFICA a onda.
 # Numero que justifica uma decisao e o ultimo lugar onde se pode confiar em copia manual.
-import re
 import subprocess
 import sys
 
