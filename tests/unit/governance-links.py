@@ -56,7 +56,7 @@ if len(corpus["findings"]) < 10:
 # COMPLETUDE, NAO SO CONSISTENCIA. Achado de auditoria externa, e ele e a tese deste
 # repositorio aplicada ao proprio instrumento que a documenta: a recontagem acima confere que
 # `counts_by_mode` bate com as linhas PRESENTES, e nunca conferiu se as linhas presentes sao
-# TODOS os achados da fonte declarada. Estavam faltando catorze - os cinco criticos e seis
+# TODOS os achados da fonte declarada. Estavam faltando dezesseis - os cinco criticos e oito
 # avisos do `revisor-codigo`, e os tres do `refutador`, todos da onda 15. Sobre esse universo
 # incompleto, um relatorio publicado concluiu que a auditoria externa fora o modo mais
 # produtivo; com o universo completo a ordem se inverte.
@@ -89,7 +89,7 @@ if "inclusion_criterion" not in corpus:
                      "do revisor' fica vulneravel a selecao retrospectiva")
 
 print(f"PASS corpus agente-x-defeito coerente ({len(corpus['findings'])} achados, {len(medido)} modos)")
-print(f"PASS corpus COMPLETO: os {len(_citados_total)} achados citados em ADR estao todos presentes")
+print(f"PASS completude ADR-ID: os {len(_citados_total)} achados citados com marcador\n     estruturado em ADR estao no corpus. NAO e completude absoluta do universo de\n     defeitos - defeito descrito em ADR SEM identificador fica fora deste frame.")
 
 # ONDA 15, SEGUNDA RODADA - O NUMERO PUBLICADO NO ADR E RECONFERIDO CONTRA O PORTAO.
 #
@@ -121,4 +121,64 @@ else:
     if _pub.groups() != _medido.groups():
         raise SystemExit(f"FAIL ADR 0035 publica D_E={_pub.group(1)}/{_pub.group(2)} "
                          f"e o portao mede {_medido.group(1)}/{_medido.group(2)}")
-    print(f"PASS ADR 0035 publica o D_E que o portao mede ({_medido.group(1)} sobre {_medido.group(2)})")
+    # ONDA 17, ACHADO DE AUDITORIA EXTERNA - A PROSA DERIVADA NAO CONFERE COM O DADO.
+#
+# O portao de completude fechou "faltam linhas no corpus". Sobrou a forma menor da mesma classe:
+# o corpus passou de 26 para 47 achados e a PROSA dentro dele continuou dizendo "40 achados",
+# "N=40", "tres dos 40 achados". Numeral narrativo derivado de um dado que mudou, e ninguem
+# recontava - a terceira aparicao de "numero declarado que ninguem confere" nesta serie.
+#
+#     dados estruturados corretos  NAO IMPLICA  prosa derivada correta
+#
+# A regra e estreita de proposito: todo numeral escrito como "<N> achados" ou "N=<N>" nos campos
+# de prosa do corpus tem de bater com o total real. Nao tenta interpretar prosa - so recusa
+# numeral que se apresenta como contagem e nao e.
+_total = len(corpus["findings"])
+_prosa: list[str] = []
+for _campo in ("limits", "reading"):
+    _prosa.extend(corpus.get(_campo) or [])
+_prosa.append(corpus.get("purpose", ""))
+_errados = []
+for _s in _prosa:
+    for _m in re.finditer(r"\b(\d+) achados\b|\bN=(\d+)\b", _s):
+        _n = int(_m.group(1) or _m.group(2))
+        # numeral historico e legitimo quando o texto o marca como estado ANTERIOR
+        _ctx = _s[max(0, _m.start() - 90):_m.start()].lower()
+        if any(_p in _ctx for _p in ("primeira versao", "antes", "anterior", "ja esteve")):
+            continue
+        if _n != _total:
+            _errados.append(f"{_n} (real: {_total}) em ...{_s[max(0,_m.start()-50):_m.end()+10]}")
+if _errados:
+    raise SystemExit(f"FAIL corpus: prosa cita contagem que nao bate com os dados: {_errados}")
+
+# ONDA 17 - NEGATIVA UNIVERSAL SOBRE LITERATURA E PROIBIDA EM ADR.
+#
+# O ADR 0033 afirmava "nenhum trabalho conhecido mede P(declara sucesso | verificador reprova)"
+# enquanto `evidence/literature/arxiv-2606.09863.yaml`, no MESMO repositorio, registrava que o
+# estudo "mede diretamente o fenomeno". Um ADR e um ledger afirmando o oposto, sem nada que os
+# confrontasse. E o ADR 0011 ja documentava que 4 de 5 citacoes deste repositorio eram falsas.
+#
+# A regra vem da secao 2 do CLAUDE.md - sem fonte, remover ou marcar [nao verificado] - aplicada
+# a uma forma que NAO PODE ter fonte: nao se cita evidencia da ausencia de toda a literatura.
+# Negativa universal sobre literatura e, por construcao, inverificavel. So sobrevive dentro de
+# uma ERRATA, isto e, quando o proprio texto a esta corrigindo.
+_NEG = re.compile(r"(nenhum (?:trabalho|paper|estudo|artigo)|ninguem mede|no (?:work|paper|study) measures)",
+                  re.IGNORECASE)
+_universais = []
+for _adr in sorted((ROOT / "docs/adr").glob("*.md")):
+    for _i, _linha in enumerate(_adr.read_text(encoding="utf-8").splitlines(), 1):
+        if not _NEG.search(_linha):
+            continue
+        _janela = "\n".join(_adr.read_text(encoding="utf-8").splitlines()[max(0, _i - 8):_i + 2]).upper()
+        # Duas saidas, e as duas sao ESTREITAS de proposito. Alargar a janela de contexto
+        # enfraqueceria a regra; um marcador explicito na propria linha nao.
+        if "ERRATA" in _janela or "[citacao-corrigida]" in _linha:
+            continue
+        _universais.append(f"{_adr.name}:{_i}")
+if _universais:
+    raise SystemExit("FAIL negativa universal sobre literatura em ADR (inverificavel por "
+                     f"construcao; so vale dentro de errata): {_universais}")
+
+print(f"PASS corpus: prosa e dados concordam ({_total} achados)")
+print("PASS nenhum ADR faz negativa universal sobre literatura fora de errata")
+print(f"PASS ADR 0035 publica o D_E que o portao mede ({_medido.group(1)} sobre {_medido.group(2)})")

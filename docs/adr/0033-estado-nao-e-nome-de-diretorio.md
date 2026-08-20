@@ -208,13 +208,30 @@ deliberado - proibe por construcao skill instalada vinda de plugin ou de outro c
 
 A eficacia externa do harness permanece `NOT_VERIFIED`, e ha um argumento estrutural para isso
 que esta onda torna mais nitido: a literatura disponivel mede pass rate, falha funcional e
-regressao de eficiencia. Nenhum trabalho conhecido mede
+regressao de eficiencia.
+
+ERRATA 2026-08-20 - A FRASE ABAIXO ERA FALSA, E O PROPRIO REPOSITORIO A CONTRADIZIA. O texto
+original dizia "Nenhum trabalho conhecido mede P(agente declara sucesso | verificador reprova)".
+Isso e falso: `evidence/literature/arxiv-2606.09863.yaml` esta neste repositorio, registra que
+o estudo "mede diretamente o fenomeno que motiva a regra dura deste repositorio", e traz as tres
+metricas - 45-48% em tau2 single-control, 3% em dual-control telecom, 75,8% em AppWorld. O ADR
+0010 cita o mesmo paper. Um ADR e um ledger de literatura no mesmo repositorio afirmavam coisas
+opostas, e nada os confrontava.
+
+Pior: esta contradicao foi apontada por auditoria externa numa rodada anterior e REFUTADA por
+engano, com uma busca truncada por `head -8` cujos acertos no ADR ficaram abaixo do corte -
+concluir ausencia a partir de observacao truncada e a forma mais barata do defeito que este
+repositorio persegue, e ela foi cometida ao negar o defeito.
+
+A lacuna REAL, que sobrevive a correcao:
 
 ```
-P(agente declara sucesso | verificador reprova)
+nao ha demonstracao causal, pareada contra baseline equivalente, de que este harness
+REDUZA P(agente declara sucesso | verificador reprova)
 ```
 
-que e a propriedade que este harness alega comprar. Num benchmark que pontua "a tarefa passou",
+O desfecho ja foi medido pela literatura; o efeito DESTE aparato sobre ele, nao. E a propriedade
+que este harness alega comprar. Num benchmark que pontua "a tarefa passou",
 um harness que se recusa a declarar pronto sem evidencia aparece como custo puro. Os trabalhos
 existentes limitam bem o CUSTO do procedimento e sao estruturalmente silenciosos sobre o
 BENEFICIO. Enquanto o experimento com esse desfecho como coprimario nao existir, nem a favor

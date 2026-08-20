@@ -3,17 +3,18 @@
   "purpose": "Corpus legivel por maquina de qual MODO de revisao encontrou qual defeito, ondas 11 a 15. Pedido por auditoria externa: 'transformem as ondas 11-13 em agent x defect corpus, porque voces ja possuem dado real valioso'.",
   "source_of_truth": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md e docs/adr/0031..0035. Este arquivo NAO adiciona achado nenhum: transcreve o que ja estava registrado em prosa, para que a distribuicao possa ser contada em vez de lida.",
   "limits": [
-    "N PEQUENO. Sao 40 achados de uma sessao, num repositorio. Nenhuma inferencia sobre populacao de repositorios se sustenta aqui.",
+    "N PEQUENO. Sao 52 achados de uma sessao, num repositorio. Nenhuma inferencia sobre populacao de repositorios se sustenta aqui.",
     "ATRIBUICAO NAO E DESENHO EXPERIMENTAL. `found_by` registra quem REPORTOU primeiro, nao quem era capaz de achar. Nao ha contrafactual.",
     "ORDEM CONFUNDE. Os modos rodaram em SEQUENCIA sobre o mesmo diff, nao em paralelo sobre entradas identicas. Um modo posterior ve um diff ja corrigido pelo anterior, e isso muda o que ha para achar.",
     "CORRELACAO NAO MEDIDA. Os revisores internos sao instancias do mesmo modelo com prompts diferentes. Contexto separado compra independencia PROCEDIMENTAL parcial; a dependencia estatistica entre eles nao foi medida aqui.",
-    "ESTE ARQUIVO JA ESTEVE INCOMPLETO, E A CONCLUSAO QUE DELE SE TIROU JA ESTEVE INVERTIDA. A primeira versao trazia 26 achados e omitia os DEZESSEIS das rodadas 2 e 3 da onda 15 - os cinco criticos e seis avisos do `revisor-codigo`, e os tres do `refutador` -, apesar de declarar os ADRs como fonte de verdade. Sobre esse universo, um relatorio publicado afirmou que a auditoria externa fora o modo mais produtivo. Com o universo completo a ordem se inverte. `counts_by_mode` estava CORRETO sobre as linhas presentes o tempo todo: consistencia interna nao implica completude, e a conclusao comparativa dependia da segunda."
+    "ESTE ARQUIVO JA ESTEVE INCOMPLETO, E A CONCLUSAO QUE DELE SE TIROU JA ESTEVE INVERTIDA. A primeira versao trazia 26 achados e omitia os DEZESSEIS das rodadas 2 e 3 da onda 15 - os cinco criticos e OITO avisos do `revisor-codigo`, e os tres do `refutador` -, apesar de declarar os ADRs como fonte de verdade. Sobre esse universo, um relatorio publicado afirmou que a auditoria externa fora o modo mais produtivo. Com o universo completo a ordem se inverte. `counts_by_mode` estava CORRETO sobre as linhas presentes o tempo todo: consistencia interna nao implica completude, e a conclusao comparativa dependia da segunda.",
+    "PROVENIENCIA DO MODO `auditoria-externa` NAO E OBSERVAVEL DAQUI. Os achados chegaram mediados pelo operador. Qualquer leitura que atribua a complementaridade a 'expertise humana' - ou a 'diversidade de modelo' - esta escolhendo um mecanismo causal que este corpus nao mediu."
   ],
   "modes": {
     "leitura-estrutural": "Le o diff e cruza o texto com o codigo. Agente `revisor-codigo`.",
     "execucao-hostil": "EXECUTA o codigo contra alvo adversario construido de proposito. Agente `auditor-seguranca`.",
     "remedicao": "REFAZ as medicoes publicadas em vez de aceita-las. Agente `refutador`.",
-    "auditoria-externa": "Revisor humano, fora da sessao, lendo o repositorio publicado.",
+    "auditoria-externa": "Revisao produzida FORA deste harness e desta sessao, chegando por intermedio do operador. PROVENIENCIA NAO OBSERVAVEL DAQUI: nao ha evidencia de que o revisor seja humano, outro modelo, ou uma combinacao - a primeira versao deste campo dizia 'revisor humano' e isso era afirmacao sem lastro. A distincao importa porque um dos mecanismos causais plausiveis para a complementaridade observada e justamente diversidade de modelo/harness, e atribui-la a expertise humana mudaria a leitura do dado. Se um humano reproduzir os achados de forma independente, isso vira um modo separado.",
     "aplicacao-de-instrumento": "Aplicar um instrumento novo ao inventario existente e ler o que ele acusa. Sem agente: e o efeito colateral de medir."
   },
   "findings": [
@@ -509,21 +510,80 @@
       "defect": "`E_S` dispensado para hook_guidance e guidance_document sem oraculo que sustente a dispensa",
       "status": "aberto - exige definir o oraculo de E_S para intervencao textual",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+    },
+    {
+      "finding_id": "G6",
+      "wave": 17,
+      "review_round": "auditoria externa (5a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "representacao-no-lugar-do-fenomeno",
+      "defect": "a dispensa de E_M para guidance_document se apoiava em `install/verify.sh`, que prova bytes instalados e nao carregamento no contexto",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "measured": "a sonda de eventos de runtime esta NAO VERIFICADA desde a onda 13; InstructionsLoaded nunca observado"
+    },
+    {
+      "finding_id": "G7",
+      "wave": 17,
+      "review_round": "auditoria externa (5a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "amplitude-da-claim",
+      "defect": "`hook_gate` mistura prevencao (PreToolUse) com rejeicao posterior (PostToolUse) e terminal (Stop), com a mesma obrigacao",
+      "status": "aberto - exige taxonomia propria",
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "measured": "poka-yoke-lint sai 2 com o arquivo ja existente: o efeito ocorreu"
+    },
+    {
+      "finding_id": "G8",
+      "wave": 17,
+      "review_round": "auditoria externa (5a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "negativa-universal-inverificavel",
+      "defect": "ADR 0033 afirmava que nenhum trabalho mede false success enquanto o ledger do proprio repositorio registrava o paper que o mede",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "measured": "agravante: a contradicao foi REFUTADA por engano numa rodada anterior, com busca truncada por head -8"
+    },
+    {
+      "finding_id": "G9",
+      "wave": 17,
+      "review_round": "auditoria externa (5a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "proveniencia-sem-lastro",
+      "defect": "o modo `auditoria-externa` era descrito como `revisor humano`, e a proveniencia nao e observavel deste lado",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md"
+    },
+    {
+      "finding_id": "G10",
+      "wave": 17,
+      "review_round": "auditoria externa (5a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "prosa-derivada-obsoleta",
+      "defect": "o corpus foi de 26 para 47 achados e a prosa dentro dele continuou dizendo 40; a aritmetica 5+6+3 dizia dezesseis",
+      "status": "corrigido",
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "measured": "portao novo pegou os tres numerais no primeiro run"
     }
   ],
   "counts_by_mode": {
     "aplicacao-de-instrumento": 3,
-    "auditoria-externa": 11,
+    "auditoria-externa": 16,
     "execucao-hostil": 1,
     "leitura-estrutural": 20,
     "remedicao": 12
   },
   "reading": [
-    "Ondas 13-15, com o universo completo: leitura-estrutural 15, remedicao 9, auditoria-externa 11, aplicacao-de-instrumento 3. Os modos INTERNOS seguem a frente somados (24 contra 11), e a leitura estrutural sozinha supera a auditoria externa. A afirmacao de que a auditoria externa fora o modo mais produtivo, publicada antes desta correcao, era artefato de universo incompleto.",
+    "Ondas 13-17, com o universo completo: leitura-estrutural 15, auditoria-externa 16, remedicao 9, aplicacao-de-instrumento 3. Os modos INTERNOS seguem a frente somados. A afirmacao de que a auditoria externa fora o modo mais produtivo, publicada antes da onda 16, era artefato de universo incompleto.",
     "O que a auditoria externa tem de distinto NAO e volume, e POSICAO: nas ondas 13 a 15 ela achou defeitos DENTRO de correcoes que os modos internos tinham acabado de aprovar, tres vezes seguidas. Isso e complementaridade demonstrada, e nao superioridade quantitativa - a segunda o dado refuta.",
-    "Os conjuntos seguem disjuntos entre modos: nenhum defeito deste corpus foi reportado por dois modos diferentes. Com N=40 e sem contrafactual, isso e compativel com complementaridade e tambem com ordem de execucao; nao decide entre as duas.",
+    "Os conjuntos seguem disjuntos entre modos: nenhum defeito deste corpus foi reportado por dois modos diferentes. Com N=52 e sem contrafactual, isso e compativel com complementaridade e tambem com ordem de execucao; nao decide entre as duas.",
     "O achado de `execucao-hostil` e o unico da sua classe e o mais caro do corpus - destruicao de diretorio arbitrario -, e sobreviveu a duas leituras de diff. Um modo com um unico achado nao pode ser dispensado por baixa contagem: a distribuicao de severidade nao e a distribuicao de frequencia.",
-    "`aplicacao-de-instrumento` nao e um agente e nao custa revisao: e o que aparece quando se mede o inventario com um criterio novo. Tres dos 40 achados vieram dai, a custo quase zero."
+    "`aplicacao-de-instrumento` nao e um agente e nao custa revisao: e o que aparece quando se mede o inventario com um criterio novo. Tres dos 52 achados vieram dai, a custo quase zero."
   ],
   "inclusion_criterion": "TODO defeito identificado numa rodada NOMEADA de revisao que resultou em alteracao de codigo, teste, policy ou documentacao normativa entra neste corpus, com `finding_id`. Sem criterio de inclusao explicito, 'produtividade do revisor' fica vulneravel a selecao retrospectiva - que foi exatamente o que aconteceu na primeira versao deste arquivo.",
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo."

@@ -124,7 +124,7 @@ check(analysis["no_universal_scaffold_claim_from_single_scaffold"] is True, "um 
 # ONDA 13: o diretorio deixou de codificar estado. A fonte de verdade do conjunto a
 # conferir passa a ser `registry.capabilities` com `source` sob `execution/skills/`.
 _reg = json.loads((ROOT / "orchestration/registry.json").read_text(encoding="utf-8"))
-promovidas = {n for n, c in (_reg.get("capabilities") or {}).items()
+governadas = {n for n, c in (_reg.get("capabilities") or {}).items()
               if (c.get("source") or "").startswith("execution/skills/")}
 depreciadas = {n for n, c in (_reg.get("capabilities") or {}).items()
                if c.get("state") == "deprecated"}
@@ -136,7 +136,7 @@ agentes = {f.stem for f in (ROOT / "execution/agents").glob("*.md")}
 _PLACEHOLDERS = {"cmd", "nome", "plugin", "exemplo", "path", "arquivo", "termo", "id"}
 
 mortas = []
-for _sk in sorted(promovidas):
+for _sk in sorted(governadas):
     _dir = ROOT / "execution/skills" / _sk
     _f = _dir / "SKILL.md"
     if not _f.is_file():
@@ -151,7 +151,7 @@ for _sk in sorted(promovidas):
         # leitura para `references/`, `Marca(s)/produto(s)` passou a casar como `/produto`.
         # Invocacao nunca vem colada a parentese de fechamento; alternancia sempre vem.
         for _tok in sorted(set(re.findall(r"(?<![\w/.<)])/([a-z][a-z0-9-]{2,})(?![\w/.-])", _md.read_text(encoding="utf-8")))):
-            if _tok in promovidas or _tok in agentes or _tok == _sk:
+            if _tok in governadas or _tok in agentes or _tok == _sk:
                 continue
             if _tok in _locais or _tok in _PLACEHOLDERS:
                 continue
@@ -162,7 +162,7 @@ check(not mortas, "toda invocacao /x em .md da skill resolve para skill, agente 
       + ("" if not mortas else f" - mortas: {sorted(set(mortas))}"))
 # ANTIVACUIDADE em dois eixos: sem skills o caso passaria vazio, e sem agentes o universo de
 # resolucao ficaria largo demais e absolveria referencia morta.
-check(len(promovidas) >= 5, f"ha skills promovidas a conferir (medido: {len(promovidas)})")
+check(len(governadas) >= 5, f"ha skills governadas a conferir (medido: {len(governadas)})")
 check(len(agentes) >= 5, f"o universo de agentes foi carregado (medido: {len(agentes)})")
 
 # ------------------------------------------------------------------------------------------
