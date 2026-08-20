@@ -192,6 +192,8 @@ jobs:
         run: bash tests/mutation/capability-conformance.sh
       - name: validacao por mutacao (hooks de guarda)
         run: bash tests/mutation/hooks-de-guarda.sh
+      - name: validacao por mutacao (completude do corpus)
+        run: bash tests/mutation/corpus-completude.sh
       - name: validacao por mutacao (camada de literatura)
         run: bash tests/mutation/literatura.sh
       - name: validacao por mutacao (claim ledger)

@@ -25,7 +25,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/cobertura.sh` | 28 | 0 |
 | `tests/unit/contrato-de-instalador.sh` | 34 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | 46 | 0 |
-| `tests/unit/capability-conformance.py` | 30 | 0 |
+| `tests/unit/capability-conformance.py` | 31 | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -46,6 +46,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
 | capability-conformance (auto) | 27 | passo dedicado no CI |
+| corpus-completude (auto) | 4 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
 
