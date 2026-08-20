@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=7
+P=0; F=0; EXPECTED_MUTANTS=11
 POR="tests/unit/governance-links.py"
 CORPUS="evidence/corpus/agente-x-defeito.json"
 ADR="docs/adr/0035-a-divida-era-de-uma-classe-so.md"
@@ -53,12 +53,11 @@ mutante(){ # $1=nome $2=descricao $3=exit esperado $4=programa python
   _rst
 }
 
-_PY='import json,pathlib
-from collections import Counter
+_PY='import json,pathlib,sys
 p=pathlib.Path("evidence/corpus/agente-x-defeito.json"); d=json.loads(p.read_text())
+sys.path.insert(0,"evidence/corpus"); import render
 def salvar():
-    c=Counter(f["mode"] for f in d["findings"])
-    d["counts_by_mode"]={k:c[k] for k in sorted(c)}
+    d["derived"]={"_comment":d["derived"]["_comment"],**render.derivar(d["findings"])}
     p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")
 '
 
@@ -68,8 +67,8 @@ mutante MCC1 "achado citado no ADR sumiu do corpus, COM counts_by_mode recontado
 salvar()'
 
 echo "== a consistencia interna, que ja era verificada =="
-mutante MCC2 "counts_by_mode diverge das linhas presentes" 1 \
-  "$_PY"'d["counts_by_mode"]["remedicao"]=d["counts_by_mode"]["remedicao"]+7
+mutante MCC2 "derived.counts_by_mode diverge das linhas presentes" 1 \
+  "$_PY"'d["derived"]["counts_by_mode"]["remedicao"]=d["derived"]["counts_by_mode"]["remedicao"]+7
 p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
 
 echo "== o criterio de inclusao =="
@@ -85,12 +84,15 @@ mutante MCC5 "prosa cita contagem que nao bate com os dados" 1 \
   "$_PY"'d["limits"][0]="N PEQUENO. Sao 40 achados de uma sessao."
 p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
 
-# CONTROLE DE DIRECAO: numeral HISTORICO e legitimo. O corpus precisa poder dizer "a primeira
-# versao trazia 26 achados" sem que isso vire violacao, senao a regra proibiria registrar o
-# proprio erro - que e o oposto do que este repositorio faz.
-mutante MCC6 "CONTROLE: numeral marcado como estado ANTERIOR nao e violacao" 0 \
-  "$_PY"'d["limits"][0]="N PEQUENO. A primeira versao trazia 26 achados; hoje sao outros."
-p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+# CONTROLE DE DIRECAO, REESCRITO NA ONDA 18. Ate a onda 17 este caso provava que numeral
+# historico em PROSA era absolvido por uma palavra na janela anterior - e foi exatamente essa
+# excecao que a auditoria derrubou, mostrando que ela absorvia claim corrente falsa. A excecao
+# saiu. O historico nao: ele passou a viver ESTRUTURADO em `historical_states`, e este controle
+# prova que registrar o proprio erro continua possivel - que era a preocupacao legitima por tras
+# da excecao antiga, agora atendida sem adivinhar intencao a partir de vizinhanca de palavra.
+mutante MCC6 "CONTROLE: historico registrado em historical_states nao e violacao" 0 \
+  "$_PY"'d["historical_states"].append({"as_of":"onda 17","n_findings":52,"nota":"controle MCC6"})
+salvar()'
 
 # NEGATIVA UNIVERSAL SOBRE LITERATURA. O ADR 0033 afirmava "nenhum trabalho conhecido mede
 # P(declara sucesso | verificador reprova)" enquanto o ledger do MESMO repositorio registrava o
@@ -100,6 +102,30 @@ mutante MCC7 "ADR volta a fazer negativa universal sobre literatura, fora de err
   'import pathlib
 p=pathlib.Path("docs/adr/0030-o-verificador-instalado-que-nunca-observou.md")
 p.write_text(p.read_text()+"\n\nNenhum trabalho conhecido mede esta propriedade.\n")'
+
+echo "== onda 18: frame derivado, e a excecao que nao e mais autodeclarada =="
+# G11 - o frame do corpus e DERIVADO dos findings. Editar `derived` a mao tem de reprovar.
+mutante MCC8 "bloco derived editado a mao, divergente dos findings" 1 \
+  "$_PY"'d["derived"]["n_findings"]=999
+p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+
+# G13 - a excecao lexical foi REMOVIDA. Este e o caso exato que a auditoria mediu passando na
+# onda 17: numeral corrente FALSO absolvido por uma palavra na janela anterior.
+mutante MCC9 "claim corrente falsa precedida de 'Antes' (a excecao da onda 17 a absolvia)" 1 \
+  "$_PY"'d["limits"][0]="Antes de discutir severidade: sao 40 achados no corpus atual."
+p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")'
+
+# G12 - a unica forma autorizada de afirmar ausencia e a busca delimitada. O token de escape da
+# onda 17 nao absolve mais: ele era criterio de excecao dentro do objeto governado.
+mutante MCC10 "negativa universal reformulada, sem busca delimitada" 1 \
+  'import pathlib
+p=pathlib.Path("docs/adr/0030-o-verificador-instalado-que-nunca-observou.md")
+p.write_text(p.read_text()+"\n\nA literatura ainda nao mede esta propriedade.\n")'
+
+mutante MCC11 "referencia [busca:<id>] que nao resolve para registro algum" 1 \
+  'import pathlib
+p=pathlib.Path("docs/adr/0030-o-verificador-instalado-que-nunca-observou.md")
+p.write_text(p.read_text()+"\n\nNenhum estudo foi encontrado. [busca:BL-9999]\n")'
 
 echo "== CONTROLE POSITIVO =="
 # Sem ele o portao podia ser `return FAIL` e os tres mutantes acima "morreriam" sem testar nada.
