@@ -59,7 +59,9 @@ def derivar(findings: list[dict]) -> dict:
         "counts_by_mode": {k: v for k, v in sorted(Counter(x["mode"] for x in findings).items())},
         "sources": sorted({x.get("source_ref", "") for x in findings if x.get("source_ref")}),
         "open_findings": sorted(x["finding_id"] for x in findings
-                                if str(x.get("status", "")).startswith("aberto")),
+                                if x.get("state") == "open"),
+        "by_state": {k: sum(1 for x in findings if x.get("state") == k)
+                     for k in sorted({x.get("state", "?") for x in findings})},
     }
 
 

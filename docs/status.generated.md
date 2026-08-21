@@ -46,7 +46,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
 | capability-conformance (auto) | 27 | passo dedicado no CI |
-| corpus-completude (auto) | 11 | passo dedicado no CI |
+| corpus-completude (auto) | 16 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
 
