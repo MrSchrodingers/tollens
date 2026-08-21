@@ -46,7 +46,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | cobertura de decisao | 5 | 0 |
 | adaptadores (auto) | 5 | passo dedicado no CI |
 | capability-conformance (auto) | 27 | passo dedicado no CI |
-| corpus-completude (auto) | 7 | passo dedicado no CI |
+| corpus-completude (auto) | 11 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
 
@@ -63,6 +63,7 @@ assercao).
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
 | `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
+| `evidence/corpus/render.py` | 93.0% | 93.0% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
 
 ## Componentes

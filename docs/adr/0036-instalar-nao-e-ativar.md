@@ -10,7 +10,7 @@ A onda 16 fechou a completude do corpus contra os identificadores dos ADRs. A au
 leu o `main` resultante e trouxe cinco achados. Nenhum e defeito de codigo. Todos sao defeitos de
 AFIRMACAO, e tres deles sao a mesma familia num nivel novo.
 
-## **G6** - instalar nao e ativar, e essa era a base de uma dispensa
+## **G6a** - instalar nao e ativar, e essa era a base de uma dispensa
 
 `orchestration/evidence-policy.json` dispensava `guidance_document` de `E_M` com esta razao:
 
@@ -48,6 +48,17 @@ runtime que este repositorio nao tem, e esta bloqueada pela sonda NAO VERIFICADA
 A distincao importa alem do documento. Um hook pode existir e nao disparar no evento; uma skill
 pode ser boa quando executada e piorar o sistema por roteamento ruim. O vetor atual colapsa os
 tres casos em `E_M`.
+
+ERRATA 2026-08-20, apontada pela auditoria seguinte: este achado estava registrado no corpus com
+`status: corrigido`, e isso misturava duas coisas. Passa a ser dividido, porque so a primeira
+fechou:
+
+- **G6a** - a claim documental "a entrega ja e conferida" era FALSA. CORRIGIDA.
+- **G6b** - evidencia de ATIVACAO nao existe. ABERTA, e sem instrumento: nada observa que o
+  runtime carregou o documento ou disparou o hook no evento.
+
+A falsidade documental foi corrigida; o fenomeno cuja ausencia a revelou continua sem medida. Um
+unico `status: corrigido` sobre os dois teria publicado a segunda como resolvida.
 
 ## **G7** - `hook_gate` mistura prevenir com rejeitar depois
 

@@ -1,0 +1,56 @@
+# BUSCA DE LITERATURA DELIMITADA.
+#
+# POR QUE ESTE FORMATO EXISTE. O ADR 0033 afirmava "nenhum trabalho conhecido mede
+# P(agente declara sucesso | verificador reprova)" enquanto o ledger deste mesmo repositorio
+# registrava o paper que o mede. A onda 17 corrigiu a instancia com um lint lexical, e auditoria
+# externa mostrou que o lint nao fecha a classe: quatro reformulacoes triviais passavam, e o
+# token de escape podia ser escrito pelo mesmo PR que escrevia a claim.
+#
+# A raiz nao e o regex. E que a proposicao
+#
+#     PARA TODO p em Literatura, nao P(p)
+#
+# nao e demonstravel por busca finita em literatura aberta. Nao ha observacao que a sustente,
+# entao ela nao pode ser afirmada - a secao 2 do CLAUDE.md ja proibia, e faltava a forma que a
+# substitui. Esta e a forma:
+#
+#     NaoEncontrado(consultas, fontes, data)
+#
+# que E mensuravel, tem escopo explicito e envelhece de modo visivel.
+claim_id: BL-0001
+question: >
+  Existe trabalho que meca P(agente declara sucesso | verificador independente reprova) -
+  isto e, false success com verdade-base independente do texto do agente?
+searched_at: 2026-08-20
+searched_by: sessao de manutencao do repositorio
+sources:
+  - ledger interno evidence/literature/
+queries:
+  - "false success"
+  - "declared success"
+  - "declara sucesso"
+result:
+  matching_studies: 1
+  matches:
+    - id: arXiv:2606.09863
+      ledger: evidence/literature/arxiv-2606.09863.yaml
+      why: >
+        O ledger deste repositorio registra que o estudo "mede diretamente o fenomeno que motiva
+        a regra dura deste repositorio", com false_success_rate em tau2 single-control,
+        dual-control telecom e AppWorld.
+conclusion: >
+  A afirmacao de ausencia e FALSA dentro deste frame, e por isso o ADR 0033 recebeu errata. O que
+  permanece sem evidencia e outra proposicao, que NAO e de ausencia na literatura: nao ha
+  demonstracao causal pareada de que ESTE aparato reduza aquele desfecho contra um baseline
+  equivalente.
+limits:
+  - >
+    ESTE FRAME E ESTREITO DE PROPOSITO E ISSO E O PONTO. A busca cobriu o ledger INTERNO deste
+    repositorio, nao arXiv, nao Crossref, nao literatura cinza. Um frame estreito que se declara
+    e honesto; um frame implicito que se apresenta como universal e o defeito que este arquivo
+    substitui.
+  - >
+    NAO VERIFICADO: nenhuma busca externa foi executada nesta sessao. Ampliar o frame exige
+    conferir cada resultado em fonte primaria antes de registra-lo - o ADR 0011 registra que
+    quatro de cinco citacoes deste repositorio ja foram falsas sob vigilancia da regra que as
+    proibia.

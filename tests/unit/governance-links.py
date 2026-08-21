@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,12 +39,15 @@ if not corpus_path.is_file():
     raise SystemExit("FAIL corpus agente-x-defeito ausente")
 corpus = json.loads(corpus_path.read_text(encoding="utf-8"))
 
+# ONDA 18: `counts_by_mode` saiu do topo do arquivo e virou parte do bloco DERIVADO, junto do
+# resto do frame. A recontagem continua, agora contra `derived` - ver a checagem completa abaixo,
+# que compara o bloco inteiro com o que o renderer calcula.
 medido: dict[str, int] = {}
 for achado in corpus["findings"]:
     medido[achado["mode"]] = medido.get(achado["mode"], 0) + 1
-declarado = corpus["counts_by_mode"]
+declarado = (corpus.get("derived") or {}).get("counts_by_mode")
 if medido != declarado:
-    raise SystemExit(f"FAIL corpus: counts_by_mode declarado {declarado} != medido {medido}")
+    raise SystemExit(f"FAIL corpus: derived.counts_by_mode {declarado} != medido {medido}")
 
 # Todo modo citado numa linha tem de estar definido em `modes`, senao a coluna nao significa nada.
 desconhecidos = sorted(set(medido) - set(corpus["modes"]))
@@ -98,8 +103,6 @@ print(f"PASS completude ADR-ID: os {len(_citados_total)} achados citados com mar
 # fora escrita antes de a ultima capability entrar, e nada reconferia - a mesma classe do
 # `counts_by_mode` do corpus, corrigida logo acima, reaparecendo no arquivo que JUSTIFICA a onda.
 # Numero que justifica uma decisao e o ultimo lugar onde se pode confiar em copia manual.
-import subprocess
-import sys
 
 ADR = ROOT / "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
 if not ADR.is_file():
@@ -121,64 +124,122 @@ else:
     if _pub.groups() != _medido.groups():
         raise SystemExit(f"FAIL ADR 0035 publica D_E={_pub.group(1)}/{_pub.group(2)} "
                          f"e o portao mede {_medido.group(1)}/{_medido.group(2)}")
-    # ONDA 17, ACHADO DE AUDITORIA EXTERNA - A PROSA DERIVADA NAO CONFERE COM O DADO.
+    # ONDA 18 - A PROSA DO CORPUS NAO PODE CONTER NUMERAL, e o frame e DERIVADO.
 #
-# O portao de completude fechou "faltam linhas no corpus". Sobrou a forma menor da mesma classe:
-# o corpus passou de 26 para 47 achados e a PROSA dentro dele continuou dizendo "40 achados",
-# "N=40", "tres dos 40 achados". Numeral narrativo derivado de um dado que mudou, e ninguem
-# recontava - a terceira aparicao de "numero declarado que ninguem confere" nesta serie.
+# A onda 17 pos um lint de numeral com excecao por janela lexical. Auditoria externa mostrou que
+# nao fechava a classe: "Antes de discutir severidade, sao 40 achados no corpus atual" passava,
+# porque "Antes" caia na janela de excecao; e o mesmo cabecalho declarava "ondas 11 a 15" com
+# onda 17 nos dados. O erro estava no FORMATO, nao no regex:
 #
-#     dados estruturados corretos  NAO IMPLICA  prosa derivada correta
+#     contagem estruturada -> humano escreve o numero -> regex tenta descobrir se copiou certo
 #
-# A regra e estreita de proposito: todo numeral escrito como "<N> achados" ou "N=<N>" nos campos
-# de prosa do corpus tem de bater com o total real. Nao tenta interpretar prosa - so recusa
-# numeral que se apresenta como contagem e nao e.
-_total = len(corpus["findings"])
-_prosa: list[str] = []
-for _campo in ("limits", "reading"):
-    _prosa.extend(corpus.get(_campo) or [])
-_prosa.append(corpus.get("purpose", ""))
-_errados = []
-for _s in _prosa:
-    for _m in re.finditer(r"\b(\d+) achados\b|\bN=(\d+)\b", _s):
-        _n = int(_m.group(1) or _m.group(2))
-        # numeral historico e legitimo quando o texto o marca como estado ANTERIOR
-        _ctx = _s[max(0, _m.start() - 90):_m.start()].lower()
-        if any(_p in _ctx for _p in ("primeira versao", "antes", "anterior", "ja esteve")):
-            continue
-        if _n != _total:
-            _errados.append(f"{_n} (real: {_total}) em ...{_s[max(0,_m.start()-50):_m.end()+10]}")
-if _errados:
-    raise SystemExit(f"FAIL corpus: prosa cita contagem que nao bate com os dados: {_errados}")
+# Invertido: a prosa usa marcadores, `evidence/corpus/render.py` os resolve a partir dos
+# findings, e digito literal em campo de prosa passa a ser recusado. Nao ha o que copiar errado.
+#
+# LIMITE: numero por EXTENSO nao e alcancado. A garantia e de FORMATO - nenhum digito -, nao de
+# semantica de texto. Dizer o contrario seria a amplitude que esta serie vem corrigindo.
+sys.path.insert(0, str(ROOT / "evidence/corpus"))
+import render as _render                                                    # noqa: E402
 
-# ONDA 17 - NEGATIVA UNIVERSAL SOBRE LITERATURA E PROIBIDA EM ADR.
+_derivado = _render.derivar(corpus["findings"])
+_divergente = {k: (corpus["derived"].get(k), v) for k, v in _derivado.items()
+               if corpus["derived"].get(k) != v}
+if _divergente:
+    raise SystemExit(f"FAIL corpus: bloco `derived` diverge dos findings: {_divergente} "
+                     "- rode `python3 evidence/corpus/render.py --update`")
+
+# ESCOPO DESTE LINT, dito com precisao porque a versao anterior errou justamente aqui. Ele
+# recusa DUAS formas de contagem escritas a mao - `<N> achados` e `N=<N>` -, que sao as que de
+# fato reincidiram. Nao pretende cobrir prosa derivada em geral: numero por extenso, aritmetica
+# em texto e referencia narrativa a uma onda passada ficam fora, e a garantia contra elas nao
+# vem daqui - vem de o FRAME ser derivado em `derived`, onde nao ha o que copiar errado.
 #
-# O ADR 0033 afirmava "nenhum trabalho conhecido mede P(declara sucesso | verificador reprova)"
-# enquanto `evidence/literature/arxiv-2606.09863.yaml`, no MESMO repositorio, registrava que o
-# estudo "mede diretamente o fenomeno". Um ADR e um ledger afirmando o oposto, sem nada que os
-# confrontasse. E o ADR 0011 ja documentava que 4 de 5 citacoes deste repositorio eram falsas.
+# A EXCECAO LEXICAL FOI REMOVIDA. A versao da onda 17 absolvia o numeral se a janela de noventa
+# caracteres anterior contivesse "antes", "anterior", "primeira versao" ou "ja esteve. Auditoria
+# externa mediu: "Antes de discutir severidade, sao 40 achados no corpus atual" passava, com o
+# numero corrente FALSO. Excecao por vizinhanca de palavra e adivinhacao de intencao. O historico
+# nao precisa dela: vive em `historical_states`, estruturado, e o renderer o imprime.
+_sem_marcador = [re.sub(r"\{\{[^}]+\}\}", "", s) for s in _render.prosa(corpus)]
+_com_contagem = [s[:70] for s in _sem_marcador if re.search(r"\b\d+ achados\b|\bN=\d+\b", s)]
+if _com_contagem:
+    raise SystemExit("FAIL corpus: contagem escrita a mao na prosa; use marcador resolvido por "
+                     f"evidence/corpus/render.py, e historico em historical_states: {_com_contagem}")
+if not (corpus.get("historical_states") or []):
+    raise SystemExit("FAIL corpus sem `historical_states` - sem ele o registro do proprio erro "
+                     "so caberia na prosa, que e o que esta regra acabou de proibir")
+
+_mapa = _render.substituicoes(corpus)
+_orfaos = [m for s in _render.prosa(corpus) for m in _render._MARCADOR.findall(s) if m not in _mapa]
+if _orfaos:
+    raise SystemExit(f"FAIL corpus: marcador que nao resolve: {sorted(set(_orfaos))}")
+
+# ONDA 18 - AFIRMACAO DE AUSENCIA NA LITERATURA EXIGE BUSCA DELIMITADA.
 #
-# A regra vem da secao 2 do CLAUDE.md - sem fonte, remover ou marcar [nao verificado] - aplicada
-# a uma forma que NAO PODE ter fonte: nao se cita evidencia da ausencia de toda a literatura.
-# Negativa universal sobre literatura e, por construcao, inverificavel. So sobrevive dentro de
-# uma ERRATA, isto e, quando o proprio texto a esta corrigindo.
-_NEG = re.compile(r"(nenhum (?:trabalho|paper|estudo|artigo)|ninguem mede|no (?:work|paper|study) measures)",
-                  re.IGNORECASE)
-_universais = []
+# A onda 17 proibiu a forma lexical e abriu duas excecoes: a palavra ERRATA numa janela de oito
+# linhas, e o token `[citacao-corrigida]` na propria linha. Auditoria externa mediu as duas
+# falhas. Quatro reformulacoes triviais passavam intocadas ("Nao ha estudo publicado que meca",
+# "A literatura ainda nao mede", "Inexiste trabalho que", "There are no published studies"), e o
+# token de escape podia ser escrito pelo MESMO PR que escrevia a claim - criterio de excecao
+# dentro do objeto governado, a familia do D_MAX numa representacao nova.
+#
+# Duas mudancas. A primeira: a lista de realizacoes cresce, e a claim sobre ela ENCOLHE - isto e
+# um LINT de realizacoes lexicais, nunca um detector semantico de negativa universal.
+#
+# A segunda e a que fecha a classe para claim NOVA: a unica forma autorizada de afirmar ausencia
+# e referenciar uma busca delimitada, `[busca:<id>]`, resolvendo para um registro em
+# `evidence/literature/searches/`. `PARA TODO p, nao P(p)` nao e demonstravel por busca finita;
+# `NaoEncontrado(consultas, fontes, data)` e.
+#
+# E a valvula de CITACAO nao e mais autodeclarada: uma linha com a forma so e absolvida se
+# EXISTIR IDENTICA NA ARVORE BASE - fato que o PR nao pode forjar, o mesmo principio da onda 14.
+_NEG = re.compile(
+    r"(nenhum[a]? (?:trabalho|paper|estudo|artigo|pesquisa)"
+    r"|ninguem (?:mede|mediu|avalia)"
+    r"|inexiste (?:trabalho|estudo)"
+    r"|nao (?:ha|existe) (?:trabalho|estudo|paper|pesquisa)"
+    r"|a literatura (?:ainda )?nao mede"
+    r"|no (?:work|paper|study|research) (?:measures|evaluates)"
+    r"|there (?:are|is) no published)", re.IGNORECASE)
+_BUSCA = re.compile(r"\[busca:([A-Z]{2}-\d{4})\]")
+
+_base_ref = None
+for _r in ("origin/main", "main"):
+    if subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--verify", _r],
+                      capture_output=True).returncode == 0:
+        _base_ref = _r
+        break
+
+_sem_busca, _busca_morta = [], []
 for _adr in sorted((ROOT / "docs/adr").glob("*.md")):
-    for _i, _linha in enumerate(_adr.read_text(encoding="utf-8").splitlines(), 1):
+    _linhas = _adr.read_text(encoding="utf-8").splitlines()
+    _base_txt = ""
+    if _base_ref:
+        _r = subprocess.run(["git", "-C", str(ROOT), "show", f"{_base_ref}:docs/adr/{_adr.name}"],
+                            capture_output=True, text=True)
+        _base_txt = _r.stdout if _r.returncode == 0 else ""
+    for _i, _linha in enumerate(_linhas, 1):
         if not _NEG.search(_linha):
             continue
-        _janela = "\n".join(_adr.read_text(encoding="utf-8").splitlines()[max(0, _i - 8):_i + 2]).upper()
-        # Duas saidas, e as duas sao ESTREITAS de proposito. Alargar a janela de contexto
-        # enfraqueceria a regra; um marcador explicito na propria linha nao.
-        if "ERRATA" in _janela or "[citacao-corrigida]" in _linha:
+        if _linha in _base_txt:          # citacao de texto que ja existia na BASE
             continue
-        _universais.append(f"{_adr.name}:{_i}")
-if _universais:
-    raise SystemExit("FAIL negativa universal sobre literatura em ADR (inverificavel por "
-                     f"construcao; so vale dentro de errata): {_universais}")
+        _ids = _BUSCA.findall(_linha)
+        if not _ids:
+            _sem_busca.append(f"{_adr.name}:{_i}")
+            continue
+        for _id in _ids:
+            if not list((ROOT / "evidence/literature/searches").glob(f"{_id}-*.yaml")):
+                _busca_morta.append(f"{_adr.name}:{_i} -> {_id}")
+if _sem_busca:
+    raise SystemExit("FAIL afirmacao de ausencia na literatura sem busca delimitada "
+                     f"[busca:<id>], e sem existir identica na base: {_sem_busca}")
+if _busca_morta:
+    raise SystemExit(f"FAIL referencia [busca:<id>] que nao resolve: {_busca_morta}")
 
-print(f"PASS corpus: prosa e dados concordam ({_total} achados)")
-print("PASS nenhum ADR faz negativa universal sobre literatura fora de errata")
+_buscas = sorted((ROOT / "evidence/literature/searches").glob("*.yaml"))
+if not _buscas:
+    raise SystemExit("FAIL nenhuma busca delimitada registrada - a regra acima seria vacua")
+
+print(f"PASS corpus: frame derivado dos dados, prosa sem numeral literal "
+      f"({_derivado['n_findings']} achados, ondas {_derivado['wave_min']}-{_derivado['wave_max']})")
+print(f"PASS ausencia na literatura so por busca delimitada ({len(_buscas)} registrada(s))")
 print(f"PASS ADR 0035 publica o D_E que o portao mede ({_medido.group(1)} sobre {_medido.group(2)})")
