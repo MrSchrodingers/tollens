@@ -63,6 +63,7 @@ assercao).
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
 | `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
+| `evidence/corpus/render.py` | 93.0% | 93.0% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
 
 ## Componentes

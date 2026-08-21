@@ -154,6 +154,7 @@ evidence/validate-claims.py:81.4
 evidence/validate-literature.py:92.3
 evidence/runtime-probes/declared-capabilities.py:92.6
 orchestration/schedule.py:89.3
+evidence/corpus/render.py:93.0
 evidence/validate-adapters.py:69.3
 EOF
 )}"
@@ -206,7 +207,23 @@ EOF
 # NOTA DE FORMATO, aprendida aqui: este heredoc so aceita linhas `caminho|tipo|item|motivo`.
 # Comentario dentro dele vira entrada malformada e derruba dezessete casos de
 # tests/unit/cobertura.sh de uma vez, com diagnostico que aponta para outro lugar.
+# `evidence/corpus/render.py`: os seis itens abaixo sao os ramos de erro de MARCADOR NAO
+# RESOLVIDO em `main()`. Sao inalcancaveis numa arvore conforme por construcao, e nao por
+# falta de teste: `tests/unit/governance-links.py` recusa marcador orfao ANTES de o renderer
+# poder encontra-lo, e esse portao tem mutante proprio. A justificativa e ESTRUTURAL, nao
+# temporal - ao contrario das de ABSOLUTO_PENDENTE, que a auditoria apontou como envelhecidas
+# por dizerem 'outro agente corrige nesta mesma onda' muitas ondas depois.
+#
+# E SIM, ESTA ARMADILHA FOI PISADA DUAS VEZES. A nota de formato logo abaixo foi escrita na
+# onda 15 depois de comentario dentro do heredoc derrubar dezessete casos; na onda 18 o mesmo
+# erro voltou, com a nota ja no arquivo. Enunciar a regra nao a executa.
 ISENCOES="${COBERTURA_ISENCOES:-$(cat <<'EOF'
+evidence/corpus/render.py|linha|120|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|121|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|127|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|128|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|ramo|119->120|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|ramo|126->127|ramo-de-erro-inalcancavel-portao-recusa-antes
 orchestration/schedule.py|linha|107|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|linha|108|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|linha|228|heranca-piso-absoluto-2026-08-11
