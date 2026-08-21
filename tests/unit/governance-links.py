@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 import subprocess
 import sys
@@ -172,6 +173,57 @@ _mapa = _render.substituicoes(corpus)
 _orfaos = [m for s in _render.prosa(corpus) for m in _render._MARCADOR.findall(s) if m not in _mapa]
 if _orfaos:
     raise SystemExit(f"FAIL corpus: marcador que nao resolve: {sorted(set(_orfaos))}")
+
+# ONDA 19 - `source_ref` E `resolution_ref` TEM DE RESOLVER (G14), e o estado e enum (G15).
+#
+# G14 - o renderer deriva `sources` do campo `source_ref` de cada achado, o que garante que o
+# frame liste o que foi DECLARADO e nada sobre o que EXISTE. Medido: `source_ref` apontando para
+# `docs/adr/nao-existe.md` passava com rc=0, com o frame derivado atualizado e o portao verde. E
+# a familia da onda 12 - "referencia publicada que nao resolve" - voltando dentro do instrumento
+# construido para medir a propria trajetoria de defeitos.
+#
+# G15 - `open_findings` derivava de `status.startswith("aberto")`, texto livre. Medido: trocar a
+# string de um achado ABERTO por "corrigido" o removia da lista, com tudo consistente e rc=0. O
+# estado passa a ser enum fechado, e `resolved` exige `resolution_ref` que RESOLVA. Isso nao
+# prova que o defeito foi corrigido - prova que existe artefato alegando corrigi-lo, e essa e a
+# claim que o corpus pode sustentar.
+_ESTADOS = set((corpus.get("state_machine") or {}).get("states") or [])
+if not _ESTADOS:
+    raise SystemExit("FAIL corpus sem `state_machine.states` - o estado voltaria a ser texto livre")
+
+def _ref_valida(rel: str) -> str | None:
+    """Motivo da recusa, ou None se o caminho resolve e esta confinado."""
+    if not rel:
+        return "vazio"
+    if rel.startswith("/") or ".." in pathlib.PurePosixPath(rel).parts:
+        return "fora do repositorio"
+    return None if (ROOT / rel).is_file() else "nao existe"
+
+_ruins, _estado_ruim, _sem_resolucao, _sem_nota = [], [], [], []
+for _f in corpus["findings"]:
+    _id = _f.get("finding_id", "?")
+    _m = _ref_valida(_f.get("source_ref", ""))
+    if _m:
+        _ruins.append(f"{_id}: source_ref {_f.get('source_ref')!r} {_m}")
+    if _f.get("state") not in _ESTADOS:
+        _estado_ruim.append(f"{_id}: state={_f.get('state')!r}")
+    if _f.get("state") == "resolved":
+        _m2 = _ref_valida(_f.get("resolution_ref", ""))
+        if _m2:
+            _sem_resolucao.append(f"{_id}: resolution_ref {_f.get('resolution_ref')!r} {_m2}")
+    if _f.get("state") == "open" and not _f.get("open_note"):
+        _sem_nota.append(_id)
+if _ruins:
+    raise SystemExit(f"FAIL corpus: source_ref que nao resolve ou escapa do repositorio: {_ruins}")
+if _estado_ruim:
+    raise SystemExit(f"FAIL corpus: state fora do enum {sorted(_ESTADOS)}: {_estado_ruim}")
+if _sem_resolucao:
+    raise SystemExit(f"FAIL corpus: `resolved` sem resolution_ref que resolva: {_sem_resolucao}")
+if _sem_nota:
+    raise SystemExit(f"FAIL corpus: `open` sem open_note dizendo o que falta: {_sem_nota}")
+
+print(f"PASS corpus: {len(corpus['findings'])} referencias resolvem, estados no enum, "
+      f"{len(_derivado['open_findings'])} aberto(s) com nota")
 
 # ONDA 18 - AFIRMACAO DE AUSENCIA NA LITERATURA EXIGE BUSCA DELIMITADA.
 #

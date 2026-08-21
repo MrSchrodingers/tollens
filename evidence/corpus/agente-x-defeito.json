@@ -26,7 +26,9 @@
       "defect": "ata e commit afirmavam coisas diferentes sobre a mesma mudanca",
       "finding_id": "W11-1",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 11,
@@ -36,7 +38,9 @@
       "defect": "guarda de arena comparava o pid consigo mesmo",
       "finding_id": "W11-2",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 11,
@@ -46,7 +50,9 @@
       "defect": "trap sem exit trocava 'morre deixando mutante' por 'ignora o sinal e continua mutando'",
       "finding_id": "W11-3",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -57,7 +63,9 @@
       "evidence": "TOTAL=50 FAIL=0",
       "finding_id": "W12-1",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -68,7 +76,9 @@
       "evidence": "No such file or directory",
       "finding_id": "W12-2",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -78,7 +88,9 @@
       "defect": "8 citacoes de 'Diretriz N': 3 para secao inexistente, 5 resolvendo para secao que diz outra coisa",
       "finding_id": "W12-3",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -88,7 +100,9 @@
       "defect": "10 de 10 projecoes de agente com description generica, sem chave de roteamento",
       "finding_id": "W12-4",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -99,7 +113,9 @@
       "note": "PRE-EXISTENTE da onda 11, no mesmo arquivo, noventa linhas acima do defeito que a onda 12 corrigia. Sobreviveu a DUAS leituras de diff. So apareceu com symlink plantado e execucao do bloco literal.",
       "finding_id": "W12-5",
       "review_round": "auditor-seguranca",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 12,
@@ -109,7 +125,9 @@
       "defect": "falha de geracao truncava o manifesto de destino em vez de aborta-la",
       "finding_id": "W12-6",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
@@ -119,7 +137,9 @@
       "defect": "$(python3 ...) dentro de heredoc: heredoc e expansao, o exit e descartado. Tres modos saiam 0 com manifesto escrito; o pior tinha stderr vazio e a cadeia apagava as 8 skills enquanto verify dizia 'conforme'",
       "finding_id": "W13-1",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
@@ -129,7 +149,9 @@
       "defect": ".py numa lista executada por bash: nunca rodou como Python, e o bash executou crases do docstring como comando",
       "finding_id": "W13-2",
       "review_round": "revisor-codigo",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
@@ -139,7 +161,9 @@
       "defect": "7 mutantes rodados a mao num clone descartado; nenhum comando do repositorio os reexecutava",
       "finding_id": "W13-3",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
@@ -149,7 +173,9 @@
       "defect": "D_E contava {candidate, promoted} enquanto a policy declara initial_state: quarantine - o estado em que toda capability NASCE ficava fora da contagem",
       "finding_id": "W13-4",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
@@ -159,7 +185,9 @@
       "defect": "status.sh --check aprovava com duas suites vermelhas: o exit era gravado como VALOR numa tabela e regenerar o documento devolvia o --check ao verde",
       "finding_id": "W13-5",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 13,
@@ -169,7 +197,9 @@
       "defect": "mutantes MC1..MC9 colidindo entre dois arneses",
       "finding_id": "W13-6",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 14,
@@ -180,7 +210,9 @@
       "note": "Estava DENTRO da correcao que os tres modos internos aprovaram na onda 13.",
       "finding_id": "W14-1",
       "review_round": "auditoria externa",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 14,
@@ -190,7 +222,9 @@
       "defect": "pagar um dossie abria vaga: 8 -> 7 -> 8 passava, porque contagem mede tamanho e trocar uma divida por outra mantem o tamanho",
       "finding_id": "W14-2",
       "review_round": "auditoria externa",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 14,
@@ -201,7 +235,9 @@
       "note": "Correcao da onda 13b trocando uma claim falsa por outra ampla demais.",
       "finding_id": "W14-3",
       "review_round": "auditoria externa",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -211,7 +247,9 @@
       "defect": "8 de 14 hooks instalados sem execucao em teste algum; 2 deles bloqueiam escrita e 2 sao citados em CLAUDE.md como garantia ativa",
       "finding_id": "W15-1",
       "review_round": "medicao",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -221,7 +259,9 @@
       "defect": "tests/unit/run.sh classifica 4 hooks por categoria em conjuntos estaticos e nunca executa nenhum",
       "finding_id": "W15-2",
       "review_round": "medicao",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -231,7 +271,9 @@
       "defect": "no RED: schedule dizia writes ['**'], README dizia 'writes: tests/', agente tdd dizia fechar o GREEN. Tres afirmacoes, nenhum verificador",
       "finding_id": "W15-3",
       "review_round": "medicao",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -241,7 +283,9 @@
       "defect": "writes: false e single_writer: true lidos como isolamento; os dez agentes tem Bash, logo nenhum e tecnicamente read-only",
       "finding_id": "W15-4",
       "review_round": "auditoria externa",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -251,7 +295,9 @@
       "defect": "divida escalar contava apenas skills; agentes e hooks ficavam fora, e o '18' publicado era piso de uma leitura errada em forma",
       "finding_id": "W15-5",
       "review_round": "auditoria externa",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -261,7 +307,9 @@
       "defect": "dossie sem evaluated_with: Valid(c,t0) era tratado como Valid(c,t1) para sempre",
       "finding_id": "W15-6",
       "review_round": "auditoria externa",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -271,7 +319,9 @@
       "defect": "a propria contagem de hooks sem teste errou DUAS vezes antes de acertar: grep de 'exit 2' no fonte deu 2 falsos positivos em 14 (ocorrencias em comentario), e grep de invocacao perdeu as suites que atribuem o caminho a variavel",
       "finding_id": "W15-7",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "wave": 15,
@@ -281,7 +331,9 @@
       "defect": "MHG15 sobreviveu por defesa em profundidade real: uma segunda guarda independente preserva o comportamento observavel. Declarado equivalente, com MHG16 removendo as duas para provar sensibilidade",
       "finding_id": "W15-8",
       "review_round": "refutador",
-      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "state": "resolved",
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     },
     {
       "finding_id": "C1",
@@ -292,7 +344,9 @@
       "class": "criterio-dentro-do-objeto-governado",
       "defect": "`kind` virou a chave de entrada na tabela de obrigacoes e ficou editavel pelo mesmo PR",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "reclassificar 6 hooks: divida 89 -> 77 com o portao verde"
+      "measured": "reclassificar 6 hooks: divida 89 -> 77 com o portao verde",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "C2",
@@ -303,7 +357,9 @@
       "class": "fronteira-contornavel",
       "defect": "`source` arbitrario apontando para caminho preexistente contornava a regra de criacao",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "+4 obrigacoes, com o caso escrito para pegar isso imprimindo PASS pelo nome"
+      "measured": "+4 obrigacoes, com o caso escrito para pegar isso imprimindo PASS pelo nome",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "C3",
@@ -314,7 +370,9 @@
       "class": "amplitude-da-claim",
       "defect": "o portao aceitava `write_confinement: sandbox` - a claim exata que existia para impedir",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "esvaziar a condicao via `writes: true` nos dez agentes; TOTAL=24 FAIL=0"
+      "measured": "esvaziar a condicao via `writes: true` nos dez agentes; TOTAL=24 FAIL=0",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "C4",
@@ -325,7 +383,9 @@
       "class": "numero-publicado-falso",
       "defect": "ADR e errata publicavam D_E=87 sobre 33 enquanto o portao do mesmo commit media 89 sobre 34",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "diferenca igual ao registro de `claude-md`, escrito depois da prosa"
+      "measured": "diferenca igual ao registro de `claude-md`, escrito depois da prosa",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "C5",
@@ -336,7 +396,9 @@
       "class": "leitor-ignorado",
       "defect": "`_digest_de` declarava receber o leitor e lia sempre do disco: EvidenceValidity fail-open na base",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "regressao reintroduzida em copia: TOTAL=30 FAIL=2"
+      "measured": "regressao reintroduzida em copia: TOTAL=30 FAIL=2",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A1",
@@ -347,7 +409,9 @@
       "class": "validador-quebra-em-vez-de-recusar",
       "defect": "TypeError em metadado malformado introduzido pelo bloco novo; a base recusava limpo",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "`produces` nao-lista: 3x TypeError no head, SCHEDULE_ERROR na base"
+      "measured": "`produces` nao-lista: 3x TypeError no head, SCHEDULE_ERROR na base",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A2",
@@ -357,7 +421,9 @@
       "mode": "leitura-estrutural",
       "class": "policy-declarada-nao-aplicada",
       "defect": "o portao implementava DUAS das tres condicoes que a propria policy declarava para `executed_suite`",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A4",
@@ -368,7 +434,9 @@
       "class": "parser-artesanal-fail-open",
       "defect": "parser de frontmatter errava cinco formas de YAML valido, todas fail-open, num repo que ja tinha modulo PyYAML",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "5 divergencias contra `yaml.safe_load`, incluindo `tools:` omitido = herda tudo"
+      "measured": "5 divergencias contra `yaml.safe_load`, incluindo `tools:` omitido = herda tudo",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A5",
@@ -378,7 +446,9 @@
       "mode": "leitura-estrutural",
       "class": "mecanismo-declarado-ausente",
       "defect": "`orchestration/environment.json` citado na policy e inexistente na arvore",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A6",
@@ -388,7 +458,9 @@
       "mode": "leitura-estrutural",
       "class": "dependente-de-ordem",
       "defect": "separacao de oraculo decidida por `setdefault`: o primeiro produtor de `diff` vencia",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A7",
@@ -398,7 +470,9 @@
       "mode": "leitura-estrutural",
       "class": "contradicao-entre-artefatos",
       "defect": "o no `mutation`, mesmo ator e escopo irrestrito, ficava fora da regra de separacao de oraculo",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "F1",
@@ -409,7 +483,9 @@
       "class": "criterio-dentro-do-objeto-governado",
       "defect": "a tabela de obrigacoes era lida do disco e usada para julgar OS DOIS lados da comparacao",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "proof_obligations esvaziado: D_E=0 sobre 34, TOTAL=30 FAIL=0"
+      "measured": "proof_obligations esvaziado: D_E=0 sobre 34, TOTAL=30 FAIL=0",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "F2",
@@ -420,7 +496,9 @@
       "class": "leitor-ignorado",
       "defect": "`_pagas` lia `scripts/status.sh` do disco, na condicao que a rodada anterior acabara de acrescentar",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "com base==head, divida 89 -> 102 e o portao imprimindo 'nao cresce'"
+      "measured": "com base==head, divida 89 -> 102 e o portao imprimindo 'nao cresce'",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "F3",
@@ -431,7 +509,9 @@
       "class": "claim-publicada-falsa",
       "defect": "`status.generated.md` publicava 'passo dedicado no CI' para arneses sem passo algum",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "43 mutantes rodavam so na estacao do autor"
+      "measured": "43 mutantes rodavam so na estacao do autor",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "A3",
@@ -442,7 +522,9 @@
       "class": "limite-nao-declarado",
       "defect": "a bijecao registry-manifesto cobre 33 de 49 componentes e o comentario afirmava inventario fechado",
       "measured": "11 adapter + 5 doctool fora do inventario governado",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "S6",
@@ -452,7 +534,9 @@
       "mode": "leitura-estrutural",
       "class": "fronteira-contornavel",
       "defect": "duas capabilities podiam declarar a mesma `source`; CC5 compara CONJUNTOS e nao veria",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
     },
     {
       "finding_id": "G1",
@@ -462,8 +546,10 @@
       "mode": "auditoria-externa",
       "class": "comparabilidade-de-metrica",
       "defect": "a prosa apresentava 8 -> 89 como serie temporal; as unidades mudaram de `skill` para par `(capability, dimensao)`",
-      "status": "corrigido",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G2",
@@ -473,8 +559,10 @@
       "mode": "auditoria-externa",
       "class": "identidade-semantica-indevida",
       "defect": "o `18` antigo e o `E_M = 18` novo foram identificados como a mesma grandeza; sao a mesma populacao, estimandos diferentes",
-      "status": "corrigido",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G3",
@@ -484,9 +572,11 @@
       "mode": "auditoria-externa",
       "class": "universo-incompleto",
       "defect": "o corpus era internamente consistente e seletivamente incompleto: faltavam 16 achados das rodadas 2 e 3, todos citados no ADR que ele declara como fonte",
-      "status": "corrigido",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "ondas 13-15 antes: externa 6 = remedicao 6; depois: leitura-estrutural 15 > remedicao 9 > externa 6"
+      "measured": "ondas 13-15 antes: externa 6 = remedicao 6; depois: leitura-estrutural 15 > remedicao 9 > externa 6",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G4",
@@ -496,9 +586,10 @@
       "mode": "auditoria-externa",
       "class": "criterio-dentro-do-objeto-governado",
       "defect": "capability NOVA declara o proprio `kind` e portanto a propria carga de prova; os tres tipos de hook aceitam a mesma forma de source",
-      "status": "aberto - registrado como alvo da proxima onda",
       "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
-      "measured": "hook que bloqueia (exit 2) declarado hook_instrument: D_E=89 sobre 35, TOTAL=31 FAIL=0"
+      "measured": "hook que bloqueia (exit 2) declarado hook_instrument: D_E=89 sobre 35, TOTAL=31 FAIL=0",
+      "state": "open",
+      "open_note": "registrado como alvo da proxima onda"
     },
     {
       "finding_id": "G5",
@@ -508,8 +599,9 @@
       "mode": "auditoria-externa",
       "class": "obrigacao-dispensada-sem-fundamento",
       "defect": "`E_S` dispensado para hook_guidance e guidance_document sem oraculo que sustente a dispensa",
-      "status": "aberto - exige definir o oraculo de E_S para intervencao textual",
-      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md"
+      "source_ref": "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
+      "state": "open",
+      "open_note": "exige definir o oraculo de E_S para intervencao textual"
     },
     {
       "finding_id": "G6a",
@@ -519,9 +611,11 @@
       "mode": "auditoria-externa",
       "class": "representacao-no-lugar-do-fenomeno",
       "defect": "a dispensa de E_M para guidance_document se apoiava em `install/verify.sh`, que prova bytes instalados e nao carregamento no contexto",
-      "status": "corrigido - a claim documental era falsa e foi reescrita",
       "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
-      "measured": "a sonda de eventos de runtime esta NAO VERIFICADA desde a onda 13; InstructionsLoaded nunca observado"
+      "measured": "a sonda de eventos de runtime esta NAO VERIFICADA desde a onda 13; InstructionsLoaded nunca observado",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "resolution_note": "corrigido - a claim documental era falsa e foi reescrita"
     },
     {
       "finding_id": "G7",
@@ -531,9 +625,10 @@
       "mode": "auditoria-externa",
       "class": "amplitude-da-claim",
       "defect": "`hook_gate` mistura prevencao (PreToolUse) com rejeicao posterior (PostToolUse) e terminal (Stop), com a mesma obrigacao",
-      "status": "aberto - exige taxonomia propria",
       "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
-      "measured": "poka-yoke-lint sai 2 com o arquivo ja existente: o efeito ocorreu"
+      "measured": "poka-yoke-lint sai 2 com o arquivo ja existente: o efeito ocorreu",
+      "state": "open",
+      "open_note": "exige taxonomia propria"
     },
     {
       "finding_id": "G8",
@@ -543,9 +638,11 @@
       "mode": "auditoria-externa",
       "class": "negativa-universal-inverificavel",
       "defect": "ADR 0033 afirmava que nenhum trabalho mede false success enquanto o ledger do proprio repositorio registrava o paper que o mede",
-      "status": "corrigido",
       "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
-      "measured": "agravante: a contradicao foi REFUTADA por engano numa rodada anterior, com busca truncada por head -8"
+      "measured": "agravante: a contradicao foi REFUTADA por engano numa rodada anterior, com busca truncada por head -8",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G9",
@@ -555,8 +652,10 @@
       "mode": "auditoria-externa",
       "class": "proveniencia-sem-lastro",
       "defect": "o modo `auditoria-externa` era descrito como `revisor humano`, e a proveniencia nao e observavel deste lado",
-      "status": "corrigido",
-      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md"
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G10",
@@ -566,9 +665,11 @@
       "mode": "auditoria-externa",
       "class": "prosa-derivada-obsoleta",
       "defect": "o corpus foi de 26 para 47 achados e a prosa dentro dele continuou dizendo 40; a aritmetica 5+6+3 dizia dezesseis",
-      "status": "corrigido",
       "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
-      "measured": "portao novo pegou os tres numerais no primeiro run"
+      "measured": "portao novo pegou os tres numerais no primeiro run",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G6b",
@@ -579,8 +680,9 @@
       "class": "fenomeno-sem-instrumento",
       "defect": "evidencia de ATIVACAO nao existe: nada observa que o runtime carregou o documento ou disparou o hook no evento",
       "measured": "sonda de eventos de runtime NAO VERIFICADA desde a onda 13; InstructionsLoaded nunca observado",
-      "status": "aberto - E_A declarada como dimensao candidata, nao implementada",
-      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md"
+      "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
+      "state": "open",
+      "open_note": "E_A declarada como dimensao candidata, nao implementada"
     },
     {
       "finding_id": "G11",
@@ -590,9 +692,11 @@
       "mode": "auditoria-externa",
       "class": "frame-declarado-diverge-do-observado",
       "defect": "o cabecalho do corpus declarava `ondas 11 a 15` e ADR 0031..0035 enquanto os dados ja tinham onda 17 e ADR 0036",
-      "status": "corrigido",
       "source_ref": "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
-      "measured": "purpose e source_of_truth escritos a mao, sem derivacao dos findings"
+      "measured": "purpose e source_of_truth escritos a mao, sem derivacao dos findings",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G12",
@@ -602,9 +706,11 @@
       "mode": "auditoria-externa",
       "class": "excecao-dentro-do-objeto-governado",
       "defect": "o portao de negativa universal era lint de poucas realizacoes lexicais, e a excecao `[citacao-corrigida]` podia ser escrita pelo mesmo PR que escrevia a claim",
-      "status": "corrigido",
       "source_ref": "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
-      "measured": "quatro reformulacoes triviais passavam com rc=0; o token de escape absolvia qualquer linha"
+      "measured": "quatro reformulacoes triviais passavam com rc=0; o token de escape absolvia qualquer linha",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
+      "resolution_note": "corrigido"
     },
     {
       "finding_id": "G13",
@@ -614,9 +720,37 @@
       "mode": "auditoria-externa",
       "class": "excecao-lexical-heuristica",
       "defect": "o lint de numeral absolvia por janela de 90 caracteres com palavras como `antes`, absorvendo claim corrente falsa",
-      "status": "corrigido",
       "source_ref": "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
-      "measured": "'Antes de discutir severidade, sao 40 achados no corpus atual' passava com rc=0"
+      "measured": "'Antes de discutir severidade, sao 40 achados no corpus atual' passava com rc=0",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
+      "resolution_note": "corrigido"
+    },
+    {
+      "finding_id": "G14",
+      "wave": 19,
+      "review_round": "auditoria externa (7a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "referencia-declarada-que-nao-resolve",
+      "defect": "`source_ref` era derivado para `sources` sem que nada garantisse que o caminho existisse",
+      "measured": "source_ref='docs/adr/nao-existe.md' -> frame atualizado, portao rc=0",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md"
+    },
+    {
+      "finding_id": "G15",
+      "wave": 19,
+      "review_round": "auditoria externa (7a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "estado-autodeclarado-em-texto-livre",
+      "defect": "`open_findings` derivava de `status.startswith('aberto')`; trocar a string removia o achado dos abertos",
+      "measured": "G4 declarado 'corrigido' -> open_findings cai para 3, rc=0",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md"
     }
   ],
   "reading": [
@@ -630,12 +764,12 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 56,
+    "n_findings": 58,
     "wave_min": 11,
-    "wave_max": 18,
+    "wave_max": 19,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
-      "auditoria-externa": 20,
+      "auditoria-externa": 22,
       "execucao-hostil": 1,
       "leitura-estrutural": 20,
       "remedicao": 12
@@ -644,6 +778,7 @@
       "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
       "docs/adr/0036-instalar-nao-e-ativar.md",
       "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
+      "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     ],
     "open_findings": [
@@ -651,7 +786,11 @@
       "G5",
       "G6b",
       "G7"
-    ]
+    ],
+    "by_state": {
+      "open": 4,
+      "resolved": 54
+    }
   },
   "historical_states": [
     {
@@ -664,5 +803,19 @@
       "n_findings": 47,
       "nota": "apos o portao de completude"
     }
-  ]
+  ],
+  "state_machine": {
+    "_comment": "ONDA 19, achado de auditoria externa (G15). Ate aqui o estado de um achado era texto livre e `open_findings` derivava de `status.startswith('aberto')`. Trocar a string por 'corrigido' removia o achado da lista de abertos sem que nada mais mudasse - o derivado era consistente e a entrada era prosa autodeclarada. Enum fechado nao resolve a autodeclaracao, mas `resolved` passa a exigir um ARTEFATO que resolva, e isso e conferivel.",
+    "states": [
+      "invalidated",
+      "open",
+      "resolved",
+      "superseded"
+    ],
+    "obligations": {
+      "resolved": "exige `resolution_ref` que resolva para arquivo existente",
+      "open": "exige `open_note` dizendo o que falta"
+    },
+    "limite_declarado": "O `state` continua sendo escrito por quem edita o corpus. O que deixou de ser possivel e declarar `resolved` sem apontar para nada. Isto NAO e prova de que o defeito foi corrigido - e prova de que existe artefato alegando corrigi-lo."
+  }
 }

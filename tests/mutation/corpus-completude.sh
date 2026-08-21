@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=11
+P=0; F=0; EXPECTED_MUTANTS=16
 POR="tests/unit/governance-links.py"
 CORPUS="evidence/corpus/agente-x-defeito.json"
 ADR="docs/adr/0035-a-divida-era-de-uma-classe-so.md"
@@ -127,13 +127,39 @@ mutante MCC11 "referencia [busca:<id>] que nao resolve para registro algum" 1 \
 p=pathlib.Path("docs/adr/0030-o-verificador-instalado-que-nunca-observou.md")
 p.write_text(p.read_text()+"\n\nNenhum estudo foi encontrado. [busca:BL-9999]\n")'
 
+echo "== onda 19: referencia que resolve, e estado que nao e prosa =="
+# G14 - a familia da onda 12 ("referencia publicada que nao resolve") voltando DENTRO do
+# instrumento construido para medir a trajetoria de defeitos. O renderer derivava `sources` do
+# que foi DECLARADO, sem nada garantir que existisse.
+mutante MCC12 "source_ref apontando para arquivo inexistente" 1 \
+  "$_PY"'d["findings"][0]["source_ref"]="docs/adr/nao-existe.md"
+salvar()'
+mutante MCC13 "source_ref escapando do repositorio" 1 \
+  "$_PY"'d["findings"][0]["source_ref"]="../../etc/passwd"
+salvar()'
+# G15 - `open_findings` derivava de texto livre: trocar a string por "corrigido" removia o
+# achado dos abertos com tudo consistente. O estado virou enum, e `resolved` exige artefato.
+mutante MCC14 "state fora do enum declarado" 1 \
+  "$_PY"'d["findings"][0]["state"]="talvez"
+salvar()'
+mutante MCC15 "resolved apontando para artefato de resolucao inexistente" 1 \
+  "$_PY"'d["findings"][0]["state"]="resolved"; d["findings"][0]["resolution_ref"]="docs/adr/nada.md"
+salvar()'
+mutante MCC16 "open sem dizer o que falta" 1 \
+  "$_PY"'f=[x for x in d["findings"] if x["state"]=="open"][0]
+f.pop("open_note",None)
+salvar()'
+
 echo "== CONTROLE POSITIVO =="
 # Sem ele o portao podia ser `return FAIL` e os tres mutantes acima "morreriam" sem testar nada.
 # O caso tambem fixa a direcao da regra: o corpus pode CONTER MAIS do que os ADRs citam - achado
 # de onda antiga nao tem ID em ADR nenhum -, e isso nao e violacao. A regra e
 # `citados SUBCONJUNTO DE corpus`, nao igualdade.
-# O programa atualiza a PROSA junto, que e o que um contribuidor real faz ao acrescentar um
-# achado - e o que o portao da onda 17 passou a exigir. Sem isso o controle positivo reprovaria
+# O programa monta um achado BEM FORMADO segundo o schema corrente - com `state`,
+# `resolution_ref` e a prosa atualizada -, que e o que um contribuidor real faz. Este controle ja
+# precisou ser reescrito tres vezes conforme o schema apertou (numeral em prosa na onda 17,
+# bloco derivado na 18, estado e referencia na 19), e isso e o controle FUNCIONANDO: cada campo
+# novo exigido aparece aqui, ou o caso deixa de provar o que promete. Sem isso o controle positivo reprovaria
 # pela regra nova, mascarando o que ele existe para medir: que o corpus pode conter MAIS do que
 # os ADRs citam.
 mutante MCC4 "CONTROLE: achado NOVO nao citado em ADR algum - o portao deve PASSAR" 0 \
@@ -141,6 +167,7 @@ mutante MCC4 "CONTROLE: achado NOVO nao citado em ADR algum - o portao deve PASS
 d["findings"].append({"finding_id":"W99-1","wave":15,"review_round":"medicao",
   "found_by":"aplicacao-de-instrumento","mode":"aplicacao-de-instrumento",
   "class":"controle","defect":"achado sintetico do controle positivo MCC4",
+  "state":"resolved","resolution_ref":"tests/mutation/corpus-completude.sh",
   "source_ref":"tests/mutation/corpus-completude.sh"})
 n=len(d["findings"])
 for campo in ("limits","reading"):

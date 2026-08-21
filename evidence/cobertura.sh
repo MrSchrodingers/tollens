@@ -218,12 +218,12 @@ EOF
 # onda 15 depois de comentario dentro do heredoc derrubar dezessete casos; na onda 18 o mesmo
 # erro voltou, com a nota ja no arquivo. Enunciar a regra nao a executa.
 ISENCOES="${COBERTURA_ISENCOES:-$(cat <<'EOF'
-evidence/corpus/render.py|linha|120|ramo-de-erro-inalcancavel-portao-recusa-antes
-evidence/corpus/render.py|linha|121|ramo-de-erro-inalcancavel-portao-recusa-antes
-evidence/corpus/render.py|linha|127|ramo-de-erro-inalcancavel-portao-recusa-antes
-evidence/corpus/render.py|linha|128|ramo-de-erro-inalcancavel-portao-recusa-antes
-evidence/corpus/render.py|ramo|119->120|ramo-de-erro-inalcancavel-portao-recusa-antes
-evidence/corpus/render.py|ramo|126->127|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|122|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|123|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|129|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|linha|130|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|ramo|121->122|ramo-de-erro-inalcancavel-portao-recusa-antes
+evidence/corpus/render.py|ramo|128->129|ramo-de-erro-inalcancavel-portao-recusa-antes
 orchestration/schedule.py|linha|107|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|linha|108|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|linha|228|heranca-piso-absoluto-2026-08-11
