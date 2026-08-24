@@ -92,9 +92,24 @@ commit que a descobre - ali ela esta fora do conjunto comum e a monotonicidade n
 ## Divida medida, depois da decomposicao
 
 ```
-D_E(head) = 89 obrigacoes em aberto sobre 34 capabilities
+D_E(head) = 89 obrigacoes em aberto sobre 33 capabilities
 por dimensao: E_M 18   E_U 25   E_C 25   E_S 21
 ```
+
+> **ERRATA, onda 20 (`G16`).** Ate 2026-08-24 este bloco publicava `sobre 34 capabilities`,
+> copiado da saida do portao. O numero 89 esta certo e nao mudou; o DENOMINADOR estava errado.
+> `_divida` percorre so as capabilities em `_EM_DIVIDA` - as 33 em `candidate` - enquanto a linha
+> impressa dividia por `len(caps)`, que inclui o tombstone `defesa-de-tese`, em `deprecated`.
+> Numerador de 33 sobre denominador de 34, na mesma frase. A correcao esta em
+> `tests/unit/capability-conformance.py`, e a linha passou a nomear as duas grandezas em vez de
+> confundi-las. **O defeito era de EXIBICAO, nao de assercao**: as duas checagens de CC4 comparam
+> CONJUNTOS de pares `(capability, dimensao)` e nunca leram esse denominador, entao nenhum
+> veredito publicado por este repositorio muda com a correcao.
+>
+> Vale registrar de onde veio: a mesma confusao - ler "34 capabilities" como "34 componentes
+> ativos" - ja tinha sido apontada pela revisao externa NA PROSA do relatorio. Corrigir a prosa
+> e ir conferir o numero na fonte foi o que exps a instancia dentro do instrumento. A correcao
+> de uma afirmacao encontrou o defeito no que a media.
 
 `E_M = 18` sao exatamente as 8 skills e os 10 agentes. Os catorze hooks passaram a ter mecanismo
 pago. O numero total PIOROU - de 8 para 89 - porque a medicao melhorou; e a leitura correta do

@@ -523,7 +523,15 @@ check(not _falsas, "toda dimensao declarada `paid` tem evidencia que de fato val
 
 d_head = _divida(registry, _le_do_disco)
 _por_dim = {d: sum(1 for _, dd in d_head if dd == d) for d in sorted(DIMENSOES)}
-print(f"        D_E(head)={len(d_head)} obrigacoes em aberto sobre {len(caps)} capabilities")
+# ONDA 20 (G16). O numerador percorre so as capabilities em `_EM_DIVIDA`; o denominador imprimia
+# `len(caps)`, que inclui o tombstone `deprecated`. Numerador de 33 sobre denominador de 34, na
+# mesma linha - e a leitura "34 componentes ativos" que a revisao externa ja tinha corrigido na
+# prosa aparecia aqui, na saida do proprio instrumento. Defeito de EXIBICAO: as duas checagens de
+# CC4 comparam CONJUNTOS de pares (capability, dimensao) e nunca leem este denominador, entao
+# nenhum resultado publicado muda. O que muda e a linha deixar de afirmar o que nao mede.
+_em_divida = sum(1 for c in caps.values() if c.get("state") in _EM_DIVIDA)
+print(f"        D_E(head)={len(d_head)} obrigacoes em aberto sobre {_em_divida} capabilities "
+      f"em estado de divida ({len(caps)} entries no registry)")
 print(f"        por dimensao: {_por_dim}")
 
 # A BASE E O CRITERIO. Sem ela nao ha comparacao, e "nao reprovou" seria indistinguivel de
