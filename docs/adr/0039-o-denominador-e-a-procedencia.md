@@ -51,7 +51,13 @@ em divida SEM obrigacao aberta         : ['artifact-discipline.sh', 'ds4-notify.
 "89 obrigacoes sobre 33 capabilities" convida a ler "33 capabilities tem divida". Sao 28. A onda
 inteira existe porque UM denominador foi lido como populacao ativa; publicar outro denominador
 ambiguo teria trocado a realizacao do mesmo defeito - a forma que este repositorio vem eliminando
-desde o `D_MAX`, aparecendo agora dentro da correcao contra ela, pela oitava vez.
+desde o `D_MAX`, aparecendo agora dentro da correcao contra ela.
+
+Uma versao anterior deste paragrafo dizia "pela oitava vez". O numero nao e derivado de nada: o
+`refutador` procurou a enumeracao e o contador explicito mais alto do repositorio e `0035:464`,
+"quarto nivel". Afirmar 8 era exatamente o que a secao 2 do CLAUDE.md proibe, num ADR sobre
+numeros que nao medem o que dizem medir. Removido, e nao substituido por outro numero - a
+enumeracao nao existe.
 
 A linha passou a publicar as tres populacoes e a relacao entre elas, e o numero que a frase
 promete e o que ela mede:
@@ -118,9 +124,53 @@ modo e `found_by` diferente: releitura da sessao principal publicada como output
 nao rodou, no unico campo do corpus que serve de comparacao entre modos de revisao, e que
 `render.py` rende em `counts_by_mode`.
 
-A regra agora: modo que NOMEIA um agente obriga `found_by` igual a esse agente; modo que declara
-"Sem agente" nao obriga nada. `MCC17` mata a atribuicao falsa, `MCC18` e o controle na direcao
-inversa - forcar um agente onde nao houve seria inventar procedencia, o defeito simetrico.
+### A primeira versao do portao era `G12a`, na correcao que cita `G12a`
+
+Ela lia o vinculo da PROSA: `re.compile(r"Agente \`([^\`]+)\`")` sobre a descricao do modo. O
+`refutador` derrubou em tres direcoes, todas medidas em clone:
+
+```
+falso negativo   5 reescritas plausiveis (sem crases, com dois-pontos, em minuscula, outra
+                 formulacao, aspas tipograficas) -> exit=0 com atribuicao falsa plantada,
+                 e o contador da linha caindo de 3 para 2 modos com agente, sem assercao
+falso positivo   1 frase explicativa acrescentada a outro modo -> 23 achados corretos reprovados
+bomba armada     a descricao do modo NOVO desta onda contem "agente `revisor-codigo`" em prosa;
+                 so a MINUSCULA impedia o casamento -> uma maiuscula reprovava o achado
+                 principal da onda que construiu o portao
+```
+
+O ADR 0037 ja tinha julgado essa forma: *"O mecanismo e um LINT DE REALIZACOES LEXICAIS, nao um
+detector semantico. Quatro reformulacoes triviais passavam. A frase do ADR prometia a classe e
+entregava uma lista."* Esta versao prometia a classe e entregava a lista dos modos cuja descricao
+contem a subcadeia `` Agente `x` `` - e achou-se uma reescrita a mais que no `G12a` original.
+
+O erro estava no FORMATO, e a inversao que o corrige ja e doutrina deste repositorio desde a onda
+18, escrita no cabecalho de `evidence/corpus/render.py`:
+
+```
+antes   vinculo escrito em prosa -> regex tenta descobrir se esta la
+agora   vinculo E campo (`agent`), `null` quando o modo nao tem agente
+```
+
+`modes` deixou de ser `{nome: "descricao"}` e passou a ser `{nome: {"agent": ..., "desc": ...}}`.
+Nenhuma prosa e interpretada; mencionar um agente numa descricao voltou a ser prosa inofensiva.
+
+A regra: modo com `agent` obriga `found_by` igual; modo com `agent: null` nao obriga nada.
+`MCC17` mata a atribuicao falsa.
+
+### `MCC18` era inerte, e contava como morto
+
+O `refutador` provou por sha256 do corpus canonicalizado: o mutante escrevia
+`found_by="aplicacao-de-instrumento"` nos tres achados que JA tinham esse valor, produzindo
+arquivo byte-identico ao original. Passava, contava como MORTO, e nao exercitava direcao alguma -
+`18/18` incluia um mutante que nao testava nada. Corrigido para escrever um valor DIFERENTE do
+modo, que e a condicao que a regra tem de tolerar, com `assert` que reprova se o alvo voltar a
+coincidir.
+
+E a antivacuidade que faltava: a primeira versao IMPRIMIA o numero de modos com agente e nao o
+assertava - se `agent` sumisse de todos os modos, o laco nao iteraria e o `PASS` sairia igual. O
+portao era o sinal do proprio desligamento, ignorado. `MCC19` remove o vinculo de todos os modos e
+exige reprovacao; `MCC20` exige que `null` seja DECLARADO, porque omissao nao e declaracao.
 
 `G17` passou a declarar o modo novo `verificacao-de-fonte`, sem agente, que e o que de fato
 ocorreu.
@@ -146,8 +196,17 @@ cada.
 
 `G4`, `G5`, `G6b`, `G7` e agora `G18` seguem abertos. `E_A` segue declarada e nao implementada.
 
-O portao de procedencia confere que `found_by` bate com o agente que o modo NOMEIA. Ele nao
-observa invocacao de agente - se ambos os campos forem preenchidos errado de forma coerente, ele
+O portao de procedencia confere que `found_by` bate com o `agent` que o modo declara. Ele nao
+observa invocacao de agente - se ambos os campos forem preenchidos errado de forma COERENTE, ele
 passa. E a mesma classe de limite do `state`: fecha a incoerencia, nao a autodeclaracao. A
 evidencia de ATIVACAO continua sendo `E_A`, candidata e nao implementada, e este portao nao a
 substitui.
+
+O que ele deixou de ter e o limite LEXICAL, que a primeira versao tinha e nao declarava - e
+declara-lo nao teria bastado, porque o modo de falha ja estava armado dentro do proprio diff.
+
+`tests/unit/propriedades.sh` e FLAKY nesta maquina: o `refutador` mediu `PASS=30 FAIL=1` e, sem
+alteracao de arvore, `PASS=31 FAIL=0` na reexecucao, com o par `supply-chain.sh (workflows reais)`
+saindo inerte no regime cheio. A suite roda em `verify-pr.yml`. Nao e causado por esta onda - o
+diff nao toca workflow, supply-chain nem propriedades - e nao esta corrigido aqui. Fica
+REGISTRADO, nao normalizado.

@@ -250,8 +250,13 @@ D_E = 89 obrigacoes em aberto sobre 34 capabilities
 > corrigiu: `_divida` varria 33 registros e a linha dividia por `len(caps)` = 34, que inclui o
 > tombstone `defesa-de-tese`. A medicao datada fica como foi observada; o ponteiro e para o
 > ADR 0035, que publica a leitura corrente - 89 obrigacoes sobre 28 capabilities endividadas,
-> 33 varridas, 34 entries. Ate esta onda o repositorio publicava 33 no ADR e 34 aqui para a
-> MESMA medicao, sem ponteiro entre as duas.
+> 33 varridas, 34 entries.
+>
+> **Correcao desta propria errata, mesma onda.** A primeira redacao dizia "ate esta onda o
+> repositorio publicava 33 no ADR e 34 aqui para a MESMA medicao". Falso: `git show origin/main`
+> mostra **34 nos dois arquivos**. A divergencia 33/34 existiu apenas dentro de um commit nao
+> mergeado desta onda. Generalizar uma observacao alem do que ela mediu, numa errata cujo assunto
+> e imprecisao factual, e o defeito no lugar mais caro possivel.
 
 O `18` reaparece, e nao por coincidencia: e exatamente a divida de E_M das 8 skills e dos 10
 agentes. O que a frase original nao via e que os catorze hooks deviam prova de OUTRAS dimensoes,

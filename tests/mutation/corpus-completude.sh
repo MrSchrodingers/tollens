@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=18
+P=0; F=0; EXPECTED_MUTANTS=20
 POR="tests/unit/governance-links.py"
 CORPUS="evidence/corpus/agente-x-defeito.json"
 ADR="docs/adr/0035-a-divida-era-de-uma-classe-so.md"
@@ -159,12 +159,28 @@ mutante MCC17 "achado atribui um modo cujo agente o found_by nao confirma" 1 \
   "$_PY"'f=[x for x in d["findings"] if x["mode"]=="leitura-estrutural"][0]
 f["found_by"]="auditoria-externa"
 salvar()'
-# A DIRECAO INVERSA, e ela importa tanto quanto: modo que declara "Sem agente" NAO pode obrigar
+# A DIRECAO INVERSA, e ela importa tanto quanto: modo com `agent: null` NAO pode obrigar
 # `found_by` a nomear um. Forcar um agente onde nao houve e inventar procedencia - o defeito
 # simetrico, e o que este controle impede que a regra vire.
-mutante MCC18 "CONTROLE: modo sem agente com found_by igual ao modo - o portao deve PASSAR" 0 \
+#
+# A PRIMEIRA VERSAO DESTE MUTANTE ERA INERTE, e o `refutador` provou por sha256: ele escrevia
+# `found_by="aplicacao-de-instrumento"` nos achados que JA tinham esse valor, entao o arquivo
+# mutado era byte-identico ao original. Passava, contava como MORTO, e nao exercitava direcao
+# alguma - `18/18` incluia um mutante que nao testava nada. Agora ele escreve um valor DIFERENTE
+# do modo, que e a condicao que a regra tem de tolerar.
+mutante MCC18 "CONTROLE: modo com agent null e found_by diferente do modo - o portao deve PASSAR" 0 \
   "$_PY"'f=[x for x in d["findings"] if x["mode"]=="aplicacao-de-instrumento"][0]
-f["found_by"]="aplicacao-de-instrumento"
+assert f["found_by"]!="um-ator-nao-declarado", "mutante inerte: o valor ja e o alvo"
+f["found_by"]="um-ator-nao-declarado"
+salvar()'
+# ANTIVACUIDADE DO PORTAO, e ela nasce do mesmo achado: a primeira versao imprimia o numero de
+# modos com agente e nao o assertava. Remover o vinculo de TODOS os modos deixava o laco sem
+# iterar e o PASS saia igual. O portao agora reprova corpus sem nenhum `agent`.
+mutante MCC19 "todos os modos perdem o agente - o portao ficaria vacuo e deve REPROVAR" 1 \
+  "$_PY"'for v in d["modes"].values(): v["agent"]=None
+salvar()'
+mutante MCC20 "modo OMITE o campo agent em vez de declarar null" 1 \
+  "$_PY"'d["modes"]["auditoria-externa"].pop("agent",None)
 salvar()'
 
 echo "== CONTROLE POSITIVO =="

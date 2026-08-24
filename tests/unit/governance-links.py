@@ -55,39 +55,51 @@ desconhecidos = sorted(set(medido) - set(corpus["modes"]))
 if desconhecidos:
     raise SystemExit(f"FAIL corpus: modos usados e nao definidos: {desconhecidos}")
 
-# ONDA 20 (G17). O `refutador` foi convidado a atacar seis pontos deste diff e derrubou dois que
-# nao estavam na lista; no premortem ele nomeou o que NENHUM dos seis pegava:
+# ONDA 20 (G17), REESCRITO NA 20b. A primeira versao lia o vinculo modo -> agente da PROSA por
+# `re.compile(r"Agente \`([^\`]+)\`")`. O `refutador` derrubou em tres direcoes, todas medidas:
 #
-#     nada ligava `mode` a `found_by`
+#   falso negativo   cinco reescritas plausiveis da descricao (sem crases, com dois-pontos, em
+#                    minuscula, outra formulacao, aspas tipograficas) desligavam a regra em
+#                    SILENCIO, com atribuicao falsa plantada e `PASS` impresso. O contador da
+#                    propria linha caia de 3 para 2 modos com agente, e nada assertava isso.
+#   falso positivo   uma frase explicativa acrescentada a outro modo reprovava 23 achados corretos.
+#   a bomba armada   a descricao do modo NOVO desta onda contem "agente `revisor-codigo`" em
+#                    prosa. So a MINUSCULA impedia o casamento: uma maiuscula e o portao reprovava
+#                    o achado principal da onda que o construiu.
 #
-# A checagem acima valida a CHAVE do modo e nunca o vinculo que o proprio dicionario `modes`
-# DECLARA. Medido: `modes["leitura-estrutural"]` diz "Agente `revisor-codigo`", e um achado
-# entrou com esse modo e `found_by: "leitura-estrutural"` - releitura da sessao principal
-# publicada como output de um agente que nao rodou, no unico campo do corpus que serve de
-# evidencia comparativa entre modos de revisao. E "declarar sem aplicar", dentro do instrumento
-# construido para medir essa forma.
+# Era `G12a` (ADR 0037) - lint lexical prometendo a classe e entregando uma lista de realizacoes -
+# dentro da correcao que cita `G12a`. O erro estava no FORMATO, nao na regex, e a inversao que o
+# resolve ja e doutrina deste repositorio desde a onda 18 (`evidence/corpus/render.py`):
 #
-# A regra: modo que NOMEIA um agente obriga `found_by` igual a esse agente. Modo que declara
-# "Sem agente" nao obriga nada - `aplicacao-de-instrumento` ja abria esse precedente, e forcar um
-# agente ali seria inventar procedencia, que e o defeito simetrico.
-_AGENTE_DO_MODO = re.compile(r"Agente `([^`]+)`")
-_atribuicao_falsa = []
-for _modo, _desc in corpus["modes"].items():
-    _m = _AGENTE_DO_MODO.search(_desc)
-    if _m is None:
-        continue
-    _agente = _m.group(1)
-    for _a in corpus["findings"]:
-        if _a["mode"] == _modo and _a.get("found_by") != _agente:
-            _atribuicao_falsa.append(
-                f"{_a['finding_id']}: mode={_modo!r} declara o agente {_agente!r} "
-                f"mas found_by={_a.get('found_by')!r}")
+#     antes   vinculo escrito em prosa -> regex tenta descobrir se esta la
+#     agora   vinculo E campo (`agent`), `null` quando o modo nao tem agente
+#
+# Nenhuma prosa e interpretada. Mencionar um agente numa descricao volta a ser prosa inofensiva.
+_com_agente = {m for m, v in corpus["modes"].items() if v.get("agent")}
+_sem_agente = set(corpus["modes"]) - _com_agente
+_atribuicao_falsa = [
+    f"{_a['finding_id']}: mode={_a['mode']!r} declara o agente "
+    f"{corpus['modes'][_a['mode']]['agent']!r} mas found_by={_a.get('found_by')!r}"
+    for _a in corpus["findings"]
+    if _a["mode"] in _com_agente
+    and _a.get("found_by") != corpus["modes"][_a["mode"]]["agent"]
+]
 if _atribuicao_falsa:
     raise SystemExit("FAIL corpus: `mode` nomeia um agente que `found_by` nao confirma - "
                      f"atribuicao de procedencia sem lastro: {_atribuicao_falsa}")
-print(f"PASS corpus: procedencia coerente - todo `mode` que nomeia agente tem `found_by` igual "
-      f"({sum(1 for m in corpus['modes'].values() if _AGENTE_DO_MODO.search(m))} modo(s) com agente, "
-      f"{sum(1 for m in corpus['modes'].values() if not _AGENTE_DO_MODO.search(m))} sem)")
+
+# ANTIVACUIDADE. Se `agent` sumisse de todos os modos - por refactor, por migracao de schema, por
+# um PR que "simplifica" - `_com_agente` ficaria vazio, o laco acima nao iteraria, e o portao
+# imprimiria PASS sem ter conferido nada. A primeira versao IMPRIMIA esse contador e nao o
+# assertava; era o sinal do proprio desligamento, ignorado.
+if not _com_agente:
+    raise SystemExit("FAIL corpus: nenhum modo declara `agent` - o portao de procedencia ficaria "
+                     "vacuo. Modo sem agente deve trazer `agent: null` explicito, nao omitir.")
+if any("agent" not in v for v in corpus["modes"].values()):
+    raise SystemExit("FAIL corpus: modo sem o campo `agent` - `null` e declaracao, ausencia e "
+                     f"omissao: {sorted(m for m, v in corpus['modes'].items() if 'agent' not in v)}")
+print(f"PASS corpus: procedencia coerente - todo `mode` com `agent` tem `found_by` igual "
+      f"({len(_com_agente)} modo(s) com agente, {len(_sem_agente)} com `agent: null`)")
 
 # ANTIVACUIDADE: um corpus vazio satisfaria as duas checagens acima sem dizer nada.
 if len(corpus["findings"]) < 10:
