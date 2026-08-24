@@ -246,6 +246,13 @@ D_E = 89 obrigacoes em aberto sobre 34 capabilities
       E_M 18   E_U 25   E_C 25   E_S 21
 ```
 
+> **ERRATA, onda 20 (`G17`).** O `34` desta linha e o denominador defeituoso que a onda 20
+> corrigiu: `_divida` varria 33 registros e a linha dividia por `len(caps)` = 34, que inclui o
+> tombstone `defesa-de-tese`. A medicao datada fica como foi observada; o ponteiro e para o
+> ADR 0035, que publica a leitura corrente - 89 obrigacoes sobre 28 capabilities endividadas,
+> 33 varridas, 34 entries. Ate esta onda o repositorio publicava 33 no ADR e 34 aqui para a
+> MESMA medicao, sem ponteiro entre as duas.
+
 O `18` reaparece, e nao por coincidencia: e exatamente a divida de E_M das 8 skills e dos 10
 agentes. O que a frase original nao via e que os catorze hooks deviam prova de OUTRAS dimensoes,
 e que oito deles nao tinham sequer E_M - nenhuma suite os executava. Ver ADR 0035.

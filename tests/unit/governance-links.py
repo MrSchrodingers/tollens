@@ -55,6 +55,40 @@ desconhecidos = sorted(set(medido) - set(corpus["modes"]))
 if desconhecidos:
     raise SystemExit(f"FAIL corpus: modos usados e nao definidos: {desconhecidos}")
 
+# ONDA 20 (G17). O `refutador` foi convidado a atacar seis pontos deste diff e derrubou dois que
+# nao estavam na lista; no premortem ele nomeou o que NENHUM dos seis pegava:
+#
+#     nada ligava `mode` a `found_by`
+#
+# A checagem acima valida a CHAVE do modo e nunca o vinculo que o proprio dicionario `modes`
+# DECLARA. Medido: `modes["leitura-estrutural"]` diz "Agente `revisor-codigo`", e um achado
+# entrou com esse modo e `found_by: "leitura-estrutural"` - releitura da sessao principal
+# publicada como output de um agente que nao rodou, no unico campo do corpus que serve de
+# evidencia comparativa entre modos de revisao. E "declarar sem aplicar", dentro do instrumento
+# construido para medir essa forma.
+#
+# A regra: modo que NOMEIA um agente obriga `found_by` igual a esse agente. Modo que declara
+# "Sem agente" nao obriga nada - `aplicacao-de-instrumento` ja abria esse precedente, e forcar um
+# agente ali seria inventar procedencia, que e o defeito simetrico.
+_AGENTE_DO_MODO = re.compile(r"Agente `([^`]+)`")
+_atribuicao_falsa = []
+for _modo, _desc in corpus["modes"].items():
+    _m = _AGENTE_DO_MODO.search(_desc)
+    if _m is None:
+        continue
+    _agente = _m.group(1)
+    for _a in corpus["findings"]:
+        if _a["mode"] == _modo and _a.get("found_by") != _agente:
+            _atribuicao_falsa.append(
+                f"{_a['finding_id']}: mode={_modo!r} declara o agente {_agente!r} "
+                f"mas found_by={_a.get('found_by')!r}")
+if _atribuicao_falsa:
+    raise SystemExit("FAIL corpus: `mode` nomeia um agente que `found_by` nao confirma - "
+                     f"atribuicao de procedencia sem lastro: {_atribuicao_falsa}")
+print(f"PASS corpus: procedencia coerente - todo `mode` que nomeia agente tem `found_by` igual "
+      f"({sum(1 for m in corpus['modes'].values() if _AGENTE_DO_MODO.search(m))} modo(s) com agente, "
+      f"{sum(1 for m in corpus['modes'].values() if not _AGENTE_DO_MODO.search(m))} sem)")
+
 # ANTIVACUIDADE: um corpus vazio satisfaria as duas checagens acima sem dizer nada.
 if len(corpus["findings"]) < 10:
     raise SystemExit(f"FAIL corpus com {len(corpus['findings'])} achados - vazio demais para medir")

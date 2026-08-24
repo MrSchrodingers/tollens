@@ -92,24 +92,45 @@ commit que a descobre - ali ela esta fora do conjunto comum e a monotonicidade n
 ## Divida medida, depois da decomposicao
 
 ```
-D_E(head) = 89 obrigacoes em aberto sobre 33 capabilities
+D_E(head) = 89 obrigacoes em aberto sobre 28 capabilities endividadas
+populacao: 28 endividadas <= 33 varridas <= 34 entries no registry
 por dimensao: E_M 18   E_U 25   E_C 25   E_S 21
 ```
 
-> **ERRATA, onda 20 (`G16`).** Ate 2026-08-24 este bloco publicava `sobre 34 capabilities`,
+> **ERRATA, onda 20 (`G17`).** Ate 2026-08-24 este bloco publicava `sobre 34 capabilities`,
 > copiado da saida do portao. O numero 89 esta certo e nao mudou; o DENOMINADOR estava errado.
 > `_divida` percorre so as capabilities em `_EM_DIVIDA` - as 33 em `candidate` - enquanto a linha
 > impressa dividia por `len(caps)`, que inclui o tombstone `defesa-de-tese`, em `deprecated`.
-> Numerador de 33 sobre denominador de 34, na mesma frase. A correcao esta em
-> `tests/unit/capability-conformance.py`, e a linha passou a nomear as duas grandezas em vez de
-> confundi-las. **O defeito era de EXIBICAO, nao de assercao**: as duas checagens de CC4 comparam
-> CONJUNTOS de pares `(capability, dimensao)` e nunca leram esse denominador, entao nenhum
-> veredito publicado por este repositorio muda com a correcao.
+> Numerador de 33 sobre denominador de 34, na mesma frase.
+>
+> **A PRIMEIRA CORRECAO DESTA ERRATA TROCOU 34 POR 33, E ISSO FECHAVA A REALIZACAO E NAO A
+> CLASSE.** O `refutador` mediu: "89 obrigacoes sobre 33 capabilities" convida a ler "33
+> capabilities tem divida", e sao **28** - cinco varridas nao devem obrigacao alguma
+> (`artifact-discipline.sh`, `ds4-notify.sh`, `fable-guard.sh`, `poka-yoke-lint.sh`,
+> `subagent-probe.sh`). Esta onda existe porque UM denominador foi lido como populacao ativa;
+> publicar outro denominador ambiguo teria trocado a realizacao do mesmo defeito. A linha passou
+> a publicar as TRES populacoes e a relacao entre elas, e o numero que a frase promete e o que
+> ela mede.
+>
+> **O defeito era de EXIBICAO, nao de assercao.** As **oito** assercoes de CC4 comparam CONJUNTOS
+> de pares `(capability, dimensao)` e cardinalidades desses conjuntos; nenhuma le esse
+> denominador. Os unicos leitores de `len(caps)` em assercao sao `len(caps) > 0` e
+> `len(caps) >= 5`, satisfeitos por 28, por 33 e por 34. Nenhum veredito ja publicado muda.
+> (A primeira versao desta errata dizia "as duas checagens de CC4" - errado por fator quatro,
+> num documento cuja tese e que a descricao tem de bater com o que o instrumento faz.)
+>
+> **O que esta errata NAO toca, de proposito.** Duas outras linhas deste ADR publicam
+> `D_E(head)=0 ... sobre 34 capabilities` e `D_E(head)=89 ... sobre 35 capabilities`. Sao SAIDAS
+> DATADAS de experimentos executados em copia, no formato de print anterior a esta onda, e ficam
+> como foram observadas - reescrever observacao datada e falsificacao de evidencia, nao correcao.
+> O leitor deve le-las com o denominador antigo (`len(caps)`). Elas nao sao lidas por portao
+> algum: a regex de `governance-links.py` exige a forma com espacos, `D_E(head) = `, que so a
+> linha publicada acima tem.
 >
 > Vale registrar de onde veio: a mesma confusao - ler "34 capabilities" como "34 componentes
-> ativos" - ja tinha sido apontada pela revisao externa NA PROSA do relatorio. Corrigir a prosa
-> e ir conferir o numero na fonte foi o que exps a instancia dentro do instrumento. A correcao
-> de uma afirmacao encontrou o defeito no que a media.
+> ativos" - ja tinha sido apontada pela revisao externa NA PROSA do relatorio (`G16`, onda 19).
+> Corrigir a prosa e ir conferir o numero na fonte foi o que expos a instancia dentro do
+> instrumento. A correcao de uma afirmacao encontrou o defeito no que a media.
 
 `E_M = 18` sao exatamente as 8 skills e os 10 agentes. Os catorze hooks passaram a ter mecanismo
 pago. O numero total PIOROU - de 8 para 89 - porque a medicao melhorou; e a leitura correta do
@@ -460,8 +481,16 @@ textual, que hoje nao existe.
 
 ## Limites, declarados
 
-`E_U` esta em aberto para as 34 capabilities e continua sem instrumento: nao ha corpus de
-tarefas nem harness de A/B neste repositorio. A eficacia externa segue `NAO VERIFICADO`.
+`E_U` esta em aberto para as **25 capabilities que a devem** - skill, agente, `hook_guidance` e
+`guidance_document`, 25 de 25 - e continua sem instrumento: nao ha corpus de tarefas nem harness
+de A/B neste repositorio. A eficacia externa segue `NAO VERIFICADO`.
+
+> **ERRATA, onda 20 (`G17`).** Esta linha dizia "em aberto para as 34 capabilities". Nao era
+> saida datada entre crases: era claim em presente, e era a leitura "34 componentes ativos" que a
+> errata doze linhas acima declara errada, viva no mesmo arquivo. `34` e falso em qualquer
+> leitura - `E_U` e obrigacao de 25 dos 33 registros varridos, e esta aberta em todos os 25. O
+> primeiro PR desta onda corrigiu a instancia que um portao le e deixou a instancia que nenhum
+> portao le; o `refutador` mediu a diferenca.
 
 A isencao de descoberta significa que, no commit que registra uma capability, ela fica fora da
 comparacao com a base. A janela e fechada pela assercao de lastro - `paid` sem evidencia valida

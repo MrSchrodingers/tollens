@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=16
+P=0; F=0; EXPECTED_MUTANTS=18
 POR="tests/unit/governance-links.py"
 CORPUS="evidence/corpus/agente-x-defeito.json"
 ADR="docs/adr/0035-a-divida-era-de-uma-classe-so.md"
@@ -148,6 +148,23 @@ salvar()'
 mutante MCC16 "open sem dizer o que falta" 1 \
   "$_PY"'f=[x for x in d["findings"] if x["state"]=="open"][0]
 f.pop("open_note",None)
+salvar()'
+
+echo "== onda 20: procedencia que o modo declara e o registro nao confirma =="
+# G17, premortem do refutador. O portao validava a CHAVE do modo e nunca o vinculo que o proprio
+# dicionario `modes` DECLARA. Um achado com `mode: leitura-estrutural` - que nomeia o agente
+# `revisor-codigo` - e `found_by` diferente publica a releitura de um ator como output de outro,
+# no unico campo do corpus que serve de comparacao entre modos de revisao.
+mutante MCC17 "achado atribui um modo cujo agente o found_by nao confirma" 1 \
+  "$_PY"'f=[x for x in d["findings"] if x["mode"]=="leitura-estrutural"][0]
+f["found_by"]="auditoria-externa"
+salvar()'
+# A DIRECAO INVERSA, e ela importa tanto quanto: modo que declara "Sem agente" NAO pode obrigar
+# `found_by` a nomear um. Forcar um agente onde nao houve e inventar procedencia - o defeito
+# simetrico, e o que este controle impede que a regra vire.
+mutante MCC18 "CONTROLE: modo sem agente com found_by igual ao modo - o portao deve PASSAR" 0 \
+  "$_PY"'f=[x for x in d["findings"] if x["mode"]=="aplicacao-de-instrumento"][0]
+f["found_by"]="aplicacao-de-instrumento"
 salvar()'
 
 echo "== CONTROLE POSITIVO =="
