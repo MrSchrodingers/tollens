@@ -86,7 +86,23 @@ e descartar o `$?` e execucao que nao produz sinal algum"*. Enunciar a regra nao
 O rotulo e COMPUTADO: confere no workflow que o passo existe e imprime `NAO executado no CI` quando
 falta. A onda 15 ja pagou por publicar essa frase sem conferir.
 
-Medido: 933 s -> 393 s localmente (-58%). As onze contagens de mutantes ficaram identicas.
+Medido, e as duas medidas NAO sao comparaveis entre si:
+
+```
+933 s   passo 16 do run 32795311156, no runner   (o "antes", em CI)
+338 s   `status.sh --check` nesta estacao        (o "depois", local, medido pelo refutador)
+393 s   idem, outra execucao                     (variancia local nao caracterizada)
+```
+
+**As versoes anteriores publicaram `-58%`, e esse numero nao existe.** Ele saia de dividir um
+"depois" local por um "antes" de CI. Nao ha, em lugar nenhum deste repositorio, medicao LOCAL do
+antes. E a decomposicao do proprio repo discorda: 624 s de arneses mais ~125 s de dupla execucao
+sao 749 s de 933 s, o que projetaria ~-80% no CI - nao -58%. Duas linhas deste ADR chegaram a se
+contradizer, uma atribuindo os 933 s ao CI e outra dizendo que a reducao "foi medida LOCALMENTE".
+
+O que se sustenta: o passo custava 933 s de 1882 s no CI; a reexecucao saiu; localmente o gerador
+roda em 338-393 s; **o efeito no CI nao foi medido**. As onze contagens de mutantes ficaram
+identicas.
 
 ## **G24** - instalado nao e imposto, e 35 de 49 componentes sao gravaveis pelo ator
 
@@ -161,6 +177,41 @@ O fecho e a suite publicar contagem INVARIANTE (`PASS+FAIL+SKIP`), o que toca as
 caminho de pulo. Nao feito aqui: seria taxonomia dentro de um patch, o erro que o ADR 0037
 registrou.
 
+## O que o `refutador` derrubou, e o que a onda 21c corrigiu
+
+**A afirmacao "nao existe detector derivavel" era FALSA.** As ondas 21 e 21b publicaram, aqui e no
+`scripts/status.sh`, que tres detectores foram tentados e nenhum se sustenta. Isso e claim de
+EXISTENCIA, e o `refutador` produziu o quarto: **a suite fixa e impoe a propria contagem?**
+
+```
+EXPECTED=<literal> + exit 1     publica o numero - desvio ja e vermelho na suite
+EXPECTED=$((...))               `variavel (ambiente)`
+sem pino                        `variavel (base)`
+```
+
+Medido nas 20: 14 literal, 2 dinamicas, 4 sem pino - e as 4 CONTEM as 2 da lista curada. Zero
+falsos negativos. Ele e propriedade ESTATICA DO FONTE, logo simetrico entre branch e main, que era
+o furo do detector que lia a saida. E o erro dos tres anteriores era medir a coisa errada: nao
+importa QUANTO a suite conta, importa se ela se AUTOFIXA.
+
+A lista curada saiu. As duas suites sem pino que restavam - `fronteira-externa.sh` e
+`contrato-de-instalador.sh` - receberam pino (13 e 34, medidos), o que as torna verificaveis em
+vez de presumidas.
+
+**A garantia da onda 21 nao tinha oraculo, e agora tem.** Esvaziar a lista e regenerar o artefato
+passaria no `verify-pr` - um PR por definicao difere da base - e so o `verify-push` pos-merge
+reprovaria. Foi assim que o defeito sobreviveu a seis merges. `tests/unit/regressao-gate.sh` passou
+a exigir, em tempo estatico, que nenhuma suite sem pino publique numero. Validado por mutacao:
+removido o `EXPECTED=54` de `claims.sh`, o oraculo reprova nomeando a suite.
+
+**`F4`, que nenhum outro revisor viu.** A lista curada introduzia uma SEGUNDA ocorrencia textual de
+duas suites dentro de `status.sh`, numa string de DADOS. O portao
+`tests/unit/capability-conformance.py:485-488` usa `ref in _ger` - substring do arquivo - como
+proxy de "foi executada pelo gerador". Medido pelo `refutador`: removendo so a linha do laco, o
+portao continuava creditando `E_M`, e **13 das 17 evidencias `executed_suite` pagas apontam para
+`hooks-de-guarda.sh`**, que nao tem passo dedicado em nenhum workflow. Era "mencao nao e execucao"
+reintroduzido dentro do arquivo que persegue essa forma. Remover a lista fechou isso.
+
 ## Limites, declarados
 
 `G4`, `G5`, `G6b`, `G7`, `G18`, `G19`, `G20`, `G21` seguem abertos, e `G24` e `G25` entram abertos.
@@ -171,6 +222,7 @@ binario 2.1.241 e DISPARA, verificado E2E e nao contra a documentacao. O payload
 justificativa de tres ondas ("nao ha instrumento") era falsa; havia, e ninguem tinha testado.
 Implementar `E_A` a partir dele e trabalho da proxima onda, nao desta.
 
-A reducao de 933 s para 393 s foi medida LOCALMENTE. O runner e outro ambiente, e o passo `apt` e
-bimodal por medicao propria - a variancia entre runs nao foi caracterizada. Dizer "a CI cai para
-19 min" seria extrapolacao; o que se sustenta e que a reexecucao saiu.
+O efeito no CI NAO foi medido - ver a errata do `G23`. O runner e outro ambiente, o passo `apt` e
+bimodal por medicao propria, e a variancia local tambem nao foi caracterizada (338 s e 393 s em
+duas execucoes). Dizer "-58%" ou "a CI cai para 19 min" e extrapolacao; o que se sustenta e que a
+reexecucao saiu.
