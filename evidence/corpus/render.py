@@ -109,9 +109,21 @@ def main() -> int:
     dv = d["derived"]
     print(f"CORPUS AGENTE x DEFEITO - ondas {dv['wave_min']} a {dv['wave_max']}, "
           f"{dv['n_findings']} achados\n")
+    # ONDA 20d. `modes` deixou de ser {nome: "descricao"} e virou {nome: {agent, desc}} para que o
+    # vinculo modo -> agente fosse CAMPO e nao prosa interpretada por regex. O `refutador` mediu a
+    # consequencia: `desc` ficou sem nenhum leitor no repositorio - antes a regex ao menos o lia,
+    # mal. Campo que ninguem le apodrece, e a definicao da taxonomia nao chegava nem ao portao nem
+    # ao artefato renderizado. Aqui ela chega.
+    _modos = d.get("modes") or {}
     for modo, n in sorted(dv["counts_by_mode"].items(), key=lambda kv: -kv[1]):
-        print(f"  {modo:26s} {n:3d}")
-    print(f"\n  em aberto: {', '.join(dv['open_findings']) or '(nenhum)'}")
+        _ag = (_modos.get(modo) or {}).get("agent")
+        print(f"  {modo:26s} {n:3d}  {('agente ' + _ag) if _ag else 'sem agente'}")
+    print("\nTAXONOMIA DOS MODOS\n")
+    for modo, meta in sorted(_modos.items()):
+        _ag = meta.get("agent")
+        print(f"  {modo}  [{('agente ' + _ag) if _ag else 'sem agente'}]")
+        print(f"      {meta.get('desc', '')}\n")
+    print(f"  em aberto: {', '.join(dv['open_findings']) or '(nenhum)'}")
     for estado in d.get("historical_states") or []:
         print(f"  historico: {estado['as_of']} -> {estado['n_findings']} achados"
               f"  ({estado.get('nota','')})")

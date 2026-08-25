@@ -155,8 +155,45 @@ agora   vinculo E campo (`agent`), `null` quando o modo nao tem agente
 `modes` deixou de ser `{nome: "descricao"}` e passou a ser `{nome: {"agent": ..., "desc": ...}}`.
 Nenhuma prosa e interpretada; mencionar um agente numa descricao voltou a ser prosa inofensiva.
 
-A regra: modo com `agent` obriga `found_by` igual; modo com `agent: null` nao obriga nada.
-`MCC17` mata a atribuicao falsa.
+A regra: modo com `agent` obriga `found_by` igual; modo com `agent: null` obriga `found_by` igual
+ao PROPRIO MODO - o que nao e a mesma coisa que obrigar a nomear um agente, e essa distincao e o
+que impede a regra de virar o defeito simetrico. `MCC17` mata a atribuicao falsa, `MCC18` e o
+controle: modo novo sem agente entra sem precisar inventar procedencia.
+
+### A vacuidade tinha uma terceira realizacao, e a primeira correcao dela nao mordia
+
+O `refutador` mediu, contra a versao com campo estruturado:
+
+```
+V1   leitura-estrutural -> agent: null, + atribuicao falsa   -> exit=0 PASS  (20 dos 65 achados
+                                                                sem checagem)
+V2   leitura-estrutural -> agent: ""   , + atribuicao falsa   -> exit=0 PASS
+V3   TODOS os modos -> agent: ""                              -> exit=1  (a guarda usava None)
+```
+
+`V2` e pior em especie: `agent: ""` sobrevive a guarda de omissao - a chave EXISTE - e mesmo assim
+cai fora do conjunto verificado, porque o teste era de veracidade e nao de tipo. Le-se como
+declaracao, age como ausencia.
+
+Duas guardas novas, com ALCANCES DIFERENTES, e dizer que uma cobre a outra seria a amplitude que
+esta onda corrige:
+
+1. **Coerencia interna, que vale AGORA.** Modo com `agent: null` cujos achados nomeiam outra coisa
+   que nao o proprio modo esta se contradizendo: ou tem agente e deve declara-lo, ou o `found_by`
+   esta errado. Nao ha terceira leitura. `MCC21` e `MCC22`.
+2. **Ancora na arvore base**, o mesmo principio da onda 14: modo que tinha `agent` na base nao
+   pode perde-lo no head. LIMITE, dito porque a versao anterior deste ADR erraria aqui: a base de
+   hoje traz `modes` como STRING, anterior ao campo que este PR introduz, entao esta guarda sai
+   `0 com agente na base` e **nao morde nesta onda**. Ela fecha a partir do proximo commit. Quem
+   fecha o buraco hoje e a coerencia interna.
+
+### `desc` tinha virado campo sem leitor
+
+Consequencia medida da propria correcao: ao tirar o vinculo da prosa, `desc` ficou sem nenhum
+consumidor no repositorio - antes a regex ao menos o lia, mal. Campo que ninguem le apodrece.
+`render.py` passou a imprimir a taxonomia com agente e descricao, o que deslocou seis isencoes de
+cobertura ancoradas por NUMERO DE LINHA (+12) e subiu a cobertura de 93,0 para 93,6. As duas
+coisas foram corrigidas na fonte: ancoras realinhadas e catraca reapertada.
 
 ### `MCC18` era inerte, e contava como morto
 
@@ -194,7 +231,15 @@ cada.
 
 ## Limites, declarados
 
-`G4`, `G5`, `G6b`, `G7` e agora `G18` seguem abertos. `E_A` segue declarada e nao implementada.
+`G4`, `G5`, `G6b`, `G7` e agora `G18`, `G19` e `G20` seguem abertos.
+
+`G20` merece a nota porque nasceu de uma pergunta que eu fiz ao `refutador` e que ele respondeu
+CONTRA a minha correcao. Registrar as tres balas da secao `Tambem ajustado` do ADR 0038 corrigiu a
+selecao DAQUELA secao e nao a classe: o ADR 0036 tem secao irma, `Tambem corrigido`, com dois
+defeitos que alteraram codigo e rotulo e que nao estao no corpus. Varre-la a mao seria fechar mais
+uma realizacao. A classe e o portao de completude nao alcancar bala sem marcador estruturado, e
+ela fica ABERTA. A nota de `G16`/`G16b`/`G16c` foi estreitada: afirma completude daquela secao, e
+nao do corpus. `E_A` segue declarada e nao implementada.
 
 O portao de procedencia confere que `found_by` bate com o `agent` que o modo declara. Ele nao
 observa invocacao de agente - se ambos os campos forem preenchidos errado de forma COERENTE, ele

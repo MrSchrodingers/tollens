@@ -17,7 +17,7 @@
     },
     "execucao-hostil": {
       "agent": "auditor-seguranca",
-      "desc": "EXECUTA o codigo contra alvo adversario construido de proposito.."
+      "desc": "EXECUTA o codigo contra alvo adversario construido de proposito."
     },
     "remedicao": {
       "agent": "refutador",
@@ -785,7 +785,7 @@
       "state": "resolved",
       "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
-      "note": "REGISTRADO EM ATRASO, na onda 20. A onda 19 corrigiu a prosa e nao atribuiu `finding_id`; o portao de completude ADR-ID so exige o caminho ADR -> corpus, entao a omissao nao reprovava nada. Omiti-lo deixaria o saldo desta familia em +1 modo interno e +0 `auditoria-externa`, que e a selecao retrospectiva que o `inclusion_criterion` existe para impedir."
+      "note": "REGISTRADO EM ATRASO, na onda 20b. A onda 20 registrou apenas UMA das tres balas da secao `Tambem ajustado no relatorio` do ADR 0038 - justamente a que produzia o saldo simetrico publicado como correcao do vies. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho. AS TRES daquela secao estao aqui; isto NAO e afirmacao de completude do corpus - o `refutador` mostrou na volta seguinte que o ADR 0036 tem secao irma nao varrida, e a classe virou G20."
     },
     {
       "finding_id": "G17",
@@ -826,7 +826,7 @@
       "state": "resolved",
       "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
-      "note": "REGISTRADO EM ATRASO, na onda 20b, e a razao e o achado do `refutador`: a onda 20 registrou apenas UMA das tres balas da mesma rodada do ADR 0038 - justamente a que produzia o saldo simetrico que o ADR 0039 publicava. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho, o mesmo vies que o proprio ADR 0039 cita do SkillsBench. O `inclusion_criterion` diz TODO, e agora as tres estao aqui."
+      "note": "REGISTRADO EM ATRASO, na onda 20b. A onda 20 registrou apenas UMA das tres balas da secao `Tambem ajustado no relatorio` do ADR 0038 - justamente a que produzia o saldo simetrico publicado como correcao do vies. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho. AS TRES daquela secao estao aqui; isto NAO e afirmacao de completude do corpus - o `refutador` mostrou na volta seguinte que o ADR 0036 tem secao irma nao varrida, e a classe virou G20."
     },
     {
       "finding_id": "G16c",
@@ -840,7 +840,7 @@
       "state": "resolved",
       "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
-      "note": "REGISTRADO EM ATRASO, na onda 20b, e a razao e o achado do `refutador`: a onda 20 registrou apenas UMA das tres balas da mesma rodada do ADR 0038 - justamente a que produzia o saldo simetrico que o ADR 0039 publicava. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho, o mesmo vies que o proprio ADR 0039 cita do SkillsBench. O `inclusion_criterion` diz TODO, e agora as tres estao aqui."
+      "note": "REGISTRADO EM ATRASO, na onda 20b. A onda 20 registrou apenas UMA das tres balas da secao `Tambem ajustado no relatorio` do ADR 0038 - justamente a que produzia o saldo simetrico publicado como correcao do vies. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho. AS TRES daquela secao estao aqui; isto NAO e afirmacao de completude do corpus - o `refutador` mostrou na volta seguinte que o ADR 0036 tem secao irma nao varrida, e a classe virou G20."
     },
     {
       "finding_id": "G19",
@@ -850,10 +850,23 @@
       "mode": "remedicao",
       "class": "suite-de-ci-nao-deterministica",
       "defect": "`tests/unit/propriedades.sh` reprova de forma intermitente sem alteracao de arvore, e roda no workflow de PR",
-      "measured": "`PASS=30 FAIL=1` com o par `supply-chain.sh (workflows reais)` inerte no regime cheio, e `PASS=31 FAIL=0` na reexecucao imediata; `supply-chain.sh` isolado sai 9/9 rc=0; 4 reexecucoes na sessao principal sairam 31/31 rc=0 - NAO reproduzido aqui, o que e consistente com intermitencia e nao evidencia de ausencia",
+      "measured": "`PASS=30 FAIL=1` com o par `supply-chain.sh (workflows reais)` inerte no regime cheio, e `PASS=31 FAIL=0` na reexecucao imediata; `supply-chain.sh` isolado sai 9/9 rc=0; reexecucoes na sessao principal sairam todas 31/31 rc=0 - cinco no turno em que foi registrado e mais tres do proprio `refutador`, num total de 8 sucessos contra 1 falha observada - NAO reproduzido aqui, o que e consistente com intermitencia e nao evidencia de ausencia",
       "state": "open",
       "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "open_note": "Causa raiz NAO investigada. Nao e causado pela onda 20 - o diff nao toca workflow, supply-chain nem propriedades -, e por isso nao foi corrigido aqui. Registrado para nao virar `sempre foi assim`: a secao 5 do CLAUDE.md trata exit != 0 tolerado como normalizacao de desvio. Consequencia operacional imediata: a CI deste e de outros PRs pode ficar vermelha por motivo alheio ao diff, e um vermelho intermitente treina a leitura de que vermelho nao significa nada."
+    },
+    {
+      "finding_id": "G20",
+      "wave": 20,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "defeito-em-adr-sem-marcador-e-invisivel-ao-portao",
+      "defect": "o portao de completude so exige o caminho ADR -> corpus para defeito com MARCADOR estruturado; bala sob cabecalho `Tambem corrigido/ajustado` nao tem marcador e fica invisivel",
+      "measured": "ADR 0036 secao `Tambem corrigido` tem dois defeitos que alteraram codigo e rotulo - o vocabulario `promovidas` em methodology.py e o rotulo `PASS corpus COMPLETO` - e nenhum dos dois esta no corpus; os seis achados com source_ref=0036 vieram todos do CORPO",
+      "state": "open",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "open_note": "Varrer o ADR 0036 a mao seria fechar mais uma realizacao - a classe e o portao nao alcancar bala sem marcador. O fecho mecanico e a mesma inversao em que esta onda se apoia: exigir identificador em toda bala sob esse cabecalho, ou isencao explicita. Nao construido aqui: e mudanca no criterio de completude, e faze-la dentro deste patch repetiria o erro que o ADR 0037 registrou ao adiar a taxonomia."
     }
   ],
   "reading": [
@@ -867,7 +880,7 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 64,
+    "n_findings": 65,
     "wave_min": 11,
     "wave_max": 20,
     "counts_by_mode": {
@@ -875,7 +888,7 @@
       "auditoria-externa": 25,
       "execucao-hostil": 1,
       "leitura-estrutural": 20,
-      "remedicao": 14,
+      "remedicao": 15,
       "verificacao-de-fonte": 1
     },
     "sources": [
@@ -889,13 +902,14 @@
     "open_findings": [
       "G18",
       "G19",
+      "G20",
       "G4",
       "G5",
       "G6b",
       "G7"
     ],
     "by_state": {
-      "open": 6,
+      "open": 7,
       "resolved": 58
     }
   },
