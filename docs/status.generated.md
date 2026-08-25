@@ -25,7 +25,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/cobertura.sh` | 28 | 0 |
 | `tests/unit/contrato-de-instalador.sh` | 34 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | 46 | 0 |
-| `tests/unit/capability-conformance.py` | 31 | 0 |
+| `tests/unit/capability-conformance.py` | variavel (base) | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
 
@@ -33,17 +33,17 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Alvo | Mutantes | Exit |
 |---|---:|---:|
-| gate | 15 | 0 |
-| contrato de subagente | 9 | 0 |
-| instalador | 5 | variavel (sudo) |
-| fronteira externa | 7 | 0 |
-| conformidade de dois escopos | 7 | 0 |
-| escalonamento | 10 | 0 |
-| fronteira viva | 30 | 0 |
-| camada de literatura | 13 | 0 |
-| claim ledger | 8 | 0 |
-| capability declarada | 7 | 0 |
-| cobertura de decisao | 5 | 0 |
+| gate | 15 | passo dedicado no CI |
+| contrato de subagente | 9 | passo dedicado no CI |
+| instalador | 5 | passo dedicado no CI |
+| fronteira externa | 7 | passo dedicado no CI |
+| conformidade de dois escopos | 7 | passo dedicado no CI |
+| escalonamento | 10 | passo dedicado no CI |
+| fronteira viva | 30 | passo dedicado no CI |
+| camada de literatura | 13 | passo dedicado no CI |
+| claim ledger | 8 | passo dedicado no CI |
+| capability declarada | 7 | passo dedicado no CI |
+| cobertura de decisao | 5 | passo dedicado no CI |
 | adaptadores (auto) | 5 | passo dedicado no CI |
 | capability-conformance (auto) | 27 | passo dedicado no CI |
 | corpus-completude (auto) | 22 | passo dedicado no CI |

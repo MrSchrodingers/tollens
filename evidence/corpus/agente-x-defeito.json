@@ -880,6 +880,71 @@
       "state": "open",
       "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "open_note": "O fecho e DERIVAR `found_by` de `mode` (ou remove-lo), o que apaga tres das cinco guardas e tres dos seis mutantes que quatro rodadas construiram. NAO feito aqui de proposito: e mudanca de schema sobre 65 registros com queda de EXPECTED_MUTANTS e regeneracao de status, e faze-la dentro do patch que criou o aparato seria a quinta rodada da mesma onda. Registrado no turno em que foi descoberto, e nao depois - a omissao do achado-pai da onda 19 (G16) custou uma rodada inteira a esta onda."
+    },
+    {
+      "finding_id": "G22",
+      "wave": 21,
+      "review_round": "verificacao de fonte ao medir imposicao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "artefato-que-depende-do-contexto-de-geracao",
+      "defect": "`status.generated.md` gravava contagem que muda conforme a arvore difira ou nao da base, e o portao a conferia byte a byte",
+      "measured": "31 assercoes na branch, 29 em main; `verify-push` de main reprovou em 2026-08-21, 08-24 e 08-25; apos o fix os digests batem (8f00d0c8f85e) e `--check` sai rc=0 nos dois",
+      "state": "resolved",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
+    },
+    {
+      "finding_id": "G23",
+      "wave": 21,
+      "review_round": "verificacao de fonte ao medir imposicao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "reexecucao-que-nao-produz-sinal",
+      "defect": "`status.sh` rodava cada suite duas vezes e reexecutava 10 arneses que ja tem passo dedicado no CI",
+      "measured": "933 s de 1882 s do job (49,6%); experimento com suite instrumentada mediu 2 invocacoes por suite; 393 s apos o fix, com as 11 contagens de mutantes identicas",
+      "state": "resolved",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
+    },
+    {
+      "finding_id": "G24",
+      "wave": 21,
+      "review_round": "verificacao de fonte ao medir imposicao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "instalado-nao-e-imposto",
+      "defect": "35 dos 49 componentes de `~/.claude` sao gravaveis pelo ator que eles governam, inclusive `CLAUDE.md`",
+      "measured": "hook 14 root-only via managed-settings; agent 10 + skill 8 + adapter 11 + doctool 5 + config 1 = 35 gravaveis; `install/verify.sh` ja declarava `governed=user` em toda execucao",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "Fechar exige `sudo` sobre `~/.claude` e tem custo real: o operador passa a ser necessario para qualquer mudanca em agente ou skill nesta maquina. E decisao do operador, nao correcao tecnica. O `config: 1` e o de maior alavanca: a regra que governa o ator deixa de ser gravavel por ele."
+    },
+    {
+      "finding_id": "G25",
+      "wave": 21,
+      "review_round": "verificacao de fonte ao medir imposicao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "escopo-imposto-executa-codigo-do-ator",
+      "defect": "`/opt/tollens/hooks/read-budget.sh:90`, root-owned, executa `~/.claude/tollens/document-tools/doctool.sh`, que e `ti:ti` e gravavel pelo ator",
+      "measured": "`DOCTOOL_BIN` ausente do ambiente (0 ocorrencias) e de `managed-settings.json`; o fallback da linha 91 resolve para `~/.claude/document-tools`, caminho inexistente - protecao que so nao falha porque a linha 90 acerta",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "Mudanca de fronteira de confianca, nao correcao pontual: exige `auditor-seguranca` antes do portao final e PR proprio. A linha esta replicada em tres copias (repo, `/opt`, `~/.claude`)."
+    },
+    {
+      "finding_id": "G26",
+      "wave": 21,
+      "review_round": "verificacao de fonte ao medir imposicao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "ferramenta-que-falha-aberta-em-silencio",
+      "defect": "`find` nesta maquina e `bfs`, e `-newermt '-7 days'` e erro de parse que sai rc=0 - a saida vazia le-se como resposta",
+      "measured": "duas medicoes desta sessao concluiram '0 escritas em 7 dias' a partir do erro; pego ao conferir contra `-mmin`, que achava 700 arquivos; mesma familia do `grep -P` sob `LC_ALL=C` da onda 16",
+      "state": "resolved",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
     }
   ],
   "reading": [
@@ -893,16 +958,16 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 66,
+    "n_findings": 71,
     "wave_min": 11,
-    "wave_max": 20,
+    "wave_max": 21,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
       "auditoria-externa": 25,
       "execucao-hostil": 1,
       "leitura-estrutural": 20,
       "remedicao": 16,
-      "verificacao-de-fonte": 1
+      "verificacao-de-fonte": 6
     },
     "sources": [
       "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
@@ -910,6 +975,7 @@
       "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
       "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     ],
     "open_findings": [
@@ -917,14 +983,16 @@
       "G19",
       "G20",
       "G21",
+      "G24",
+      "G25",
       "G4",
       "G5",
       "G6b",
       "G7"
     ],
     "by_state": {
-      "open": 8,
-      "resolved": 58
+      "open": 10,
+      "resolved": 61
     }
   },
   "historical_states": [

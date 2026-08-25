@@ -17,7 +17,28 @@ CHECK=0
 # Verificar o artefato nao e verificar a integracao (regra 3 da §6.3): os sete mutantes do portao
 # novo morreram porque eu o chamei a mao. O mutante que faltava era o do WIRING.
 roda_suite(){ case "$1" in *.py) python3 "$1" ;; *) bash "$1" ;; esac; }
-conta(){ roda_suite "$1" 2>&1 | grep -oE 'PASS=[0-9]+|TOTAL=[0-9]+' | tail -1 | cut -d= -f2; }
+
+# ONDA 21. DUAS CORRECOES NA MESMA FUNCAO, e as duas nasceram do mesmo defeito de desenho:
+# a contagem era obtida REEXECUTANDO a suite.
+#
+# (1) DUPLA EXECUCAO. O laco abaixo rodava a suite para colher o `rc` e chamava `conta()`, que
+#     rodava A MESMA SUITE DE NOVO para extrair o `PASS=N`. Medido por experimento com suite
+#     instrumentada que conta invocacoes: 2 execucoes para as 18 suites sem o marcador de
+#     ambiente, 1 para as 2 que o tem. Custo aferido: ~125 s por execucao de `status.sh`, e o
+#     passo que o chama consome 933 s de um job de 1882 s - 49,6% do CI num passo so. A saida
+#     agora e capturada UMA vez e usada para as duas colunas.
+#
+# (2) CONTAGEM DEPENDENTE DA BASE. `capability-conformance.py` emite 31 assercoes quando a
+#     arvore DIFERE de `origin/main` e 29 quando e identica - as duas comparacoes contra a base
+#     viram `NAO VERIFICADO` ("arvore identica a base, nada a discriminar") em vez de PASS.
+#     O artefato era gerado na BRANCH (31) e conferido byte a byte em `main` (29), entao TODO
+#     merge para main reprovava. Nao foi deslize: `main` ficou vermelho em 2026-08-21, 08-24 e
+#     08-25, tres merges seguidos, e a leitura verde da CI do PR escondeu isso porque sao runs
+#     distintos. Rotulo constante e a mesma correcao ja aplicada a `managed-root-trust.sh`
+#     (sudo) e a `run.sh` (ambiente): um numero que depende do contexto de observacao nao pode
+#     ser gravado como invariante num artefato conferido por igualdade de bytes.
+BASE_DEPENDENTE='tests/unit/capability-conformance.py'
+conta_da_saida(){ printf '%s' "$1" | grep -oE 'PASS=[0-9]+|TOTAL=[0-9]+' | tail -1 | cut -d= -f2; }
 TMP="$(mktemp)" || exit 1
 trap 'rm -f "$TMP"' EXIT
 
@@ -37,52 +58,53 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/hooks-de-guarda.sh \
            tests/unit/capability-conformance.py \
            tests/unit/run.sh; do
-    roda_suite "$t" >/dev/null 2>&1; rc=$?
-    if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta "$t")"; fi
+    _saida="$(roda_suite "$t" 2>&1)"; rc=$?
+    case " $BASE_DEPENDENTE " in
+      *" $t "*) n='variavel (base)' ;;
+      *) if grep -q 'EXPECTED=\$((' "$t"; then n='variavel (ambiente)'; else n="$(conta_da_saida "$_saida")"; fi ;;
+    esac
     printf '| `%s` | %s | %s |\n' "$t" "${n:-?}" "$rc"
   done
   bash tests/unit/managed-root-trust.sh >/dev/null 2>&1; rc=$?
   printf '| `tests/unit/managed-root-trust.sh` | variavel (sudo) | %s |\n' "$rc"
 
   printf '\n## Mutacao\n\n| Alvo | Mutantes | Exit |\n|---|---:|---:|\n'
-  mg="$(grep -c '^mutante M' tests/mutation/run.sh)"; bash tests/mutation/run.sh >/dev/null 2>&1
-  printf '| gate | %s | %s |\n' "$mg" "$?"
-  mc="$(grep -c '^mutante M' tests/mutation/contrato.sh)"; bash tests/mutation/contrato.sh >/dev/null 2>&1
-  printf '| contrato de subagente | %s | %s |\n' "$mc" "$?"
-  # EXIT AMBIENTE-DEPENDENTE NAO ENTRA COMO NUMERO FIXO. MI4/MI5 exigem oraculo root; sem sudo
-  # sem senha a suite sai 1, com sudo sai 0. Como este arquivo e commitado e conferido por
-  # `--check` na CI, um numero aqui so podia ser verde no ambiente que o gerou - e obrigava quem
-  # regenerasse localmente a escrever um valor que NAO observou. Rotulo constante e honesto e a
-  # unica forma de o artefato ser reproduzivel nos dois ambientes. Mesmo tratamento ja dado a
-  # `managed-root-trust.sh`, e a `reprodutibilidade.sh` na coluna de assercoes.
-  # NAO executamos aqui: com o Exit virando rotulo constante, rodar a suite (~40 s) e descartar
-  # o `$?` e execucao que nao produz sinal algum. A cobertura nao se perde - os dois workflows
-  # tem passo dedicado `validacao por mutacao (instalador)`, que e onde o oraculo root existe.
-  mi="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/install.sh | head -1 | cut -d= -f2)"
-  printf '| instalador | %s | variavel (sudo) |\n' "${mi:-?}"
-  mf="$(grep -c '^mutante MF' tests/mutation/fronteira.sh)"; bash tests/mutation/fronteira.sh >/dev/null 2>&1
-  printf '| fronteira externa | %s | %s |\n' "$mf" "$?"
-  mcm="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/conformidade.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/conformidade.sh >/dev/null 2>&1
-  printf '| conformidade de dois escopos | %s | %s |\n' "${mcm:-?}" "$?"
-  msc="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/schedule.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/schedule.sh >/dev/null 2>&1
-  printf '| escalonamento | %s | %s |\n' "${msc:-?}" "$?"
-  m_fronteira_viva="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/fronteira-viva.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/fronteira-viva.sh >/dev/null 2>&1
-  printf '| fronteira viva | %s | %s |\n' "${m_fronteira_viva:-?}" "$?"
-  m_literatura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/literatura.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/literatura.sh >/dev/null 2>&1
-  printf '| camada de literatura | %s | %s |\n' "${m_literatura:-?}" "$?"
-  m_claims="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/claims.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/claims.sh >/dev/null 2>&1
-  printf '| claim ledger | %s | %s |\n' "${m_claims:-?}" "$?"
-  m_cap="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/capabilities.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/capabilities.sh >/dev/null 2>&1
-  printf '| capability declarada | %s | %s |\n' "${m_cap:-?}" "$?"
-  m_cobertura="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' tests/mutation/cobertura.sh | head -1 | cut -d= -f2)"
-  bash tests/mutation/cobertura.sh >/dev/null 2>&1
-  printf '| cobertura de decisao | %s | %s |\n' "${m_cobertura:-?}" "$?"
+  # ONDA 21. ESTES ARNESES NAO SAO MAIS EXECUTADOS AQUI, e o argumento nao e novo: ja estava
+  # escrito neste arquivo, duas vezes, para `install.sh` e para a varredura automatica logo
+  # abaixo - "rodar a suite e descartar o `$?` e execucao que nao produz sinal algum".
+  #
+  # Medido: os dez consomem 624 s por execucao de `status.sh` (run 32795311156: run 103, contrato
+  # 19, fronteira 1, conformidade 4, schedule 9, fronteira-viva 75, literatura 40, claims 79,
+  # capabilities 21, cobertura 273), e TODOS tem passo dedicado no workflow. O veredito vinha do
+  # passo dedicado; aqui o exit code so era reimpresso numa tabela markdown. Como `verify-push` e
+  # passo-a-passo identico a `verify-pr`, o desperdicio contava em dobro.
+  #
+  # O ROTULO E COMPUTADO, NAO LITERAL. A onda 15 pagou por publicar "passo dedicado no CI" sem
+  # conferir que o passo existisse - e para dois arneses nao existia. A funcao abaixo confere no
+  # workflow, e imprime `NAO executado no CI` quando o passo falta, que e o sinal de que a
+  # cobertura sumiu junto com a execucao.
+  onde_roda(){ if grep -qF "tests/mutation/$1" .github/workflows/verify-pr.yml 2>/dev/null
+               then printf 'passo dedicado no CI'; else printf 'NAO executado no CI'; fi; }
+  n_mut(){ _v="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' "tests/mutation/$1.sh" | head -1 | cut -d= -f2)"
+           [ -n "$_v" ] || _v="$(grep -c '^mutante M' "tests/mutation/$1.sh")"
+           printf '%s' "${_v:-?}"; }
+  while IFS='|' read -r _arq _rotulo; do
+    [ -n "$_arq" ] || continue
+    printf '| %s | %s | %s |\n' "$_rotulo" "$(n_mut "$_arq")" "$(onde_roda "$_arq")"
+  done <<'ARNESES'
+run|gate
+contrato|contrato de subagente
+install|instalador
+fronteira|fronteira externa
+conformidade|conformidade de dois escopos
+schedule|escalonamento
+fronteira-viva|fronteira viva
+literatura|camada de literatura
+claims|claim ledger
+capabilities|capability declarada
+cobertura|cobertura de decisao
+ARNESES
+
   # COMPLETUDE, nao lista digitada a mao. As linhas acima tem rotulo curado por arnes; esta
   # varredura garante que um arnes NOVO nunca nasca fora do relatorio. Foi o que aconteceu com
   # tests/mutation/fable-guard.sh, escrito na onda 7 (12 mutantes sobre 148 linhas de superficie
