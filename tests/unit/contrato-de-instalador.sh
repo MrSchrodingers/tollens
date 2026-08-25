@@ -192,6 +192,17 @@ TMPDIR="$AT" bash "$TMP/varredura.sh" >/dev/null 2>&1
 chk "arena propria de dono morto E removida (o laco varre mesmo)" \
     "$([ -d "$MORTA" ] && echo nao || echo sim)" sim
 
+
+# ONDA 21c. PINO DE CONTAGEM, exigido pelo oraculo novo em `tests/unit/regressao-gate.sh`: suite
+# que NAO fixa a propria contagem nao pode ter o numero publicado em `docs/status.generated.md`,
+# porque um caso pulado em silencio mudaria o artefato sem deixar a suite vermelha - que e o G22.
+# Esta suite tem contagem estavel medida (34); o pino a torna verificavel em vez de presumida.
+EXPECTED=34
+if [ "$P" -ne "$EXPECTED" ]; then
+  echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
+  exit 1
+fi
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
 [ "$F" -eq 0 ] && echo "contrato de instalador verde" || echo "contrato de instalador VERMELHO"

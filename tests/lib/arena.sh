@@ -22,10 +22,18 @@
 #   5. github-ruleset.py mutado por job concorrente lancado sobreposto.
 #   6. cobertura.sh mutado por job morto na tentativa anterior.
 #
-# Nenhum e defeito de logica. Todos decorrem de ONDE o experimento roda. E o agravante: o proprio
+# Nenhum e defeito de logica. Todos decorrem de ONDE o experimento roda. No runner de CI isso e
+# inofensivo (checkout descartavel, ninguem mais le); num diretorio de trabalho compartilhado com
+# agentes e outras suites, nao e.
+#
+# ERRATA, onda 21b. Ate esta onda este comentario trazia um agravante: "o proprio
 # `scripts/status.sh --check` executa os arneses, entao o verificador do documento de estado e ele
-# mesmo um mutador de estado. No runner de CI isso e inofensivo (checkout descartavel, ninguem
-# mais le); num diretorio de trabalho compartilhado com agentes e outras suites, nao e.
+# mesmo um mutador de estado". A frase era verdadeira e DEIXOU DE SER: a onda 21 removeu a
+# execucao dos arneses do gerador, porque todos tem passo dedicado no CI e ali o exit code so era
+# reimpresso numa tabela. A arena continua justificada - os passos dedicados do workflow e a
+# execucao manual mutam a arvore do mesmo jeito -, mas a justificativa nao pode citar um mecanismo
+# que nao existe mais. Achado do `revisor-codigo`; sem ele, esta linha envelheceria em silencio,
+# que e o que `scripts/status.sh` chama de claim publicada que ninguem recalcula.
 #
 # COMO RESOLVE. Copia a arvore inteira para um diretorio temporario e faz `cd` para la. Os arneses
 # usam caminhos RELATIVOS A RAIZ (`ORIG="evidence/hooks/verify-gate.sh"`, `REG="tests/unit/..."`),

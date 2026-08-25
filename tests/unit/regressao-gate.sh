@@ -42,6 +42,36 @@ chk "primeira parada BARRA codigo quebrado" "$rc1" 2
 rc2=$(gate false)
 chk "segunda parada, MESMO snapshot quebrado, CONTINUA barrando" "$rc2" 2
 
+# ONDA 21c. A GARANTIA DA ONDA 21 NAO TINHA ORACULO, e o `refutador` mediu a consequencia: se
+# `BASE_DEPENDENTE` fosse esvaziado e o artefato regenerado - que e literalmente a instrucao
+# publicada em `scripts/status.sh` -, `verify-pr` PASSARIA, porque um PR por definicao difere da
+# base, e so o `verify-push` pos-merge reprovaria. Foi assim que o defeito sobreviveu a SEIS
+# merges. Mutacao de ambiente e demonstracao que ninguem reexecuta; nao e barreira de regressao.
+#
+# ESTE E O ORACULO, e ele custa menos de um segundo porque e estatico: toda suite enumerada pelo
+# gerador ou FIXA a propria contagem (e ai o desvio ja fica vermelho nela mesma), ou tem de ser
+# publicada como rotulo. Publicar numero de suite sem pino e o G22.
+_SUITES_DO_GERADOR="$(sed -n '/^  for t in tests\/unit/,/done$/p' "$REPO_ROOT/scripts/status.sh" \
+  | grep -oE 'tests/unit/[a-z-]+\.(sh|py)' | sort -u)"
+chk "o gerador enumera pelo menos 15 suites (antivacuidade)" \
+  "$([ "$(printf '%s\n' "$_SUITES_DO_GERADOR" | grep -c .)" -ge 15 ] && echo ok)" ok
+
+_SEM_PINO_PUBLICANDO_NUMERO=""
+for _s in $_SUITES_DO_GERADOR; do
+  [ -f "$REPO_ROOT/$_s" ] || continue
+  if grep -qE '^[[:space:]]*EXPECTED=[0-9]+' "$REPO_ROOT/$_s" || grep -qE 'EXPECTED=\$\(\(' "$REPO_ROOT/$_s"; then
+    continue   # a suite se autofixa: o numero publicado nao pode variar em silencio
+  fi
+  _linha="$(grep -F "\`$_s\`" "$REPO_ROOT/docs/status.generated.md" 2>/dev/null | head -1)"
+  case "$_linha" in
+    *'variavel'*) : ;;
+    '')           : ;;
+    *)            _SEM_PINO_PUBLICANDO_NUMERO="$_SEM_PINO_PUBLICANDO_NUMERO $_s" ;;
+  esac
+done
+chk "nenhuma suite SEM pino publica numero no artefato (G22: o numero dependeria do contexto)" \
+  "$(printf '%s' "$_SEM_PINO_PUBLICANDO_NUMERO" | tr -d ' ')" ""
+
 echo "== G2. stop_hook_active nao pode virar verde silencioso =="
 novo_repo g2
 printf 'def f():\n    return indefinido\n' > quebrado.py; git add -A
@@ -400,7 +430,7 @@ echo
 echo "================ PASS=$P  FAIL=$F ================"
 # CONTAGEM E INVARIANTE, nao descricao. Sem isto, apagar cinco casos deixa PASS=15/FAIL=0 e a
 # suite segue verde - o numero no relatorio viraria documentacao, nao garantia.
-EXPECTED=59
+EXPECTED=61
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
