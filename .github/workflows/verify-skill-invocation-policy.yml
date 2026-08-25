@@ -4,6 +4,7 @@ on:
     paths:
       - 'execution/skills/prd-to-issues/SKILL.md'
       - 'execution/skills/graphify/SKILL.md'
+      - 'install/manifest.lock'
       - 'tests/unit/skill-invocation-policy.sh'
       - 'tests/mutation/skill-invocation-policy.sh'
       - '.github/workflows/verify-skill-invocation-policy.yml'
@@ -12,6 +13,7 @@ on:
     paths:
       - 'execution/skills/prd-to-issues/SKILL.md'
       - 'execution/skills/graphify/SKILL.md'
+      - 'install/manifest.lock'
       - 'tests/unit/skill-invocation-policy.sh'
       - 'tests/mutation/skill-invocation-policy.sh'
       - '.github/workflows/verify-skill-invocation-policy.yml'
@@ -27,6 +29,11 @@ jobs:
         run: |
           bash -n tests/unit/skill-invocation-policy.sh
           bash -n tests/mutation/skill-invocation-policy.sh
+      - name: canonical manifest preview
+        run: |
+          set -euo pipefail
+          bash install/manifest.sh /tmp/tollens-manifest.lock >/dev/null
+          grep $'skill\texecution/skills/prd-to-issues\t' /tmp/tollens-manifest.lock
       - name: invocation policy
         run: bash tests/unit/skill-invocation-policy.sh
       - name: mutation validates policy oracle
