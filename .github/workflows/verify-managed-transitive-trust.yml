@@ -2,14 +2,16 @@ name: verify-managed-transitive-trust
 on:
   pull_request:
     paths:
-      - 'install/hooks-spec.sh'
+      - 'execution/hooks/read-budget.sh'
+      - 'tests/lib/arena.sh'
       - 'tests/unit/managed-transitive-trust.sh'
       - 'tests/mutation/managed-transitive-trust.sh'
       - '.github/workflows/verify-managed-transitive-trust.yml'
   push:
     branches: [main]
     paths:
-      - 'install/hooks-spec.sh'
+      - 'execution/hooks/read-budget.sh'
+      - 'tests/lib/arena.sh'
       - 'tests/unit/managed-transitive-trust.sh'
       - 'tests/mutation/managed-transitive-trust.sh'
       - '.github/workflows/verify-managed-transitive-trust.yml'
@@ -28,10 +30,10 @@ jobs:
           command -v python3
       - name: syntax
         run: |
-          bash -n install/hooks-spec.sh
+          bash -n execution/hooks/read-budget.sh
           bash -n tests/unit/managed-transitive-trust.sh
           bash -n tests/mutation/managed-transitive-trust.sh
-      - name: G25 transitive trust root
+      - name: G25 managed guidance trust root
         run: bash tests/unit/managed-transitive-trust.sh
       - name: mutation validates G25 oracle
         run: bash tests/mutation/managed-transitive-trust.sh
