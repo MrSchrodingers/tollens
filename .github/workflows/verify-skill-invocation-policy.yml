@@ -1,0 +1,33 @@
+name: verify-skill-invocation-policy
+on:
+  pull_request:
+    paths:
+      - 'execution/skills/prd-to-issues/SKILL.md'
+      - 'execution/skills/graphify/SKILL.md'
+      - 'tests/unit/skill-invocation-policy.sh'
+      - 'tests/mutation/skill-invocation-policy.sh'
+      - '.github/workflows/verify-skill-invocation-policy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'execution/skills/prd-to-issues/SKILL.md'
+      - 'execution/skills/graphify/SKILL.md'
+      - 'tests/unit/skill-invocation-policy.sh'
+      - 'tests/mutation/skill-invocation-policy.sh'
+      - '.github/workflows/verify-skill-invocation-policy.yml'
+permissions:
+  contents: read
+jobs:
+  verify-skill-invocation-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: syntax
+        run: |
+          bash -n tests/unit/skill-invocation-policy.sh
+          bash -n tests/mutation/skill-invocation-policy.sh
+      - name: invocation policy
+        run: bash tests/unit/skill-invocation-policy.sh
+      - name: mutation validates policy oracle
+        run: bash tests/mutation/skill-invocation-policy.sh
