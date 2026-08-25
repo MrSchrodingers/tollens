@@ -1,0 +1,37 @@
+name: verify-managed-transitive-trust
+on:
+  pull_request:
+    paths:
+      - 'install/hooks-spec.sh'
+      - 'tests/unit/managed-transitive-trust.sh'
+      - 'tests/mutation/managed-transitive-trust.sh'
+      - '.github/workflows/verify-managed-transitive-trust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'install/hooks-spec.sh'
+      - 'tests/unit/managed-transitive-trust.sh'
+      - 'tests/mutation/managed-transitive-trust.sh'
+      - '.github/workflows/verify-managed-transitive-trust.yml'
+permissions:
+  contents: read
+jobs:
+  verify-managed-transitive-trust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: prerequisites
+        run: |
+          set -euo pipefail
+          command -v jq
+          command -v python3
+      - name: syntax
+        run: |
+          bash -n install/hooks-spec.sh
+          bash -n tests/unit/managed-transitive-trust.sh
+          bash -n tests/mutation/managed-transitive-trust.sh
+      - name: G25 transitive trust root
+        run: bash tests/unit/managed-transitive-trust.sh
+      - name: mutation validates G25 oracle
+        run: bash tests/mutation/managed-transitive-trust.sh
