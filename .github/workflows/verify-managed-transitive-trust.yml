@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'execution/hooks/read-budget.sh'
+      - 'install/manifest.lock'
       - 'tests/lib/arena.sh'
       - 'tests/unit/managed-transitive-trust.sh'
       - 'tests/mutation/managed-transitive-trust.sh'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'execution/hooks/read-budget.sh'
+      - 'install/manifest.lock'
       - 'tests/lib/arena.sh'
       - 'tests/unit/managed-transitive-trust.sh'
       - 'tests/mutation/managed-transitive-trust.sh'
@@ -33,6 +35,11 @@ jobs:
           bash -n execution/hooks/read-budget.sh
           bash -n tests/unit/managed-transitive-trust.sh
           bash -n tests/mutation/managed-transitive-trust.sh
+      - name: canonical manifest preview
+        run: |
+          set -euo pipefail
+          bash install/manifest.sh /tmp/tollens-manifest.lock >/dev/null
+          grep $'hook\texecution/hooks/read-budget.sh\t' /tmp/tollens-manifest.lock
       - name: G25 managed guidance trust root
         run: bash tests/unit/managed-transitive-trust.sh
       - name: mutation validates G25 oracle
