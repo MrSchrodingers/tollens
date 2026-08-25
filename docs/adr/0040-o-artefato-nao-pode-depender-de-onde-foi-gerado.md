@@ -27,10 +27,26 @@ docs/status.generated.md          grava 31, porque foi gerado na branch
 scripts/status.sh --check         compara BYTE A BYTE, e em main mede 29
 ```
 
-Todo merge para `main` estava garantido a falhar. Nao foi deslize: `verify-push` reprovou em
-2026-08-21, 08-24 e 08-25. E a leitura verde que esta sessao publicou duas vezes vinha do run da
-BRANCH - `verify-push` da branch e `verify-push` do main sao runs distintos, e so o primeiro foi
-olhado. Um relatorio de estado lido no lugar errado e indistinguivel de estado bom.
+Todo merge para `main` estava garantido a falhar. E a leitura verde que esta sessao publicou duas
+vezes vinha do run da BRANCH - `verify-push` da branch e `verify-push` do main sao runs distintos,
+e so o primeiro foi olhado. Um relatorio de estado lido no lugar errado e indistinguivel de estado
+bom.
+
+> **ERRATA, onda 21b (`revisor-codigo`).** A primeira versao deste ADR dizia "tres merges" e
+> "reprovou em 2026-08-21, 08-24 e 08-25". Sao **SEIS**, e o mais antigo e de 2026-08-19:
+>
+> ```
+> failure 2026-08-25 da895481 PR #29     failure 2026-08-20 ec943c12 PR #26
+> failure 2026-08-24 6e144fd8 PR #28     failure 2026-08-20 88cd17e6 PR #25
+> failure 2026-08-21 ac0cb446 PR #27     failure 2026-08-19 0c41e78d PR #24
+> success 2026-08-19 7ccf4945 PR #23
+> ```
+>
+> Todas no mesmo passo. E o run mais antigo traz um TERCEIRO valor - `30`, nao `31` -, o que
+> refuta a formulacao "31 na branch, 29 em main" como se fossem os dois unicos estados: a
+> contagem varia com o quanto a arvore difere da base, nao entre dois valores fixos. Errar um
+> numero por fator dois num ADR deste repositorio e a classe que a onda 20 inteira corrigiu, e
+> aqui ela reapareceu na propria correcao dela.
 
     NumeroObservado(contexto)  DIFERENTE DE  Invariante
 
@@ -127,6 +143,23 @@ E a mesma familia do `grep -P` sob `LC_ALL=C` que a onda 16 achou no portao de e
 que falha aberta, em silencio, e cuja saida vazia se le como resposta. O `refutador` cometeu a
 versao dele no mesmo dia - `grep -E '[^\n]*'` exclui a letra `n` literal, e o falso-negativo quase
 declarou um portao vivo como orfao.
+
+## **G27** - o detector desta classe so roda DEPOIS do merge, e a lista e curada a mao
+
+ABERTO, e o `revisor-codigo` o nomeou com precisao: **`verify-pr` nao pode reproduzir a condicao**
+"arvore identica a `origin/main`", porque um PR por definicao difere da base. Confirmado nesta
+branch: `TOTAL=31`. O unico detector da classe e o `verify-push` POS-MERGE - que e exatamente como
+este defeito nasceu e sobreviveu a seis merges.
+
+E a lista `BASE_DEPENDENTE` e digitada a mao num arquivo que argumenta contra listas digitadas a
+mao. Tres detectores derivaveis foram tentados e MEDIDOS como insuficientes (o raciocinio esta no
+proprio `scripts/status.sh`): grep de `NAO VERIFICADO` no fonte casa 18 das 20 suites; o mesmo grep
+na saida capturada e assimetrico entre branch e main; e a contagem estatica de `chk` contra
+`PASS+FAIL` nao discrimina - `hooks-de-guarda` deu 46=46 nesta estacao.
+
+O fecho e a suite publicar contagem INVARIANTE (`PASS+FAIL+SKIP`), o que toca as 18 suites com
+caminho de pulo. Nao feito aqui: seria taxonomia dentro de um patch, o erro que o ADR 0037
+registrou.
 
 ## Limites, declarados
 

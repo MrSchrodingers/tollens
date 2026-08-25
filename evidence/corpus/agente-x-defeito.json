@@ -889,7 +889,7 @@
       "mode": "verificacao-de-fonte",
       "class": "artefato-que-depende-do-contexto-de-geracao",
       "defect": "`status.generated.md` gravava contagem que muda conforme a arvore difira ou nao da base, e o portao a conferia byte a byte",
-      "measured": "31 assercoes na branch, 29 em main; `verify-push` de main reprovou em 2026-08-21, 08-24 e 08-25; apos o fix os digests batem (8f00d0c8f85e) e `--check` sai rc=0 nos dois",
+      "measured": "31 assercoes na branch, 30 num commit mais antigo, 29 em main - a contagem varia com o quanto a arvore difere da base, nao entre dois valores fixos; `verify-push` de main reprovou em SEIS merges (PR #24 a #29, 2026-08-19 a 08-25); apos o fix os digests batem (8f00d0c8f85e) e `--check` sai rc=0",
       "state": "resolved",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
@@ -945,6 +945,32 @@
       "state": "resolved",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
+    },
+    {
+      "finding_id": "G27",
+      "wave": 21,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "detector-que-so-roda-depois-do-merge",
+      "defect": "`verify-pr` nao pode reproduzir a condicao `arvore identica a base`, entao o unico detector desta classe e o `verify-push` pos-merge",
+      "measured": "na branch a suite emite 31 e o defeito e invisivel; foi assim que ele sobreviveu a seis merges. A lista `BASE_DEPENDENTE` e curada a mao, e tres detectores derivaveis foram medidos como insuficientes",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "O fecho e a suite publicar contagem INVARIANTE (PASS+FAIL+SKIP), tocando as 18 suites com caminho de pulo, mais um passo de CI que exercite a condicao arvore-identica-a-base. Nao feito nesta onda: seria taxonomia dentro de um patch."
+    },
+    {
+      "finding_id": "G28",
+      "wave": 21,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "oraculo-que-afirma-o-que-nao-mede",
+      "defect": "`onde_roda()` casava por prefixo sem `.sh`, e `tests/mutation/fronteira` e prefixo de `tests/mutation/fronteira-viva.sh`",
+      "measured": "removido o passo dedicado de `fronteira.sh` de uma copia do workflow, o rotulo ainda imprimia `passo dedicado no CI` - falso positivo provado por mutacao; com `.sh` o padrao casa 1 linha em vez de 2",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
     }
   ],
   "reading": [
@@ -958,14 +984,14 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 71,
+    "n_findings": 73,
     "wave_min": 11,
     "wave_max": 21,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
       "auditoria-externa": 25,
       "execucao-hostil": 1,
-      "leitura-estrutural": 20,
+      "leitura-estrutural": 22,
       "remedicao": 16,
       "verificacao-de-fonte": 6
     },
@@ -985,14 +1011,15 @@
       "G21",
       "G24",
       "G25",
+      "G27",
       "G4",
       "G5",
       "G6b",
       "G7"
     ],
     "by_state": {
-      "open": 10,
-      "resolved": 61
+      "open": 11,
+      "resolved": 62
     }
   },
   "historical_states": [

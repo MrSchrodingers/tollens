@@ -37,7 +37,33 @@ roda_suite(){ case "$1" in *.py) python3 "$1" ;; *) bash "$1" ;; esac; }
 #     distintos. Rotulo constante e a mesma correcao ja aplicada a `managed-root-trust.sh`
 #     (sudo) e a `run.sh` (ambiente): um numero que depende do contexto de observacao nao pode
 #     ser gravado como invariante num artefato conferido por igualdade de bytes.
-BASE_DEPENDENTE='tests/unit/capability-conformance.py'
+# ONDA 21b. `hooks-de-guarda.sh` entrou aqui por achado do `revisor-codigo`, e e a MESMA classe:
+# dois blocos se declaram NAO VERIFICADO conforme a estacao - `GS1` quando `graphify` e alcancavel
+# no PATH do hook, e o bloco `DS` inteiro quando ha helper escutando em 127.0.0.1:8791, que e o
+# `ds4-notify.sh` do proprio operador. Medido pelo revisor: 46 assercoes com os dois blocos
+# ativos, 42 com os dois pulados, rc=0 NOS DOIS - silencio, nao vermelho. O artefato gravava 46
+# fixo. O repositorio JA SABIA: `tests/mutation/hooks-de-guarda.sh:47-60` compensa
+# `EXPECTED_MUTANTS` por causa desses mesmos dois blocos. O arnes tratava a variabilidade; o
+# gerador do artefato, nao.
+#
+# ESTA LISTA E CURADA A MAO, E ISSO E DIVIDA DECLARADA (G27). Este arquivo argumenta 70 linhas
+# abaixo que lista digitada a mao e o defeito - "COMPLETUDE, nao lista digitada a mao". Procurei
+# um detector derivavel e NAO ACHEI um que se sustente:
+#
+#   grep por `NAO VERIFICADO` no fonte      18 das 20 suites casam - rotularia quase tudo e
+#                                            destruiria o valor informativo do artefato
+#   `NAO VERIFICADO` na saida capturada     assimetrico: `capability-conformance` so o emite em
+#                                            main, entao branch e main voltariam a divergir
+#   `chk` estatico contra PASS+FAIL         medido e NAO discrimina: hooks-de-guarda deu 46=46
+#                                            nesta estacao (os pulos nao dispararam), enquanto
+#                                            propriedades/cobertura/regressao-gate divergem por
+#                                            chamarem `chk` em laco
+#
+# O fecho real e outro e nao cabe neste patch: a suite publicar uma contagem INVARIANTE
+# (`PASS+FAIL+SKIP`), o que exige tocar as 18 suites que tem caminho de pulo. Inventar aqui um
+# lint que promete a classe e entrega uma lista seria a forma que as ondas 17, 19, 20b e 20c ja
+# removeram deste repositorio.
+BASE_DEPENDENTE='tests/unit/capability-conformance.py tests/unit/hooks-de-guarda.sh'
 conta_da_saida(){ printf '%s' "$1" | grep -oE 'PASS=[0-9]+|TOTAL=[0-9]+' | tail -1 | cut -d= -f2; }
 TMP="$(mktemp)" || exit 1
 trap 'rm -f "$TMP"' EXIT
@@ -83,7 +109,12 @@ trap 'rm -f "$TMP"' EXIT
   # conferir que o passo existisse - e para dois arneses nao existia. A funcao abaixo confere no
   # workflow, e imprime `NAO executado no CI` quando o passo falta, que e o sinal de que a
   # cobertura sumiu junto com a execucao.
-  onde_roda(){ if grep -qF "tests/mutation/$1" .github/workflows/verify-pr.yml 2>/dev/null
+  # `.sh` E OBRIGATORIO NO PADRAO, e a falta dele era falso positivo provado por mutacao:
+  # `tests/mutation/fronteira` e prefixo de `tests/mutation/fronteira-viva.sh`, entao remover o
+  # passo dedicado de `fronteira.sh` do workflow ainda imprimia "passo dedicado no CI". O oraculo
+  # afirmava o que nao media - a mesma classe que a onda 15 corrigiu ao tornar este rotulo
+  # computado em vez de literal.
+  onde_roda(){ if grep -qF "tests/mutation/$1.sh" .github/workflows/verify-pr.yml 2>/dev/null
                then printf 'passo dedicado no CI'; else printf 'NAO executado no CI'; fi; }
   n_mut(){ _v="$(grep -oE 'EXPECTED_MUTANTS=[0-9]+' "tests/mutation/$1.sh" | head -1 | cut -d= -f2)"
            [ -n "$_v" ] || _v="$(grep -c '^mutante M' "tests/mutation/$1.sh")"
@@ -129,7 +160,7 @@ ARNESES
     # "passo dedicado no CI" para todo arnes, sem conferir que o passo existisse - e para dois
     # deles nao existia. Claim publicada que ninguem recalcula envelhece em silencio, que e a
     # forma que este arquivo ja pagou em outra linha (ver o comentario sobre lavagem, abaixo).
-    if grep -qF "tests/mutation/$_b" .github/workflows/verify-pr.yml 2>/dev/null; then
+    if grep -qF "tests/mutation/$_b.sh" .github/workflows/verify-pr.yml 2>/dev/null; then
       _onde='passo dedicado no CI'
     else
       _onde='NAO executado no CI'
