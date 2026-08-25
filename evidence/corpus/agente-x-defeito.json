@@ -850,7 +850,7 @@
       "mode": "remedicao",
       "class": "suite-de-ci-nao-deterministica",
       "defect": "`tests/unit/propriedades.sh` reprova de forma intermitente sem alteracao de arvore, e roda no workflow de PR",
-      "measured": "`PASS=30 FAIL=1` com o par `supply-chain.sh (workflows reais)` inerte no regime cheio, e `PASS=31 FAIL=0` na reexecucao imediata; `supply-chain.sh` isolado sai 9/9 rc=0; reexecucoes na sessao principal sairam todas 31/31 rc=0 - cinco no turno em que foi registrado e mais tres do proprio `refutador`, num total de 8 sucessos contra 1 falha observada - NAO reproduzido aqui, o que e consistente com intermitencia e nao evidencia de ausencia",
+      "measured": "`PASS=30 FAIL=1` com o par `supply-chain.sh (workflows reais)` inerte no regime cheio, e `PASS=31 FAIL=0` na reexecucao imediata; `supply-chain.sh` isolado sai 9/9 rc=0. Contagem desta serie: 1 falha observada contra 9 sucessos - a reexecucao imediata, cinco na sessao principal e tres do `refutador`, em contexto separado. NAO reproduzido depois da primeira observacao, o que e consistente com intermitencia e nao e evidencia de ausencia.",
       "state": "open",
       "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "open_note": "Causa raiz NAO investigada. Nao e causado pela onda 20 - o diff nao toca workflow, supply-chain nem propriedades -, e por isso nao foi corrigido aqui. Registrado para nao virar `sempre foi assim`: a secao 5 do CLAUDE.md trata exit != 0 tolerado como normalizacao de desvio. Consequencia operacional imediata: a CI deste e de outros PRs pode ficar vermelha por motivo alheio ao diff, e um vermelho intermitente treina a leitura de que vermelho nao significa nada."
@@ -867,6 +867,19 @@
       "state": "open",
       "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "open_note": "Varrer o ADR 0036 a mao seria fechar mais uma realizacao - a classe e o portao nao alcancar bala sem marcador. O fecho mecanico e a mesma inversao em que esta onda se apoia: exigir identificador em toda bala sob esse cabecalho, ou isencao explicita. Nao construido aqui: e mudanca no criterio de completude, e faze-la dentro deste patch repetiria o erro que o ADR 0037 registrou ao adiar a taxonomia."
+    },
+    {
+      "finding_id": "G21",
+      "wave": 20,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "aparato-que-protege-campo-redundante",
+      "defect": "`found_by` e funcao total de `mode` - carrega zero informacao -, e cinco condicionais mais seis mutantes existem para conferir se a copia bate",
+      "measured": "violacoes de `found_by == (agent or mode)` em 65 achados: zero. E a inversao da onda 18 rodando ao contrario: `mode` e estruturado, `found_by` e escrito a mao, e um portao confere a copia",
+      "state": "open",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "open_note": "O fecho e DERIVAR `found_by` de `mode` (ou remove-lo), o que apaga tres das cinco guardas e tres dos seis mutantes que quatro rodadas construiram. NAO feito aqui de proposito: e mudanca de schema sobre 65 registros com queda de EXPECTED_MUTANTS e regeneracao de status, e faze-la dentro do patch que criou o aparato seria a quinta rodada da mesma onda. Registrado no turno em que foi descoberto, e nao depois - a omissao do achado-pai da onda 19 (G16) custou uma rodada inteira a esta onda."
     }
   ],
   "reading": [
@@ -880,7 +893,7 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 65,
+    "n_findings": 66,
     "wave_min": 11,
     "wave_max": 20,
     "counts_by_mode": {
@@ -888,7 +901,7 @@
       "auditoria-externa": 25,
       "execucao-hostil": 1,
       "leitura-estrutural": 20,
-      "remedicao": 15,
+      "remedicao": 16,
       "verificacao-de-fonte": 1
     },
     "sources": [
@@ -903,13 +916,14 @@
       "G18",
       "G19",
       "G20",
+      "G21",
       "G4",
       "G5",
       "G6b",
       "G7"
     ],
     "by_state": {
-      "open": 7,
+      "open": 8,
       "resolved": 58
     }
   },

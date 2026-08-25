@@ -183,9 +183,16 @@ esta onda corrige:
    esta errado. Nao ha terceira leitura. `MCC21` e `MCC22`.
 2. **Ancora na arvore base**, o mesmo principio da onda 14: modo que tinha `agent` na base nao
    pode perde-lo no head. LIMITE, dito porque a versao anterior deste ADR erraria aqui: a base de
-   hoje traz `modes` como STRING, anterior ao campo que este PR introduz, entao esta guarda sai
-   `0 com agente na base` e **nao morde nesta onda**. Ela fecha a partir do proximo commit. Quem
-   fecha o buraco hoje e a coerencia interna.
+   hoje traz `modes` como STRING, anterior ao campo que este PR introduz, entao esta guarda nao
+   morde nesta onda: ela fecha a partir do proximo commit. Quem fecha o buraco hoje e a coerencia
+   interna. E por isso ela imprime `NAO VERIFICADO`, e nao `PASS` - um PASS que se sabe vacuo
+   seria a unica linha da saida a afirmar mais do que mede, que e o defeito desta onda inteira.
+
+E o que NENHUMA das duas fecha, declarado porque o `refutador` o realizou com exit code: trocar a
+CHAVE em vez do valor. Reclassificar o `mode` de um achado, ou criar um modo sem agente e migrar
+achados para ele, sai `rc=0` - o registro fica coerente e falso. E o `C1` do ADR 0035 aplicado ao
+corpus em vez do registry. A ancora de `mode` contra a base fecha isso, e so pode ser construida
+depois que a base carregar o schema estruturado - a mesma janela da guarda 2.
 
 ### `desc` tinha virado campo sem leitor
 
@@ -231,7 +238,27 @@ cada.
 
 ## Limites, declarados
 
-`G4`, `G5`, `G6b`, `G7` e agora `G18`, `G19` e `G20` seguem abertos.
+`G4`, `G5`, `G6b`, `G7` e agora `G18`, `G19`, `G20` e `G21` seguem abertos.
+
+`G21` e o achado mais importante desta onda, e ele nao veio de nenhum dos ataques pedidos - veio
+da pergunta de fecho, "quatro rodadas ainda e convergencia ou ja e patch sobre patch?". A resposta
+do `refutador` foi que o padrao degenerativo nao esta no portao, e sim em ele existir:
+
+```
+achados: 66 | violacoes de `found_by == (agent or mode)`: 0
+```
+
+`found_by` e funcao TOTAL de `mode`. Carrega zero informacao, e cinco condicionais mais seis
+mutantes foram construidos nesta onda para conferir se a copia bate. E a inversao da onda 18
+rodando ao contrario: `render.py` existe porque "contagem estruturada -> humano escreve o numero
+-> regex confere a copia" era o formato errado, e aqui `mode` e estruturado, `found_by` e escrito
+a mao, e um portao confere a copia.
+
+O fecho e DERIVAR `found_by`, o que apaga a maior parte do aparato que quatro rodadas
+construiram. Nao feito aqui, e a razao e a mesma que o ADR 0037 deu para adiar a taxonomia: e
+mudanca de schema sobre 66 registros, e faze-la dentro do patch que criou o aparato seria a quinta
+rodada da mesma onda. O que MUDA em relacao ao ADR 0037 e que o achado foi registrado no turno em
+que apareceu - omitir o achado-pai da onda 19 custou uma rodada inteira a esta onda.
 
 `G20` merece a nota porque nasceu de uma pergunta que eu fiz ao `refutador` e que ele respondeu
 CONTRA a minha correcao. Registrar as tres balas da secao `Tambem ajustado` do ADR 0038 corrigiu a

@@ -168,9 +168,19 @@ else:
             raise SystemExit(
                 "FAIL corpus: modo que tinha `agent` na base o perdeu no head - desligar a "
                 f"checagem de procedencia de dentro do PR e a familia D_MAX: {_rebaixados}")
-        print(f"PASS corpus: nenhum modo perde `agent` contra {_base_ref} "
-              f"({sum(1 for v in _modos_base.values() if isinstance(v, dict) and v.get('agent'))} "
-              f"com agente na base)")
+        _com_agente_base = sum(1 for v in _modos_base.values()
+                               if isinstance(v, dict) and v.get("agent"))
+        if _com_agente_base:
+            print(f"PASS corpus: nenhum modo perde `agent` contra {_base_ref} "
+                  f"({_com_agente_base} com agente na base)")
+        else:
+            # O `refutador` apontou: um PASS que se sabe vacuo e a unica linha da saida que afirma
+            # mais do que mede. A base anterior ao schema estruturado traz `modes` como STRING, e
+            # nao ha o que comparar - "nao reprovou" seria indistinguivel de "nao foi medido". A
+            # convencao NAO VERIFICADO ja e usada duas vezes neste mesmo bloco.
+            print(f"NAO VERIFICADO: `modes` em {_base_ref} nao traz `agent` (schema anterior ao "
+                  "campo estruturado) - a nao-perda so podera ser conferida a partir do proximo "
+                  "commit")
 print(f"PASS corpus: procedencia coerente - todo `mode` com `agent` tem `found_by` igual "
       f"({len(_com_agente)} modo(s) com agente, {len(_sem_agente)} com `agent: null`)")
 
