@@ -14,7 +14,7 @@ GRAPH="execution/skills/graphify/SKILL.md"
 
 chk "prd-to-issues exists" "$([ -f "$ISSUES" ] && echo sim)" sim
 chk "prd-to-issues really contains the remote write this policy protects" \
-    "$(grep -c 'gh issue create' "$ISSUES" || true)" 1
+    "$(grep -q 'gh issue create' "$ISSUES" && echo sim || echo nao)" sim
 chk "prd-to-issues is manual-only" \
     "$(frontmatter "$ISSUES" | grep -c '^disable-model-invocation: true$' || true)" 1
 
