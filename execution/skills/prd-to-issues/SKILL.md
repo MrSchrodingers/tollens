@@ -1,11 +1,17 @@
 ---
 name: prd-to-issues
 description: Quebra um PRD em issues GitHub independentes usando fatias verticais (tracer bullets). Cada issue eh pegavel por qualquer dev. Usar quando o usuario quiser converter PRD em issues, criar tickets de implementacao, ou quebrar PRD em work items. Skill anterior /prd-to-plan, skill seguinte /tdd.
+disable-model-invocation: true
 ---
 
 # PRD para Issues GitHub
 
 Quebra um PRD em issues GitHub independentes e pegiveis usando fatias verticais (tracer bullets).
+
+> INVOCACAO MANUAL. Esta skill cria estado remoto com `gh issue create`. A documentacao oficial
+> do Claude Code recomenda `disable-model-invocation: true` para workflows com side effects cuja
+> temporizacao deve permanecer sob controle do usuario. A flag tambem remove a description do
+> contexto automatico, reduzindo custo quando este workflow nao foi pedido explicitamente.
 
 ## Pipeline (Skills Relacionadas)
 
