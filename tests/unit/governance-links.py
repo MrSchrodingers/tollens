@@ -55,7 +55,139 @@ desconhecidos = sorted(set(medido) - set(corpus["modes"]))
 if desconhecidos:
     raise SystemExit(f"FAIL corpus: modos usados e nao definidos: {desconhecidos}")
 
-# ANTIVACUIDADE: um corpus vazio satisfaria as duas checagens acima sem dizer nada.
+# ONDA 20 (G17), REESCRITO NA 20b. A primeira versao lia o vinculo modo -> agente da PROSA por
+# `re.compile(r"Agente \`([^\`]+)\`")`. O `refutador` derrubou em tres direcoes, todas medidas:
+#
+#   falso negativo   cinco reescritas plausiveis da descricao (sem crases, com dois-pontos, em
+#                    minuscula, outra formulacao, aspas tipograficas) desligavam a regra em
+#                    SILENCIO, com atribuicao falsa plantada e `PASS` impresso. O contador da
+#                    propria linha caia de 3 para 2 modos com agente, e nada assertava isso.
+#   falso positivo   uma frase explicativa acrescentada a outro modo reprovava 23 achados corretos.
+#   a bomba armada   a descricao do modo NOVO desta onda contem "agente `revisor-codigo`" em
+#                    prosa. So a MINUSCULA impedia o casamento: uma maiuscula e o portao reprovava
+#                    o achado principal da onda que o construiu.
+#
+# Era `G12a` (ADR 0037) - lint lexical prometendo a classe e entregando uma lista de realizacoes -
+# dentro da correcao que cita `G12a`. O erro estava no FORMATO, nao na regex, e a inversao que o
+# resolve ja e doutrina deste repositorio desde a onda 18 (`evidence/corpus/render.py`):
+#
+#     antes   vinculo escrito em prosa -> regex tenta descobrir se esta la
+#     agora   vinculo E campo (`agent`), `null` quando o modo nao tem agente
+#
+# Nenhuma prosa e interpretada. Mencionar um agente numa descricao volta a ser prosa inofensiva.
+_com_agente = {m for m, v in corpus["modes"].items() if v.get("agent")}
+_sem_agente = set(corpus["modes"]) - _com_agente
+_atribuicao_falsa = [
+    f"{_a['finding_id']}: mode={_a['mode']!r} declara o agente "
+    f"{corpus['modes'][_a['mode']]['agent']!r} mas found_by={_a.get('found_by')!r}"
+    for _a in corpus["findings"]
+    if _a["mode"] in _com_agente
+    and _a.get("found_by") != corpus["modes"][_a["mode"]]["agent"]
+]
+if _atribuicao_falsa:
+    raise SystemExit("FAIL corpus: `mode` nomeia um agente que `found_by` nao confirma - "
+                     f"atribuicao de procedencia sem lastro: {_atribuicao_falsa}")
+
+# ANTIVACUIDADE. Se `agent` sumisse de todos os modos - por refactor, por migracao de schema, por
+# um PR que "simplifica" - `_com_agente` ficaria vazio, o laco acima nao iteraria, e o portao
+# imprimiria PASS sem ter conferido nada. A primeira versao IMPRIMIA esse contador e nao o
+# assertava; era o sinal do proprio desligamento, ignorado.
+if not _com_agente:
+    raise SystemExit("FAIL corpus: nenhum modo declara `agent` - o portao de procedencia ficaria "
+                     "vacuo. Modo sem agente deve trazer `agent: null` explicito, nao omitir.")
+if any("agent" not in v for v in corpus["modes"].values()):
+    raise SystemExit("FAIL corpus: modo sem o campo `agent` - `null` e declaracao, ausencia e "
+                     f"omissao: {sorted(m for m, v in corpus['modes'].items() if 'agent' not in v)}")
+
+# `agent: ""` LE-SE COMO DECLARACAO E AGE COMO AUSENCIA. A guarda de omissao acima passa - a chave
+# existe -, e `v.get("agent")` e teste de veracidade, entao a string vazia cai fora de
+# `_com_agente` e desliga a checagem em silencio. O tipo tem de ser `null` OU string nao vazia,
+# nada no meio.
+_agente_ruim = sorted(m for m, v in corpus["modes"].items()
+                      if v["agent"] is not None
+                      and not (isinstance(v["agent"], str) and v["agent"].strip()))
+if _agente_ruim:
+    raise SystemExit("FAIL corpus: `agent` tem de ser `null` ou nome nao vazio - valor que se le "
+                     f"como declaracao e age como ausencia: {_agente_ruim}")
+
+# A TERCEIRA REALIZACAO DA VACUIDADE, MEDIDA POR DENTRO. A regra de cima so olha modos que TEM
+# agente; trocar o `agent` de um modo para `null` o removia de `_com_agente` e desligava a
+# checagem para os achados dele - 20 dos 64 no caso de `leitura-estrutural`, com `PASS` impresso.
+#
+# O que fecha isso SEM exigir a base e a coerencia interna: um modo que declara `agent: null` e
+# cujos achados nomeiam OUTRA COISA que nao o proprio modo esta se contradizendo - ou ele tem
+# agente e deve declara-lo, ou o `found_by` esta errado. Nao ha terceira leitura.
+#
+# ISTO NAO REINTRODUZ O DEFEITO SIMETRICO. A regra nao obriga modo sem agente a NOMEAR um agente -
+# obriga a nomear o proprio modo, que e o que os tres modos sem agente ja fazem. Inventar
+# procedencia continua impossivel; o que deixou de ser possivel e apagar a procedencia declarada.
+_orfaos = sorted(
+    f"{_a['finding_id']}: mode={_a['mode']!r} declara `agent: null` mas found_by={_a.get('found_by')!r}"
+    for _a in corpus["findings"]
+    if _a["mode"] in _sem_agente and _a.get("found_by") != _a["mode"])
+if _orfaos:
+    raise SystemExit("FAIL corpus: modo com `agent: null` cujos achados nomeiam outro ator - ou o "
+                     "modo tem agente e deve declara-lo, ou o `found_by` esta errado. Trocar "
+                     f"`agent` para null de dentro do PR desligaria a checagem: {_orfaos}")
+
+# E A ANCORA NA ARVORE BASE, como defesa em profundidade para o caso que a regra de cima nao
+# alcanca: trocar `agent` para null E reescrever todos os `found_by` no MESMO PR. E a familia
+# `D_MAX`. Modo que tinha agente na base nao
+# pode perde-lo no head - fato que o PR nao pode forjar, o mesmo principio da onda 14.
+#
+# LIMITE DECLARADO, e ele importa: a base de HOJE traz `modes` como STRING, anterior ao campo
+# estruturado que este PR introduz, entao esta guarda sai `0 com agente na base` e nao morde
+# nesta onda. Ela fecha a partir do proximo commit. Quem fecha o buraco AGORA e a coerencia
+# interna acima. Duas guardas, alcances diferentes, e dizer que a segunda ja protege seria a
+# amplitude que esta onda inteira corrige.
+_base_ref = None
+for _r in ("origin/main", "main"):
+    if subprocess.run(["git", "rev-parse", "--verify", "--quiet", _r],
+                      capture_output=True, cwd=str(ROOT)).returncode == 0:
+        _base_ref = _r
+        break
+if _base_ref is None:
+    # exit 2 = NAO VERIFICADO, a convencao do repositorio. Sem base nao ha comparacao, e "nao
+    # reprovou" seria indistinguivel de "nao foi medido".
+    print("NAO VERIFICADO: sem ref de base (origin/main ou main) - a nao-perda de `agent` nao "
+          "pode ser conferida, e afirmar que nada regrediu seria claim sem observacao")
+else:
+    _bruto = subprocess.run(["git", "show", f"{_base_ref}:evidence/corpus/agente-x-defeito.json"],
+                            capture_output=True, text=True, cwd=str(ROOT))
+    if _bruto.returncode != 0:
+        print(f"NAO VERIFICADO: corpus ausente em {_base_ref} - primeira aparicao do arquivo")
+    else:
+        _modos_base = (json.loads(_bruto.stdout) or {}).get("modes") or {}
+        _rebaixados = sorted(
+            f"{_m}: base={_v.get('agent')!r} head={corpus['modes'][_m].get('agent')!r}"
+            for _m, _v in _modos_base.items()
+            # a base pode ser anterior ao schema estruturado, quando `modes` era string
+            if isinstance(_v, dict) and _v.get("agent") and _m in corpus["modes"]
+            and not corpus["modes"][_m].get("agent"))
+        if _rebaixados:
+            raise SystemExit(
+                "FAIL corpus: modo que tinha `agent` na base o perdeu no head - desligar a "
+                f"checagem de procedencia de dentro do PR e a familia D_MAX: {_rebaixados}")
+        _com_agente_base = sum(1 for v in _modos_base.values()
+                               if isinstance(v, dict) and v.get("agent"))
+        if _com_agente_base:
+            print(f"PASS corpus: nenhum modo perde `agent` contra {_base_ref} "
+                  f"({_com_agente_base} com agente na base)")
+        else:
+            # O `refutador` apontou: um PASS que se sabe vacuo e a unica linha da saida que afirma
+            # mais do que mede. A base anterior ao schema estruturado traz `modes` como STRING, e
+            # nao ha o que comparar - "nao reprovou" seria indistinguivel de "nao foi medido". A
+            # convencao NAO VERIFICADO ja e usada duas vezes neste mesmo bloco.
+            print(f"NAO VERIFICADO: `modes` em {_base_ref} nao traz `agent` (schema anterior ao "
+                  "campo estruturado) - a nao-perda so podera ser conferida a partir do proximo "
+                  "commit")
+print(f"PASS corpus: procedencia coerente - todo `mode` com `agent` tem `found_by` igual "
+      f"({len(_com_agente)} modo(s) com agente, {len(_sem_agente)} com `agent: null`)")
+
+# ANTIVACUIDADE: um corpus vazio satisfaria as checagens de contagem e de modo acima sem
+# dizer nada. (Uma versao anterior deste comentario dizia "as duas checagens acima" e
+# envelheceu no mesmo PR que acrescentou guardas acima dele - a classe corrigida um
+# paragrafo adiante, em escala minima. O comentario deixou de contar.)
 if len(corpus["findings"]) < 10:
     raise SystemExit(f"FAIL corpus com {len(corpus['findings'])} achados - vazio demais para medir")
 

@@ -11,11 +11,30 @@
     "PROVENIENCIA DO MODO `auditoria-externa` NAO E OBSERVAVEL DAQUI. Os achados chegaram mediados pelo operador. Qualquer leitura que atribua a complementaridade a 'expertise humana' - ou a 'diversidade de modelo' - esta escolhendo um mecanismo causal que este corpus nao mediu."
   ],
   "modes": {
-    "leitura-estrutural": "Le o diff e cruza o texto com o codigo. Agente `revisor-codigo`.",
-    "execucao-hostil": "EXECUTA o codigo contra alvo adversario construido de proposito. Agente `auditor-seguranca`.",
-    "remedicao": "REFAZ as medicoes publicadas em vez de aceita-las. Agente `refutador`.",
-    "auditoria-externa": "Revisao produzida FORA deste harness e desta sessao, chegando por intermedio do operador. PROVENIENCIA NAO OBSERVAVEL DAQUI: nao ha evidencia de que o revisor seja humano, outro modelo, ou uma combinacao - a primeira versao deste campo dizia 'revisor humano' e isso era afirmacao sem lastro. A distincao importa porque um dos mecanismos causais plausiveis para a complementaridade observada e justamente diversidade de modelo/harness, e atribui-la a expertise humana mudaria a leitura do dado. Se um humano reproduzir os achados de forma independente, isso vira um modo separado.",
-    "aplicacao-de-instrumento": "Aplicar um instrumento novo ao inventario existente e ler o que ele acusa. Sem agente: e o efeito colateral de medir."
+    "leitura-estrutural": {
+      "agent": "revisor-codigo",
+      "desc": "Le o diff e cruza o texto com o codigo."
+    },
+    "execucao-hostil": {
+      "agent": "auditor-seguranca",
+      "desc": "EXECUTA o codigo contra alvo adversario construido de proposito."
+    },
+    "remedicao": {
+      "agent": "refutador",
+      "desc": "REFAZ as medicoes publicadas em vez de aceita-las."
+    },
+    "auditoria-externa": {
+      "agent": null,
+      "desc": "Revisao produzida FORA deste harness e desta sessao, chegando por intermedio do operador. PROVENIENCIA NAO OBSERVAVEL DAQUI: nao ha evidencia de que o revisor seja humano, outro modelo, ou uma combinacao - a primeira versao deste campo dizia 'revisor humano' e isso era afirmacao sem lastro. A distincao importa porque um dos mecanismos causais plausiveis para a complementaridade observada e justamente diversidade de modelo/harness, e atribui-la a expertise humana mudaria a leitura do dado. Se um humano reproduzir os achados de forma independente, isso vira um modo separado."
+    },
+    "aplicacao-de-instrumento": {
+      "agent": null,
+      "desc": "Aplicar um instrumento novo ao inventario existente e ler o que ele acusa. Sem agente: e o efeito colateral de medir."
+    },
+    "verificacao-de-fonte": {
+      "agent": null,
+      "desc": "Conferir na FONTE PRIMARIA um numero que outra rodada mandou corrigir na prosa, e achar a mesma forma no instrumento que o produz. Sem agente: e a sessao principal executando a regra de verificacao de fonte. NAO e `leitura-estrutural`, que le diff e tem agente proprio; atribuir a ele o que a sessao principal leu inflaria o saldo dos modos internos contra `auditoria-externa`, que originou a familia."
+    }
   },
   "findings": [
     {
@@ -313,7 +332,7 @@
     },
     {
       "wave": 15,
-      "found_by": "remedicao",
+      "found_by": "refutador",
       "mode": "remedicao",
       "class": "erro-de-medicao-proprio",
       "defect": "a propria contagem de hooks sem teste errou DUAS vezes antes de acertar: grep de 'exit 2' no fonte deu 2 falsos positivos em 14 (ocorrencias em comentario), e grep de invocacao perdeu as suites que atribuem o caminho a variavel",
@@ -321,11 +340,12 @@
       "review_round": "refutador",
       "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
       "state": "resolved",
-      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "note": "`found_by` trazia o MODO em vez do agente, contra os outros 11 achados de `remedicao`. Corrigido na onda 20, quando o portao de procedencia passou a existir; `review_round` ja registrava `refutador` desde a onda 15, entao a correcao le a evidencia que estava no proprio registro."
     },
     {
       "wave": 15,
-      "found_by": "remedicao",
+      "found_by": "refutador",
       "mode": "remedicao",
       "class": "mutante-equivalente",
       "defect": "MHG15 sobreviveu por defesa em profundidade real: uma segunda guarda independente preserva o comportamento observavel. Declarado equivalente, com MHG16 removendo as duas para provar sensibilidade",
@@ -333,7 +353,8 @@
       "review_round": "refutador",
       "source_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
       "state": "resolved",
-      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "resolution_ref": "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "note": "`found_by` trazia o MODO em vez do agente, contra os outros 11 achados de `remedicao`. Corrigido na onda 20, quando o portao de procedencia passou a existir; `review_round` ja registrava `refutador` desde a onda 15, entao a correcao le a evidencia que estava no proprio registro."
     },
     {
       "finding_id": "C1",
@@ -751,6 +772,114 @@
       "state": "resolved",
       "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md"
+    },
+    {
+      "finding_id": "G16",
+      "wave": 19,
+      "review_round": "auditoria externa (7a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "denominador-lido-como-populacao-ativa",
+      "defect": "o relatorio publicava `34 capabilities` sem dizer que sao ENTRIES do registry, e o numero se lia como componentes ativos",
+      "measured": "registry: 33 em `candidate` mais o tombstone `defesa-de-tese`, `installed: false`",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "note": "REGISTRADO EM ATRASO, na onda 20b. A onda 20 registrou apenas UMA das tres balas da secao `Tambem ajustado no relatorio` do ADR 0038 - justamente a que produzia o saldo simetrico publicado como correcao do vies. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho. AS TRES daquela secao estao aqui; isto NAO e afirmacao de completude do corpus - o `refutador` mostrou na volta seguinte que o ADR 0036 tem secao irma nao varrida, e a classe virou G20."
+    },
+    {
+      "finding_id": "G17",
+      "wave": 20,
+      "review_round": "verificacao de fonte ao aplicar G16",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "denominador-que-nao-mede-o-numerador",
+      "defect": "a linha D_E imprimia `len(caps)` como denominador enquanto o numerador percorria so `_EM_DIVIDA`",
+      "measured": "numerador 33 varridas sobre denominador 34 entries; e a frase promete a populacao ENDIVIDADA, que e 28",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "resolution_note": "defeito de EXIBICAO, nao de assercao: as oito assercoes de CC4 comparam conjuntos de pares (capability, dimensao) e cardinalidades deles, e nenhuma le esse denominador. A primeira correcao trocou 34 por 33 e fechava a realizacao, nao a classe - o `refutador` mediu que 33 tambem convida a leitura errada, e a linha passou a publicar as tres populacoes."
+    },
+    {
+      "finding_id": "G18",
+      "wave": 20,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "acoplamento-nao-nomeado-entre-adr-e-head",
+      "defect": "`governance-links.py` obriga o ADR 0035 a publicar o D_E do HEAD, o que faz daquele bloco um espelho vivo e nao um registro datado",
+      "measured": "qualquer mudanca de D_E - registrar capability, pagar dimensao, mudar `_EM_DIVIDA` - reprova o portao ate o ADR ser reeditado; ja aconteceu duas vezes nesta onda",
+      "state": "open",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "open_note": "Falta decidir o desenho: ou o ADR publica o valor DATADO e um artefato gerado espelha o head, ou o portao passa a conferir o gerado. Fechar isto e mudanca de contrato, nao correcao, e nao cabe nesta onda - seria o mesmo erro de fazer taxonomia dentro de um patch."
+    },
+    {
+      "finding_id": "G16b",
+      "wave": 19,
+      "review_round": "auditoria externa (7a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "numero-nao-derivado-ao-lado-de-numero-derivado",
+      "defect": "o relatorio contava as rodadas de revisao na mesma frase que o total de achados, emprestando ao primeiro a forca observacional do segundo",
+      "measured": "o total de achados e computado por `render.py` e o portao reprova se divergir; a contagem de rodadas nao tem essa propriedade - e interpretacao da trajetoria",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "note": "REGISTRADO EM ATRASO, na onda 20b. A onda 20 registrou apenas UMA das tres balas da secao `Tambem ajustado no relatorio` do ADR 0038 - justamente a que produzia o saldo simetrico publicado como correcao do vies. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho. AS TRES daquela secao estao aqui; isto NAO e afirmacao de completude do corpus - o `refutador` mostrou na volta seguinte que o ADR 0036 tem secao irma nao varrida, e a classe virou G20."
+    },
+    {
+      "finding_id": "G16c",
+      "wave": 19,
+      "review_round": "auditoria externa (7a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "validade-de-mecanismo-confundida-com-eficacia-externa",
+      "defect": "o relatorio dizia que demonstrar reducao causal transformaria o trabalho de engenharia em resultado, o que apagava o resultado empirico ja existente sobre VALIDADE DE MECANISMO",
+      "measured": "ha observacao farta de mecanismo - mutantes mortos, `rm -rf` por symlink, fail-open de locale, CI recusando renderer sem piso; o que falta e demonstracao causal pareada contra baseline",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "source_ref": "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "note": "REGISTRADO EM ATRASO, na onda 20b. A onda 20 registrou apenas UMA das tres balas da secao `Tambem ajustado no relatorio` do ADR 0038 - justamente a que produzia o saldo simetrico publicado como correcao do vies. Registrar o subconjunto que da o numero bonito e selecao condicionada ao desfecho. AS TRES daquela secao estao aqui; isto NAO e afirmacao de completude do corpus - o `refutador` mostrou na volta seguinte que o ADR 0036 tem secao irma nao varrida, e a classe virou G20."
+    },
+    {
+      "finding_id": "G19",
+      "wave": 20,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "suite-de-ci-nao-deterministica",
+      "defect": "`tests/unit/propriedades.sh` reprova de forma intermitente sem alteracao de arvore, e roda no workflow de PR",
+      "measured": "`PASS=30 FAIL=1` com o par `supply-chain.sh (workflows reais)` inerte no regime cheio, e `PASS=31 FAIL=0` na reexecucao imediata; `supply-chain.sh` isolado sai 9/9 rc=0. Contagem desta serie: 1 falha observada contra 9 sucessos - a reexecucao imediata, cinco na sessao principal e tres do `refutador`, em contexto separado. NAO reproduzido depois da primeira observacao, o que e consistente com intermitencia e nao e evidencia de ausencia.",
+      "state": "open",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "open_note": "Causa raiz NAO investigada. Nao e causado pela onda 20 - o diff nao toca workflow, supply-chain nem propriedades -, e por isso nao foi corrigido aqui. Registrado para nao virar `sempre foi assim`: a secao 5 do CLAUDE.md trata exit != 0 tolerado como normalizacao de desvio. Consequencia operacional imediata: a CI deste e de outros PRs pode ficar vermelha por motivo alheio ao diff, e um vermelho intermitente treina a leitura de que vermelho nao significa nada."
+    },
+    {
+      "finding_id": "G20",
+      "wave": 20,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "defeito-em-adr-sem-marcador-e-invisivel-ao-portao",
+      "defect": "o portao de completude so exige o caminho ADR -> corpus para defeito com MARCADOR estruturado; bala sob cabecalho `Tambem corrigido/ajustado` nao tem marcador e fica invisivel",
+      "measured": "ADR 0036 secao `Tambem corrigido` tem dois defeitos que alteraram codigo e rotulo - o vocabulario `promovidas` em methodology.py e o rotulo `PASS corpus COMPLETO` - e nenhum dos dois esta no corpus; os seis achados com source_ref=0036 vieram todos do CORPO",
+      "state": "open",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "open_note": "Varrer o ADR 0036 a mao seria fechar mais uma realizacao - a classe e o portao nao alcancar bala sem marcador. O fecho mecanico e a mesma inversao em que esta onda se apoia: exigir identificador em toda bala sob esse cabecalho, ou isencao explicita. Nao construido aqui: e mudanca no criterio de completude, e faze-la dentro deste patch repetiria o erro que o ADR 0037 registrou ao adiar a taxonomia."
+    },
+    {
+      "finding_id": "G21",
+      "wave": 20,
+      "review_round": "refutador",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "aparato-que-protege-campo-redundante",
+      "defect": "`found_by` e funcao total de `mode` - carrega zero informacao -, e cinco condicionais mais seis mutantes existem para conferir se a copia bate",
+      "measured": "violacoes de `found_by == (agent or mode)` em 65 achados: zero. E a inversao da onda 18 rodando ao contrario: `mode` e estruturado, `found_by` e escrito a mao, e um portao confere a copia",
+      "state": "open",
+      "source_ref": "docs/adr/0039-o-denominador-e-a-procedencia.md",
+      "open_note": "O fecho e DERIVAR `found_by` de `mode` (ou remove-lo), o que apaga tres das cinco guardas e tres dos seis mutantes que quatro rodadas construiram. NAO feito aqui de proposito: e mudanca de schema sobre 65 registros com queda de EXPECTED_MUTANTS e regeneracao de status, e faze-la dentro do patch que criou o aparato seria a quinta rodada da mesma onda. Registrado no turno em que foi descoberto, e nao depois - a omissao do achado-pai da onda 19 (G16) custou uma rodada inteira a esta onda."
     }
   ],
   "reading": [
@@ -764,32 +893,38 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 58,
+    "n_findings": 66,
     "wave_min": 11,
-    "wave_max": 19,
+    "wave_max": 20,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
-      "auditoria-externa": 22,
+      "auditoria-externa": 25,
       "execucao-hostil": 1,
       "leitura-estrutural": 20,
-      "remedicao": 12
+      "remedicao": 16,
+      "verificacao-de-fonte": 1
     },
     "sources": [
       "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
       "docs/adr/0036-instalar-nao-e-ativar.md",
       "docs/adr/0037-o-frame-e-derivado-e-a-ausencia-e-delimitada.md",
       "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
+      "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     ],
     "open_findings": [
+      "G18",
+      "G19",
+      "G20",
+      "G21",
       "G4",
       "G5",
       "G6b",
       "G7"
     ],
     "by_state": {
-      "open": 4,
-      "resolved": 54
+      "open": 8,
+      "resolved": 58
     }
   },
   "historical_states": [
@@ -817,5 +952,6 @@
       "open": "exige `open_note` dizendo o que falta"
     },
     "limite_declarado": "O `state` continua sendo escrito por quem edita o corpus. O que deixou de ser possivel e declarar `resolved` sem apontar para nada. Isto NAO e prova de que o defeito foi corrigido - e prova de que existe artefato alegando corrigi-lo."
-  }
+  },
+  "_comment_modes": "ONDA 20b. O vinculo modo -> agente era LIDO DA PROSA por regex (`Agente \\`x\\``), e o `refutador` derrubou o portao em tres direcoes: cinco reescritas plausiveis o desligavam em silencio com atribuicao falsa plantada; uma frase explicativa em outro modo reprovava 23 achados corretos; e a descricao do proprio modo novo desta onda passava a uma MAIUSCULA de reprovar o achado principal dela. Era G12a (ADR 0037) na correcao que cita G12a. O erro estava no FORMATO, nao na regex - a mesma inversao que `render.py` fez com a contagem: o vinculo vira CAMPO (`agent`), `null` quando o modo nao tem agente, e nenhuma prosa e interpretada."
 }

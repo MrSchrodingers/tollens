@@ -21,7 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . tests/lib/lock.sh
 . tests/lib/arena.sh
 
-P=0; F=0; EXPECTED_MUTANTS=16
+P=0; F=0; EXPECTED_MUTANTS=22
 POR="tests/unit/governance-links.py"
 CORPUS="evidence/corpus/agente-x-defeito.json"
 ADR="docs/adr/0035-a-divida-era-de-uma-classe-so.md"
@@ -148,6 +148,59 @@ salvar()'
 mutante MCC16 "open sem dizer o que falta" 1 \
   "$_PY"'f=[x for x in d["findings"] if x["state"]=="open"][0]
 f.pop("open_note",None)
+salvar()'
+
+echo "== onda 20: procedencia que o modo declara e o registro nao confirma =="
+# G17, premortem do refutador. O portao validava a CHAVE do modo e nunca o vinculo que o proprio
+# dicionario `modes` DECLARA. Um achado com `mode: leitura-estrutural` - que nomeia o agente
+# `revisor-codigo` - e `found_by` diferente publica a releitura de um ator como output de outro,
+# no unico campo do corpus que serve de comparacao entre modos de revisao.
+mutante MCC17 "achado atribui um modo cujo agente o found_by nao confirma" 1 \
+  "$_PY"'f=[x for x in d["findings"] if x["mode"]=="leitura-estrutural"][0]
+f["found_by"]="auditoria-externa"
+salvar()'
+# A DIRECAO INVERSA, e ela importa tanto quanto: modo com `agent: null` NAO pode obrigar
+# `found_by` a nomear um. Forcar um agente onde nao houve e inventar procedencia - o defeito
+# simetrico, e o que este controle impede que a regra vire.
+#
+# A PRIMEIRA VERSAO DESTE MUTANTE ERA INERTE, e o `refutador` provou por sha256: ele escrevia
+# `found_by="aplicacao-de-instrumento"` nos achados que JA tinham esse valor, entao o arquivo
+# mutado era byte-identico ao original. Passava, contava como MORTO, e nao exercitava direcao
+# alguma - `18/18` incluia um mutante que nao testava nada. Agora ele escreve um valor DIFERENTE
+# do modo, que e a condicao que a regra tem de tolerar.
+# CONTROLE, REESCRITO NA 20d. A versao da 20b era INERTE (escrevia o valor que ja estava la, sha256
+# identico); a da 20c escrevia `found_by` diferente do modo, o que a regra de coerencia interna
+# acrescentada nesta onda passou a REPROVAR com razao. A propriedade a proteger nunca foi
+# "found_by pode ser qualquer coisa" - e "modo sem agente NAO e obrigado a NOMEAR UM AGENTE".
+# Este controle a exercita: um modo novo, sem agente, com achado que nomeia o proprio modo.
+mutante MCC18 "CONTROLE: modo NOVO com agent null e found_by igual ao modo - o portao deve PASSAR" 0 \
+  "$_PY"'d["modes"]["modo-novo-sem-agente"]={"agent":None,"desc":"Modo de teste, sem agente."}
+f=[x for x in d["findings"] if x["mode"]=="aplicacao-de-instrumento"][0]
+assert f["mode"]!="modo-novo-sem-agente", "mutante inerte: o achado ja esta no modo alvo"
+f["mode"]="modo-novo-sem-agente"; f["found_by"]="modo-novo-sem-agente"
+d["derived"]["counts_by_mode"]["aplicacao-de-instrumento"]-=1
+d["derived"]["counts_by_mode"]["modo-novo-sem-agente"]=1
+salvar()'
+# A TERCEIRA REALIZACAO DA VACUIDADE, medida pelo `refutador` contra a versao da 20c: trocar o
+# `agent` de UM modo para null o removia do conjunto verificado e desligava a checagem para 20 dos
+# 64 achados, com PASS impresso. `D_MAX` num quinto campo.
+mutante MCC21 "UM modo perde o agente e um achado dele mente - o portao deve REPROVAR" 1 \
+  "$_PY"'d["modes"]["leitura-estrutural"]["agent"]=None
+[x for x in d["findings"] if x["mode"]=="leitura-estrutural"][0]["found_by"]="auditoria-externa"
+salvar()'
+# `agent: ""` sobrevive a guarda de omissao (a chave existe) e cai fora do conjunto verificado,
+# porque o teste era de veracidade. Le-se como declaracao, age como ausencia.
+mutante MCC22 "agent com string vazia - declaracao que age como ausencia" 1 \
+  "$_PY"'d["modes"]["leitura-estrutural"]["agent"]=""
+salvar()'
+# ANTIVACUIDADE DO PORTAO, e ela nasce do mesmo achado: a primeira versao imprimia o numero de
+# modos com agente e nao o assertava. Remover o vinculo de TODOS os modos deixava o laco sem
+# iterar e o PASS saia igual. O portao agora reprova corpus sem nenhum `agent`.
+mutante MCC19 "todos os modos perdem o agente - o portao ficaria vacuo e deve REPROVAR" 1 \
+  "$_PY"'for v in d["modes"].values(): v["agent"]=None
+salvar()'
+mutante MCC20 "modo OMITE o campo agent em vez de declarar null" 1 \
+  "$_PY"'d["modes"]["auditoria-externa"].pop("agent",None)
 salvar()'
 
 echo "== CONTROLE POSITIVO =="

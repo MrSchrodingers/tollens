@@ -523,7 +523,29 @@ check(not _falsas, "toda dimensao declarada `paid` tem evidencia que de fato val
 
 d_head = _divida(registry, _le_do_disco)
 _por_dim = {d: sum(1 for _, dd in d_head if dd == d) for d in sorted(DIMENSOES)}
-print(f"        D_E(head)={len(d_head)} obrigacoes em aberto sobre {len(caps)} capabilities")
+# ONDA 20 (G17). O numerador percorre so as capabilities em `_EM_DIVIDA`; o denominador imprimia
+# `len(caps)`, que inclui o tombstone `deprecated`. Numerador de 33 sobre denominador de 34, na
+# mesma linha - e a leitura "34 componentes ativos" que a revisao externa ja tinha corrigido na
+# prosa (G16, onda 19) aparecia aqui, na saida do proprio instrumento.
+#
+# Defeito de EXIBICAO, nao de assercao: as OITO assercoes de CC4 comparam CONJUNTOS de pares
+# (capability, dimensao) e cardinalidades desses conjuntos, e nenhuma le este denominador. Os
+# unicos leitores de `len(caps)` em assercao sao `len(caps) > 0` e `len(caps) >= 5`, satisfeitos
+# por 33 e por 34. Nenhum veredito ja publicado muda.
+#
+# TROCAR 34 POR 33 NAO FECHARIA A CLASSE, SO A REALIZACAO. "89 obrigacoes sobre 33 capabilities"
+# convida a ler "33 capabilities tem divida", e sao 28 - cinco varridas nao devem nada
+# (`artifact-discipline.sh`, `ds4-notify.sh`, `fable-guard.sh`, `poka-yoke-lint.sh`,
+# `subagent-probe.sh`). A onda inteira existe porque UM denominador foi lido como populacao
+# ativa; publicar outro denominador ambiguo trocaria a realizacao do mesmo defeito. Por isso a
+# linha publica as TRES populacoes com a relacao entre elas, e o numero que a frase promete -
+# "sobre N capabilities endividadas" - e o que ela de fato mede.
+_em_divida = sum(1 for c in caps.values() if c.get("state") in _EM_DIVIDA)
+_endividadas = len({n for n, _ in d_head})
+print(f"        D_E(head)={len(d_head)} obrigacoes em aberto sobre {_endividadas} capabilities "
+      f"endividadas")
+print(f"        populacao: {_endividadas} endividadas <= {_em_divida} varridas (estado em "
+      f"{sorted(_EM_DIVIDA)}) <= {len(caps)} entries no registry")
 print(f"        por dimensao: {_por_dim}")
 
 # A BASE E O CRITERIO. Sem ela nao ha comparacao, e "nao reprovou" seria indistinguivel de
