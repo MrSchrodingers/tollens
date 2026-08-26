@@ -24,6 +24,13 @@ REPO="${TOLLENS_REPO:-$HOME/claude-mecanismo}"
 
 OUT="$(cd "$REPO" && bash install/verify.sh 2>&1)"; RC=$?
 
+# ONDA 22c. O EXIT DO VERIFICADOR NOMEIA O ESCOPO, e este hook so pode ler `RC` como veredito sobre
+# a projecao de USUARIO. `install/verify.sh` devolve 3 quando a fase managed nao foi implantada e 4
+# quando ela existe mas e gravavel pelo ator; nos dois casos a projecao de usuario esta INTEGRA.
+# Ler qualquer nao-zero como drift de usuario faria este hook afirmar divergencia sobre um escopo
+# que confere - o falso positivo que o comentario da secao managed, abaixo, existe para evitar.
+URC=0; case "$RC" in 0|3|4) URC=0 ;; *) URC=1 ;; esac
+
 # SEGUNDO ESCOPO - a arvore managed root-owned.
 #
 # `install/verify.sh` le apenas $HOME/.claude. Numa maquina com a fase managed ativa isso e
@@ -87,24 +94,36 @@ HB="$HOME/.claude/evidence/session-integrity.jsonl"
 mkdir -p "$(dirname "$HB")" 2>/dev/null || true
 MANDIG="$(sha256sum "$REPO/install/manifest.lock" 2>/dev/null | cut -c1-16)"
 jq -cn --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" \
-       --arg r "$(if [ "$RC" -eq 0 ] && [ "$MRC" -eq 0 ]; then echo conformant
-                  elif [ "$RC" -eq 0 ] && [ "$MSTATE" = not_verified ]; then echo not_verified
+       --arg r "$(if [ "$URC" -eq 0 ] && [ "$RC" -ne 4 ] && [ "$MRC" -eq 0 ]; then echo conformant
+                  elif [ "$URC" -eq 0 ] && [ "$MSTATE" = not_verified ]; then echo not_verified
                   else echo drift; fi)" \
-       --arg u "$([ "$RC" -eq 0 ] && echo conformant || echo drift)" \
+       --arg u "$([ "$URC" -eq 0 ] && echo conformant || echo drift)" \
+       --arg vrc "$RC" \
        --arg g "$MSTATE" \
-       --arg m "${MANDIG:-unknown}" --arg s "$(printf '%s' "$OUT" | grep -E '^conformidade:' | head -1)" \
+       --arg m "${MANDIG:-unknown}" --arg s "$(printf '%s' "$OUT" | grep -E '^(PROJECAO USUARIO|conformidade):' | head -1)" \
        --arg ms "$(printf '%s' "$MOUT" | grep -E '^managed:' | head -1)" \
        --arg mp "${MPFX:-/}" --arg mrc "$MRC" \
        '{ts:$t,event:"session_integrity",result:$r,user:$u,managed:$g,
          manifest_digest:$m,summary:$s,managed_summary:$ms,
-         managed_prefix:$mp,managed_rc:$mrc}' \
+         managed_prefix:$mp,managed_rc:$mrc,verify_rc:$vrc}' \
   >> "$HB" 2>/dev/null || true
 
 # Silencio SO quando os dois escopos conferem. Um escopo conforme nao autoriza calar sobre o
 # outro: era exatamente assim que a divergencia da arvore root-owned ficava invisivel.
-[ "$RC" -eq 0 ] && [ "$MRC" -eq 0 ] && exit 0
+# `RC` 4 - managed implantado e GRAVAVEL pelo ator - nunca cala: e o estado em que a imposicao
+# nao se sustenta, e calar sobre ele seria reportar conformidade sobre a politica que o ator pode
+# reescrever. `RC` 3 (fase nao implantada) cala como antes: e o caso comum e ja e reportado por
+# `MSTATE=absent` no heartbeat.
+[ "$URC" -eq 0 ] && [ "$RC" -ne 4 ] && [ "$MRC" -eq 0 ] && exit 0
 
-RESUMO="$(printf '%s' "$OUT" | grep -E '^conformidade:' | head -1)"
+# AS DUAS ETIQUETAS, e nao por indecisao: este hook roda de `~/.claude/hooks/` e chama o
+# `install/verify.sh` de `$REPO`. Os dois arquivos vivem em arvores que PODEM estar em versoes
+# diferentes - e a divergencia entre elas e justamente o que este hook existe para detectar.
+# A onda 22 trocou `conformidade:` por `PROJECAO USUARIO:`; casar so com a nova faria o resumo
+# ficar vazio contra um repo anterior, e casar so com a antiga o faz ficar vazio contra o atual -
+# medido: `grep -c '^conformidade:'` devolve 0 na saida do verificador desta onda. Sonda que nao
+# acha o caso positivo conhecido devolve vazio, e vazio le-se como "nada a relatar" (G45).
+RESUMO="$(printf '%s' "$OUT" | grep -E '^(PROJECAO USUARIO|conformidade):' | head -1)"
 DETALHE="$(printf '%s' "$OUT" | grep -E '^  (DIVERGE|AUSENTE|ORFAO)' | head -12)"
 MRESUMO="$(printf '%s' "$MOUT" | grep -E '^managed:' | head -1)"
 MDETALHE="$(printf '%s' "$MOUT" | grep -E '^  (DIVERGE|AUSENTE|ORFAO)' | head -8)"

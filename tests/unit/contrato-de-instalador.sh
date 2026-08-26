@@ -67,20 +67,30 @@ chk "sem argumento instala"                 "${r%% *}" 0
                      || { echo "  FAIL  sem argumento deveria escrever muitos (got=${r#* })"; F=$((F+1)); }
 
 # ---------------------------------------------------------------------------------------------
-echo "== CI2. apply.sh: backup cobre CLAUDE.md, nao so hooks/agents/skills =="
+echo "== CI2. apply.sh: backup cobre edicao do operador antes de sobrescrever =="
 # A semeadura byte-exata torna o PRIMEIRO apply um no-op. Ela nao protege o SEGUNDO, e o segundo
-# e exatamente o caso descrito por escrito em install/manifest.sh. Sem este caso, a perda de 288
-# linhas de politica escrita a mao passaria em silencio.
+# e exatamente o caso descrito por escrito em install/manifest.sh. Sem este caso, a perda de
+# politica escrita a mao passaria em silencio.
+#
+# ONDA 22b: O ESPECIME MUDOU, A GARANTIA NAO. Este caso usava `CLAUDE.md`, que saiu da projecao de
+# usuario quando o kernel passou a viver so no escopo managed. A garantia testada - `apply.sh`
+# preserva a edicao do operador antes de convergir - continua valendo para os 48 componentes que
+# permaneceram, e apagar o caso junto com o especime teria removido cobertura real por um motivo
+# que nao e o dela. O especime passou a ser um hook, que e componente de manifesto com destino
+# ARQUIVO (nao diretorio), a mesma forma que `CLAUDE.md` tinha.
 D="$(mktemp -d "$TMP/bk.XXXXXX")"
-printf 'CONFIG DIVERGENTE DO OPERADOR\n' > "$D/CLAUDE.md"
-SHA_ORIG="$(sha256sum "$D/CLAUDE.md" | cut -d' ' -f1)"
+_ESPECIME="$(awk -F'\t' '$1=="hook"{print $3; exit}' install/manifest.lock)"
+[ -n "$_ESPECIME" ] || { echo "  FAIL  CI2 sem especime: nenhum hook no manifesto"; F=$((F+1)); }
+mkdir -p "$D/$(dirname "$_ESPECIME")"
+printf 'EDICAO DIVERGENTE DO OPERADOR\n' > "$D/$_ESPECIME"
+SHA_ORIG="$(sha256sum "$D/$_ESPECIME" | cut -d' ' -f1)"
 CLAUDE_HOME="$D" bash install/apply.sh >/dev/null 2>&1
-BK="$(find "$D/backups" -name CLAUDE.md 2>/dev/null | head -1)"
-chk "existe backup do CLAUDE.md sobrescrito" "$([ -n "$BK" ] && echo sim || echo nao)" sim
+BK="$(find "$D/backups" -name "$(basename "$_ESPECIME")" 2>/dev/null | head -1)"
+chk "existe backup do componente sobrescrito" "$([ -n "$BK" ] && echo sim || echo nao)" sim
 chk "o backup preserva o conteudo ORIGINAL" \
     "$([ -n "$BK" ] && [ "$(sha256sum "$BK" | cut -d' ' -f1)" = "$SHA_ORIG" ] && echo sim || echo nao)" sim
 chk "o destino foi de fato sobrescrito (o caso e real)" \
-    "$([ "$(sha256sum "$D/CLAUDE.md" | cut -d' ' -f1)" != "$SHA_ORIG" ] && echo sim || echo nao)" sim
+    "$([ "$(sha256sum "$D/$_ESPECIME" | cut -d' ' -f1)" != "$SHA_ORIG" ] && echo sim || echo nao)" sim
 
 # ---------------------------------------------------------------------------------------------
 echo "== CI3. apply-managed.sh: os quatro modos passam, o resto e recusado =="
@@ -155,14 +165,31 @@ ANTES="$(wc -l < "$CL/install/manifest.lock")"
 rm -f "$CL/execution/config/CLAUDE.md"
 ( cd "$CL" && bash install/manifest.sh install/manifest.lock >/dev/null 2>&1 ); rc=$?
 DEPOIS="$(wc -l < "$CL/install/manifest.lock")"
-chk "manifest.sh reprova quando a fonte do config some" "$rc" 1
-chk "e o manifesto NAO foi truncado"                    "$DEPOIS" "$ANTES"
-chk "a linha config sobreviveu"                         "$(grep -c '^config' "$CL/install/manifest.lock")" 1
+# ONDA 22b. A GUARDA CONTINUA, O QUE ELA PROTEGE MUDOU. Ate aqui o kernel era projetado para
+# `~/.claude/CLAUDE.md` e emitia linha `config` no manifesto; a terceira assercao conferia que
+# essa linha sobrevivia. O kernel passou a viver so no escopo managed, entao nao ha mais linha
+# `config` - e a guarda deixou de proteger a linha para proteger a FONTE CANONICA, que continua
+# sendo `execution/config/CLAUDE.md` e continua sendo de onde o deploy managed copia. Se ela
+# sumir, o deploy managed passa a copiar nada, e falhar alto continua sendo o certo.
+chk "manifest.sh reprova quando a fonte canonica do kernel some" "$rc" 1
+chk "e o manifesto NAO foi truncado"                             "$DEPOIS" "$ANTES"
+chk "o manifesto do clone permanece integro"                     "$(awk -F'\t' 'NF>=4' "$CL/install/manifest.lock" | wc -l)" \
+                                                                 "$(awk -F'\t' 'NF>=4' install/manifest.lock | wc -l)"
 
 echo "== CI6. apply.sh aborta se uma origem do manifesto nao existe =="
 # Antes, `cp -a` nao tinha retorno conferido e o contador somava assim mesmo: o instalador
 # imprimia "componentes instalados: 49" com o componente AUSENTE no destino.
+#
+# ONDA 22b. O CASO PERDEU O ESTIMULO, NAO A GARANTIA. Ele reaproveitava o clone do CI5, onde
+# `execution/config/CLAUDE.md` fora removido - e isso deixava uma origem do manifesto ausente.
+# Com o kernel fora da projecao de usuario, remover aquele arquivo nao produz mais origem ausente
+# nenhuma, entao `apply.sh` retornava 0 corretamente e o caso reprovava por ter deixado de
+# exercitar a condicao. Um teste que passa a nao estimular o que testa e teste inerte, e a onda 20
+# ja pagou por um mutante nessa situacao. O estimulo passou a ser explicito: remover a origem de
+# um componente que ESTA no manifesto.
 DD="$(mktemp -d "$TMP/miss.XXXXXX")"
+_ORIG_AUSENTE="$(awk -F"\t" '/^#/{next} NF>=4{print $2; exit}' "$CL/install/manifest.lock")"
+rm -rf "$CL/$_ORIG_AUSENTE"
 chk "origem ausente aborta a instalacao" \
     "$( cd "$CL" && CLAUDE_HOME="$DD" bash install/apply.sh >/dev/null 2>&1; echo $? )" 1
 
@@ -193,11 +220,108 @@ chk "arena propria de dono morto E removida (o laco varre mesmo)" \
     "$([ -d "$MORTA" ] && echo nao || echo sim)" sim
 
 
+# ---------------------------------------------------------------------------------------------
+echo "== CI8. o instalador de usuario nao reprova por um escopo que nao instala =="
+# REGRESSAO MEDIDA NA CI, d4fd41b, runs 33007234824 e 33007230205, ambos vermelhos. `apply.sh`
+# termina chamando `install/verify.sh`, e quando este passou a auditar TAMBEM o escopo managed o
+# exit dele virou o exit do instalador: em toda maquina sem a fase managed implantada - o caso
+# comum, e um estado que exige root para corrigir (ADR 0026) - `apply.sh` imprimia "componentes
+# instalados: 48" e saia 1.
+#
+# ESTE E O CASO QUE A MAQUINA LOCAL NAO EXERCITA. Aqui `/etc/claude-code` esta implantado, entao a
+# suite ficou verde localmente enquanto reprovava na CI, e a verificacao local respondeu sobre um
+# ambiente em que a condicao nao ocorre. `TOLLENS_MANAGED_DIR` desloca o escopo auditado, entao os
+# dois estados passam a ser exercitados em QUALQUER maquina, sem depender do que ha em /etc.
+_MGD_VAZIO="$(mktemp -d "$TMP/mgd0.XXXXXX")"
+_MGD_ATOR="$(mktemp -d "$TMP/mgd1.XXXXXX")"
+mkdir -p "$_MGD_ATOR/.claude/agents" "$_MGD_ATOR/.claude/skills"
+# O CONTEUDO TEM DE CONFERIR PARA A FIXTURA ISOLAR A POSSE. Com o verificador conferindo digest do
+# kernel (onda 22d), um `CLAUDE.md` vazio dispara DIVERGENTE (5) antes de chegar a GRAVAVEL (4), e
+# o caso passaria a medir outra coisa. Medido: got=5 want=4.
+cp -f execution/config/CLAUDE.md "$_MGD_ATOR/CLAUDE.md"; : > "$_MGD_ATOR/managed-settings.json"
+# A FIXTURA TEM DE SER NAO-ROOT INDEPENDENTE DE QUEM RODA A SUITE. O criterio de `verify.sh` e a
+# POSSE: root -> IMPOSTO, qualquer outro -> GRAVAVEL. Rodando como root - contentor, ou `sudo bash
+# tests/...` - o diretorio que a suite acaba de criar nasce root-owned e e LEGITIMAMENTE imposto,
+# entao o caso deixava de exercitar a condicao e reprovava por isso (medido: got=0 want=4 sob
+# ubuntu:24.04 como root). Sob root, quem cria pode reatribuir; sob usuario comum ja esta certo.
+[ "$(id -u)" -eq 0 ] && chown -R 65534:65534 "$_MGD_ATOR" 2>/dev/null
+# CONTROLE POSITIVO DA FIXTURA: sem isto, um `chown` que falhasse em silencio faria a assercao
+# seguinte medir o mesmo estado do caso AUSENTE e ainda assim parecer especifica.
+chk "a fixtura GRAVAVEL nao pertence a root (a condicao ocorre)" \
+    "$(stat -c '%U' "$_MGD_ATOR/CLAUDE.md" 2>/dev/null | grep -c '^root$')" 0
+
+# A PROJECAO DE USUARIO E ISOLADA, e nao por preciosismo: sem `CLAUDE_HOME` proprio estas
+# assercoes leem o `~/.claude` VIVO da maquina, entao qualquer divergencia pendente ali - um
+# componente editado e ainda nao reaplicado, que e o estado normal durante uma onda - devolve exit
+# 1 e o caso passa a medir a bancada em vez do escopo managed. Medido: as duas reprovaram com
+# got=1 por essa razao antes deste isolamento.
+_DA="$(mktemp -d "$TMP/ap0.XXXXXX")"
+_OUTA="$(CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh 2>&1)"
+_RCA=$?
+CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/verify.sh >/dev/null 2>&1
+chk "verify: managed AUSENTE tem codigo proprio (3, nao 1)"        "$?" 3
+CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/verify.sh >/dev/null 2>&1
+chk "verify: managed GRAVAVEL pelo ator tem codigo proprio (4)"    "$?" 4
+
+# O instalador: exit 0 com a projecao de usuario integra, nos DOIS estados de managed. Nenhum dos
+# dois e consertavel por ele, e nos dois os 48 componentes de usuario ficaram como o manifesto diz.
+set -- "$_RCA"
+chk "apply: instala com exit 0 mesmo sem a fase managed"           "$1" 0
+chk "apply: e publica o passo acionavel em vez de calar" \
+    "$(printf '%s' "$_OUTA" | grep -c 'apply-managed.sh --enforce')" 1
+_DB="$(mktemp -d "$TMP/ap1.XXXXXX")"
+CLAUDE_HOME="$_DB" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/apply.sh >/dev/null 2>&1
+chk "apply: exit 0 tambem com managed gravavel (nao e dele consertar)" "$?" 0
+
+# ANTIVACUIDADE: os casos acima so significam algo se o verificador AINDA reprovar o que e dele.
+#
+# JUSTIFICATIVA CORRIGIDA (F5 do refutador). A frase anterior dizia que sem esta assercao "trocar o
+# corpo de `verify.sh` por `exit 0` passaria em todos eles". Medido numa copia com `verify.sh`
+# reduzido a `exit 0`: TRES das outras assercoes ja reprovavam, entao o mutante trivial ja morria
+# sem esta linha. O que ELA mata, e nenhuma outra, e o mutante de ORDEM: testar `M_AUSENTE` ANTES
+# de `DRIFT` faz uma projecao de usuario divergente sair 3 em vez de 1, e a divergencia do escopo
+# pelo qual o instalador E responsavel deixa de reprovar. Medido com a ordem invertida: got=3
+# want=1, exit 1. A assercao fica; a razao publicada e esta.
+_DC="$(mktemp -d "$TMP/ap2.XXXXXX")"
+CLAUDE_HOME="$_DC" bash install/apply.sh >/dev/null 2>&1
+printf 'DIVERGENCIA INTRODUZIDA PELO TESTE\n' >> "$_DC/$_ESPECIME"
+TOLLENS_MANAGED_DIR="$_MGD_VAZIO" CLAUDE_HOME="$_DC" bash install/verify.sh >/dev/null 2>&1
+chk "verify AINDA reprova (1) o que E do escopo de usuario"        "$?" 1
+
+# F4 DO REFUTADOR: o ramo que a onda 22c EXISTE para criar nao tinha teste. Mutar `1) exit 1` para
+# `1) exit 0` em `install/apply.sh` deixava esta suite VERDE - seis assercoes conferiam `exit 0` e
+# nenhuma conferia que a divergencia de USUARIO ainda propaga. Antivacuidade sobre `verify.sh` nao
+# cobre isso, porque a mudanca de 22c esta no `case` do instalador, um nivel acima.
+# O estimulo usa o orfao de topo: `CLAUDE.md` saiu do manifesto e `apply.sh` so o remove com o
+# `managed-files.lock` presente; sem o lock ele sobrevive, `verify.sh` o conta como ORFAO, e orfao
+# e divergencia da projecao de usuario - exatamente o que este instalador tem de propagar.
+_DD="$(mktemp -d "$TMP/ap3.XXXXXX")"
+CLAUDE_HOME="$_DD" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh >/dev/null 2>&1
+rm -f "$_DD/tollens/managed-files.lock"
+printf 'KERNEL ORFAO DE VERSAO ANTERIOR\n' > "$_DD/CLAUDE.md"
+CLAUDE_HOME="$_DD" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh >/dev/null 2>&1
+chk "apply PROPAGA 1 quando a projecao de USUARIO diverge"        "$?" 1
+# SEM PIPE PARA `grep -q`: sob `pipefail`, o `grep` sai cedo, o `verify.sh` leva SIGPIPE e o
+# status vira 141. Medido: got=141 want=0. A saida e capturada antes de ser filtrada.
+_OUTD="$(CLAUDE_HOME="$_DD" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/verify.sh 2>&1)"
+chk "e o orfao de TOPO e nomeado (nao so contado)" \
+    "$(printf '%s' "$_OUTD" | grep -cE '^  ORFAO +CLAUDE\.md')" 1
+
+# ---------------------------------------------------------------------------------------------
+echo "== CI9. o hook de sessao le o verificador que existe, nao o que existia =="
+# MESMA FAMILIA DO G45: a onda 22 renomeou a linha de resumo de `conformidade:` para
+# `PROJECAO USUARIO:`, e o hook seguia procurando a etiqueta antiga. `grep` que nao casa devolve
+# vazio, e vazio no campo `summary` do heartbeat le-se como "nada a relatar" - degradacao muda.
+chk "o hook casa a etiqueta que o verificador emite HOJE" \
+    "$(bash install/verify.sh 2>&1 | grep -cE '^(PROJECAO USUARIO|conformidade):')" 1
+chk "e o casador do hook cobre as duas etiquetas" \
+    "$(grep -c "grep -E '\^(PROJECAO USUARIO|conformidade):'" control/hooks/session-integrity.sh)" 2
+
 # ONDA 21c. PINO DE CONTAGEM, exigido pelo oraculo novo em `tests/unit/regressao-gate.sh`: suite
 # que NAO fixa a propria contagem nao pode ter o numero publicado em `docs/status.generated.md`,
 # porque um caso pulado em silencio mudaria o artefato sem deixar a suite vermelha - que e o G22.
-# Esta suite tem contagem estavel medida (34); o pino a torna verificavel em vez de presumida.
-EXPECTED=34
+# Esta suite tem contagem estavel medida (45); o pino a torna verificavel em vez de presumida.
+EXPECTED=45
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

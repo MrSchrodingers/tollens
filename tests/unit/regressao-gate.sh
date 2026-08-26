@@ -427,10 +427,73 @@ done
 
 cd /
 echo
+# ONDA 22. PARIDADE README EN/PT ERA INVARIANTE MANTIDA A MAO. Os dois arquivos tinham
+# estrutura identica e NENHUMA suite conferia isso. Manter em passo por disciplina e o que a
+# secao 6.3 do CLAUDE.md chama de hipotese, nao de garantia.
+#
+# ONDA 22b, TRES CORRECOES DO `revisor-codigo`, cada uma reproduzida por mutante que ele
+# EXECUTOU contra a versao anterior deste bloco:
+#
+#   A1  esvaziar 12 subsecoes do PT (155 linhas -> `TODO`) passava nas tres assercoes. O bloco
+#       fecha paridade ESTRUTURAL; o comentario anterior dizia que fechava paridade EN/PT, o que
+#       e sobredeclaracao de escopo. Fechado pela razao de VOLUME por secao.
+#   A2  truncar 67 de 88 secoes NOS DOIS arquivos passava verde, porque a antivacuidade usava
+#       `>= 15` contra um valor real de 88 - 5,9x abaixo. E a mesma suite pina com `-eq` cinco
+#       linhas abaixo. Fechado por igualdade.
+#   A3  `grep -cE '^#{1,3} '` conta cabecalho dentro de cerca de codigo, e os dois README
+#       publicam blocos `bash`. Reproduzido FAIL por ruido. Latente hoje (0 ocorrencias medidas),
+#       e portao que reprova por ruido treina o operador a ignora-lo. Fechado filtrando cercas.
+_EN="$REPO_ROOT/README.md"; _PT="$REPO_ROOT/README.pt-BR.md"
+
+# CABECALHO FORA DE CERCA DE CODIGO. `awk` alterna o estado a cada ``` e so emite o que esta
+# fora - o `grep` cru nao tem como saber disso.
+_hdr(){ awk 'BEGIN{b=0} /^```/{b=!b; next} !b && /^#{1,3} /{print}' "$1"; }
+_n_en="$(_hdr "$_EN" | wc -l)"; _n_pt="$(_hdr "$_PT" | wc -l)"
+chk "README EN e PT tem a mesma contagem de cabecalhos (fora de cerca de codigo)" "$_n_en" "$_n_pt"
+
+# A numeracao tem de casar POSICAO A POSICAO. Contagem igual com ordem diferente passaria pela
+# checagem acima - foi por isso que ela nao basta sozinha, e o mutante 2 da onda 22 provou.
+_secs(){ _hdr "$1" | grep -oE '^#{2,3} [0-9]+(\.[0-9]+)?' | grep -oE '[0-9]+(\.[0-9]+)?' | tr '\n' ' '; }
+_sec_en="$(_secs "$_EN")"; _sec_pt="$(_secs "$_PT")"
+chk "README EN e PT tem a MESMA sequencia de numeros de secao" "$_sec_en" "$_sec_pt"
+
+# ANTIVACUIDADE POR IGUALDADE, nao por piso. O valor e determinado pelo arquivo VERSIONADO, entao
+# nao ha razao de ambiente para tolerar desigualdade - e a desigualdade deixava passar a remocao
+# de 76% do documento.
+_N_SECOES_README=88
+chk "a varredura cobre o README inteiro (nao um prefixo truncado)" \
+  "$(printf '%s' "$_sec_en" | wc -w)" "$_N_SECOES_README"
+
+# VOLUME POR SECAO, que e o que fecha a traducao vazia. Estrutura identica com corpo esvaziado
+# passava nas tres checagens acima. Medido na arvore atual: razao global PT/EN = 1.07, e a pior
+# das 88 secoes = 0.95. O piso de 0.55 e folgado de proposito - ele existe para pegar `TODO` e
+# secao apagada, nao para policiar estilo de traducao.
+_RAZAO_MIN=55
+_secs_magras="$(python3 - "$_EN" "$_PT" "$_RAZAO_MIN" <<'PYEOF'
+import re, sys
+def blocos(p):
+    fora, b, atual, chave = {}, False, [], None
+    for ln in open(p, encoding="utf-8"):
+        if ln.startswith("```"): b = not b; continue
+        m = None if b else re.match(r"^#{2,3} ([0-9]+(?:\.[0-9]+)?)", ln)
+        if m:
+            if chave: fora[chave] = len(" ".join(atual).split())
+            chave, atual = m.group(1), []
+        elif chave is not None:
+            atual.append(ln)
+    if chave: fora[chave] = len(" ".join(atual).split())
+    return fora
+en, pt, piso = blocos(sys.argv[1]), blocos(sys.argv[2]), int(sys.argv[3])
+magras = [k for k in en if k in pt and en[k] >= 20 and pt[k] * 100 < en[k] * piso]
+print(" ".join(sorted(magras)))
+PYEOF
+)"
+chk "nenhuma secao do PT encolheu contra a irma EN (traducao vazia)" "$_secs_magras" ""
+
 echo "================ PASS=$P  FAIL=$F ================"
 # CONTAGEM E INVARIANTE, nao descricao. Sem isto, apagar cinco casos deixa PASS=15/FAIL=0 e a
 # suite segue verde - o numero no relatorio viraria documentacao, nao garantia.
-EXPECTED=61
+EXPECTED=65
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

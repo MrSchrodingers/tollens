@@ -7,7 +7,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Suite | Assercoes | Exit |
 |---|---:|---:|
-| `tests/unit/regressao-gate.sh` | 61 | 0 |
+| `tests/unit/regressao-gate.sh` | 65 | 0 |
 | `tests/unit/document-tools.sh` | 57 | 0 |
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
@@ -15,7 +15,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/claims.sh` | 54 | 0 |
 | `tests/unit/propriedades.sh` | 31 | 0 |
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
-| `tests/unit/managed.sh` | 65 | 0 |
+| `tests/unit/managed.sh` | 66 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
 | `tests/unit/arnes-de-mutacao.sh` | 7 | 0 |
 | `tests/unit/schedule.sh` | 34 | 0 |
@@ -23,7 +23,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
-| `tests/unit/contrato-de-instalador.sh` | 34 | 0 |
+| `tests/unit/contrato-de-instalador.sh` | 45 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | variavel (base) | 0 |
 | `tests/unit/capability-conformance.py` | variavel (base) | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
@@ -72,9 +72,8 @@ assercao).
 |---|---:|
 | adapter | 11 |
 | agent | 10 |
-| config | 1 |
 | doctool | 5 |
-| hook | 14 |
+| hook | 15 |
 | skill | 8 |
 | **total** | **49** |
 
