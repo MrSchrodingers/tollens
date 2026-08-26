@@ -235,7 +235,10 @@ echo "== CI8. o instalador de usuario nao reprova por um escopo que nao instala 
 _MGD_VAZIO="$(mktemp -d "$TMP/mgd0.XXXXXX")"
 _MGD_ATOR="$(mktemp -d "$TMP/mgd1.XXXXXX")"
 mkdir -p "$_MGD_ATOR/.claude/agents" "$_MGD_ATOR/.claude/skills"
-: > "$_MGD_ATOR/CLAUDE.md"; : > "$_MGD_ATOR/managed-settings.json"
+# O CONTEUDO TEM DE CONFERIR PARA A FIXTURA ISOLAR A POSSE. Com o verificador conferindo digest do
+# kernel (onda 22d), um `CLAUDE.md` vazio dispara DIVERGENTE (5) antes de chegar a GRAVAVEL (4), e
+# o caso passaria a medir outra coisa. Medido: got=5 want=4.
+cp -f execution/config/CLAUDE.md "$_MGD_ATOR/CLAUDE.md"; : > "$_MGD_ATOR/managed-settings.json"
 # A FIXTURA TEM DE SER NAO-ROOT INDEPENDENTE DE QUEM RODA A SUITE. O criterio de `verify.sh` e a
 # POSSE: root -> IMPOSTO, qualquer outro -> GRAVAVEL. Rodando como root - contentor, ou `sudo bash
 # tests/...` - o diretorio que a suite acaba de criar nasce root-owned e e LEGITIMAMENTE imposto,
@@ -270,13 +273,39 @@ _DB="$(mktemp -d "$TMP/ap1.XXXXXX")"
 CLAUDE_HOME="$_DB" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/apply.sh >/dev/null 2>&1
 chk "apply: exit 0 tambem com managed gravavel (nao e dele consertar)" "$?" 0
 
-# ANTIVACUIDADE: os cinco acima so significam algo se o verificador AINDA reprovar o que e dele.
-# Sem isto, trocar o corpo de `verify.sh` por `exit 0` passaria em todos eles.
+# ANTIVACUIDADE: os casos acima so significam algo se o verificador AINDA reprovar o que e dele.
+#
+# JUSTIFICATIVA CORRIGIDA (F5 do refutador). A frase anterior dizia que sem esta assercao "trocar o
+# corpo de `verify.sh` por `exit 0` passaria em todos eles". Medido numa copia com `verify.sh`
+# reduzido a `exit 0`: TRES das outras assercoes ja reprovavam, entao o mutante trivial ja morria
+# sem esta linha. O que ELA mata, e nenhuma outra, e o mutante de ORDEM: testar `M_AUSENTE` ANTES
+# de `DRIFT` faz uma projecao de usuario divergente sair 3 em vez de 1, e a divergencia do escopo
+# pelo qual o instalador E responsavel deixa de reprovar. Medido com a ordem invertida: got=3
+# want=1, exit 1. A assercao fica; a razao publicada e esta.
 _DC="$(mktemp -d "$TMP/ap2.XXXXXX")"
 CLAUDE_HOME="$_DC" bash install/apply.sh >/dev/null 2>&1
 printf 'DIVERGENCIA INTRODUZIDA PELO TESTE\n' >> "$_DC/$_ESPECIME"
 TOLLENS_MANAGED_DIR="$_MGD_VAZIO" CLAUDE_HOME="$_DC" bash install/verify.sh >/dev/null 2>&1
 chk "verify AINDA reprova (1) o que E do escopo de usuario"        "$?" 1
+
+# F4 DO REFUTADOR: o ramo que a onda 22c EXISTE para criar nao tinha teste. Mutar `1) exit 1` para
+# `1) exit 0` em `install/apply.sh` deixava esta suite VERDE - seis assercoes conferiam `exit 0` e
+# nenhuma conferia que a divergencia de USUARIO ainda propaga. Antivacuidade sobre `verify.sh` nao
+# cobre isso, porque a mudanca de 22c esta no `case` do instalador, um nivel acima.
+# O estimulo usa o orfao de topo: `CLAUDE.md` saiu do manifesto e `apply.sh` so o remove com o
+# `managed-files.lock` presente; sem o lock ele sobrevive, `verify.sh` o conta como ORFAO, e orfao
+# e divergencia da projecao de usuario - exatamente o que este instalador tem de propagar.
+_DD="$(mktemp -d "$TMP/ap3.XXXXXX")"
+CLAUDE_HOME="$_DD" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh >/dev/null 2>&1
+rm -f "$_DD/tollens/managed-files.lock"
+printf 'KERNEL ORFAO DE VERSAO ANTERIOR\n' > "$_DD/CLAUDE.md"
+CLAUDE_HOME="$_DD" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh >/dev/null 2>&1
+chk "apply PROPAGA 1 quando a projecao de USUARIO diverge"        "$?" 1
+# SEM PIPE PARA `grep -q`: sob `pipefail`, o `grep` sai cedo, o `verify.sh` leva SIGPIPE e o
+# status vira 141. Medido: got=141 want=0. A saida e capturada antes de ser filtrada.
+_OUTD="$(CLAUDE_HOME="$_DD" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/verify.sh 2>&1)"
+chk "e o orfao de TOPO e nomeado (nao so contado)" \
+    "$(printf '%s' "$_OUTD" | grep -cE '^  ORFAO +CLAUDE\.md')" 1
 
 # ---------------------------------------------------------------------------------------------
 echo "== CI9. o hook de sessao le o verificador que existe, nao o que existia =="
@@ -291,8 +320,8 @@ chk "e o casador do hook cobre as duas etiquetas" \
 # ONDA 21c. PINO DE CONTAGEM, exigido pelo oraculo novo em `tests/unit/regressao-gate.sh`: suite
 # que NAO fixa a propria contagem nao pode ter o numero publicado em `docs/status.generated.md`,
 # porque um caso pulado em silencio mudaria o artefato sem deixar a suite vermelha - que e o G22.
-# Esta suite tem contagem estavel medida (43); o pino a torna verificavel em vez de presumida.
-EXPECTED=43
+# Esta suite tem contagem estavel medida (45); o pino a torna verificavel em vez de presumida.
+EXPECTED=45
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

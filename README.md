@@ -1105,7 +1105,7 @@ their conjunction supports the claim that a policy governs a runtime:
 `INSTALLED` is a digest equality between a manifest entry and a file on disk.
 `ENFORCED` is the property that the governed actor cannot rewrite the artifact.
 `ACTIVATED` is an observation that the runtime loaded or fired the artifact during a
-session. `install/verify.sh` measures the first and reports `governed=user`, which is a
+session. `install/verify.sh` now measures all three and derives `governed=managed`; the
 true statement about the user projection and an insufficient description of the system.
 That insufficiency is tracked as an open finding.
 

@@ -129,7 +129,11 @@ echo "== 7. CANAL: todo hook usa canal que o runtime ENTREGA =="
 python3 - "$CTRL" "$EXEC" "$EVID" <<'PYEOF'
 import pathlib, sys
 UPS = {'lentes.sh', 'graphify-scout-mode.sh'}
-SO_LOG = {'subagent-probe.sh'}
+# `activation-log.sh` entra aqui pela MESMA razao que `subagent-probe.sh`: ele existe para
+# gravar que um evento ocorreu, e nao tem nada a entregar ao modelo. Mais que isso, ele roda em
+# `PreToolUse`, onde stdout VIRA CONTEXTO - escrever ali seria injecao a cada chamada de
+# ferramenta. Excecao nomeada, nao silenciada.
+SO_LOG = {'subagent-probe.sh', 'activation-log.sh'}
 # Excecao NOMEADA, nao silenciada: ds4-notify e um forwarder HTTP para um helper local
 # (127.0.0.1:8791). Ele nao dirige informacao ao modelo - nao ha nada para entregar, e por
 # desenho ele sempre sai 0 para nunca atrasar nem quebrar a cadeia de hooks.

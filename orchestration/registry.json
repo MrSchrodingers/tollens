@@ -893,6 +893,26 @@
         }
       },
       "projection": "user"
+    },
+    "activation-log": {
+      "kind": "hook_instrument",
+      "source": "control/hooks/activation-log.sh",
+      "installed": true,
+      "projection": "user",
+      "state": "candidate",
+      "activation": "PreToolUse(Skill), SubagentStart e InstructionsLoaded, nos dois escopos",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/hooks-de-guarda.sh"
+          }
+        }
+      },
+      "note": "ONDA 22d. Versiona os tres registros que alimentavam /var/log/tollens-activation.jsonl e que viviam so como programas jq escritos a mao em /etc/claude-code/managed-settings.json. Um `apply-managed.sh --enforce` os apagou: 2 antes, 0 depois, log parado sem erro."
     }
   },
   "workflows": [

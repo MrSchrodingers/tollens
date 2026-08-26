@@ -10,7 +10,12 @@
 #   installed  existe no disco com o mesmo digest
 #   governed   sob qual autoridade foi carregado (user = gravavel pelo ator)
 #
-# `governed=user` NAO e um erro: e o estado atual e declarado desta fase. Componente correto
+# ONDA 22d (F7 do refutador): o preambulo abaixo descrevia a fase ANTERIOR e sobreviveu a onda que
+# a encerrou. Hoje este script mede TRES observacoes e deriva `governed=managed`; `governed=user`
+# nao e mais impresso por ele. O paragrafo fica como registro do que a fase 1 admitia, e nao como
+# descricao do comportamento atual.
+#
+# [HISTORICO, fase 1] `governed=user` NAO e um erro: e o estado atual e declarado desta fase. Componente correto
 # carregado de origem gravavel tem integridade momentanea, nao autoridade. A fase seguinte
 # move a politica para managed settings; ate la, isto fica visivel em vez de implicito.
 set -uo pipefail
@@ -61,6 +66,18 @@ for f in "$DEST"/skills/*/; do
   [ -n "${ESPERADO[$rel]:-}" ] || { printf '  ORFAO     %-42s (roda, nao esta no manifesto)\n' "$rel"; EXTRA=$((EXTRA+1)); }
 done
 
+# ONDA 22d (F9 do refutador). ORFAO DE TOPO NUNCA FOI VARRIDO. A varredura acima cobre
+# `hooks/`, `agents/` e `skills/`; arquivo na RAIZ de $DEST nunca entrou nela. Consequencia
+# medida: numa maquina sem `$DEST/tollens/managed-files.lock`, o `apply.sh` NAO remove o
+# `CLAUDE.md` que saiu do manifesto, e 18 KB de kernel morto seguem sendo CONCATENADOS em toda
+# sessao - com este verificador imprimindo `0 orfaos`. O componente saiu do manifesto; a copia
+# antiga no disco nao some sozinha, e silencio sobre ela e a conformidade falsa que este arquivo
+# existe para impedir.
+if [ -f "$DEST/CLAUDE.md" ]; then
+  printf '  ORFAO     %-42s (saiu do manifesto; e CONCATENADO a toda sessao)\n' "CLAUDE.md"
+  EXTRA=$((EXTRA+1))
+fi
+
 TOT=$((OK+DRIFT+MISSING))
 echo
 printf 'PROJECAO USUARIO: %s/%s ok | %s divergentes | %s ausentes | %s orfaos\n' "$OK" "$TOT" "$DRIFT" "$MISSING" "$EXTRA"
@@ -93,7 +110,7 @@ printf 'PROJECAO USUARIO: %s/%s ok | %s divergentes | %s ausentes | %s orfaos\n'
 #   AUSENTE   a fase managed nao foi implantada        -> benigno, acionavel, exit 3
 #   GRAVAVEL  foi implantada e o ator pode reescrever  -> imposicao NAO se sustenta, exit 4
 MGD_DIR="${TOLLENS_MANAGED_DIR:-/etc/claude-code}"
-M_OK=0; M_AUSENTE=0; M_GRAVAVEL=0
+M_OK=0; M_AUSENTE=0; M_GRAVAVEL=0; M_DIVERGE=0
 _posse(){ stat -c '%U' "$1" 2>/dev/null || echo '?'; }
 printf '\nPROJECAO MANAGED:\n'
 for _alvo in "$MGD_DIR/CLAUDE.md" "$MGD_DIR/managed-settings.json" "$MGD_DIR/.claude/agents" "$MGD_DIR/.claude/skills"; do
@@ -101,8 +118,20 @@ for _alvo in "$MGD_DIR/CLAUDE.md" "$MGD_DIR/managed-settings.json" "$MGD_DIR/.cl
     printf '  AUSENTE   %-42s\n' "${_alvo#$MGD_DIR/}"; M_AUSENTE=$((M_AUSENTE+1)); continue
   fi
   _d="$(_posse "$_alvo")"
+  # ONDA 22d (F2 do refutador). POSSE NAO E CONTEUDO. Ate aqui a unica pergunta feita a cada alvo
+  # era "o dono e root?", e a resposta virava `IMPOSTO`. Medido: o kernel em vigor podia ser
+  # SUBSTITUIDO por qualquer conteudo root-owned e esta linha seguia imprimindo IMPOSTO, com
+  # `GOVERNANCA GLOBAL: governed=managed` e exit 0. Ninguem comparava digest - e o kernel e o
+  # componente de maior alcance do sistema, porque entra em toda sessao.
+  # O digest so e conferido onde ha fonte canonica no repositorio para comparar; para
+  # `managed-settings.json` e os diretorios, o comparador proprio e `apply-managed.sh --verify`.
+  _fonte=""; case "${_alvo#$MGD_DIR/}" in CLAUDE.md) _fonte="execution/config/CLAUDE.md" ;; esac
+  if [ -n "$_fonte" ] && [ -f "$_fonte" ] \
+     && [ "$(sha256sum "$_alvo" | cut -d' ' -f1)" != "$(sha256sum "$_fonte" | cut -d' ' -f1)" ]; then
+    printf '  DIVERGE   %-42s (conteudo != %s)\n' "${_alvo#$MGD_DIR/}" "$_fonte"; M_DIVERGE=$((M_DIVERGE+1)); continue
+  fi
   if [ "$_d" = root ]; then
-    printf '  IMPOSTO   %-42s (root)\n' "${_alvo#$MGD_DIR/}"; M_OK=$((M_OK+1))
+    printf '  IMPOSTO   %-42s (root%s)\n' "${_alvo#$MGD_DIR/}" "$([ -n "$_fonte" ] && echo ', digest confere')"; M_OK=$((M_OK+1))
   else
     printf '  GRAVAVEL  %-42s (%s - imposicao NAO se sustenta)\n' "${_alvo#$MGD_DIR/}" "$_d"; M_GRAVAVEL=$((M_GRAVAVEL+1))
   fi
@@ -114,7 +143,10 @@ done
 ATV="${TOLLENS_ACTIVATION_LOG:-/var/log/tollens-activation.jsonl}"
 printf '\nATIVACAO:\n'
 if [ -s "$ATV" ]; then
-  _n="$(grep -c '"t":"Managed"' "$ATV" 2>/dev/null || echo 0)"
+  # `grep -c ... || echo 0` emitia AS DUAS saidas quando a contagem era zero: `grep` imprime `0` e
+  # SAI 1, entao o `||` acrescentava outro `0` e a linha saia quebrada em duas - justo no caso que
+  # ela existe para reportar. `|| true` preserva a contagem e descarta so o status.
+  _n="$(grep -c '"t":"Managed"' "$ATV" 2>/dev/null || true)"; _n="${_n:-0}"
   printf '  INDICIO   %s evento(s) Managed em %s\n' "$_n" "$ATV"
   printf '  LIMITE    o log e %s - o ator governado pode forja-lo (G39). Indicio, nao prova.\n' "$(_posse "$ATV")"
 else
@@ -129,9 +161,12 @@ fi
 #   1  projecao de USUARIO divergente        (do instalador de usuario, e propagavel)
 #   3  usuario integra, managed AUSENTE      (fase nao implantada; exige root, nao e do apply.sh)
 #   4  usuario integra, managed GRAVAVEL     (implantada e reescrivivel: imposicao nao se sustenta)
+#   5  usuario integra, managed DIVERGENTE    (conteudo em vigor != fonte canonica do repositorio)
 printf '\nGOVERNANCA GLOBAL: '
 if [ $((DRIFT+MISSING+EXTRA)) -ne 0 ]; then
   echo "DIVERGENTE - a projecao de usuario nao e o que o repositorio declara."; exit 1
+elif [ "$M_DIVERGE" -ne 0 ]; then
+  echo "DIVERGENTE - o escopo managed em vigor nao e o que o repositorio declara."; exit 5
 elif [ "$M_GRAVAVEL" -ne 0 ]; then
   echo "NAO IMPOSTO - projecao de usuario integra, mas o escopo managed e gravavel pelo ator."; exit 4
 elif [ "$M_AUSENTE" -ne 0 ]; then

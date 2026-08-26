@@ -1229,6 +1229,71 @@
       "state": "open",
       "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "open_note": "Renomear string que outro componente casa e mudanca de contrato entre arquivos, e nenhum portao deste repositorio mede acoplamento por etiqueta de texto. CI9 fixa este par; o par generico continua sem instrumento"
+    },
+    {
+      "finding_id": "G48",
+      "wave": 22,
+      "review_round": "refutacao do diff da onda 22 (portao final)",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "componente-ativo-nao-versionado",
+      "defect": "o canal que sustenta a afirmacao de ATIVACAO era produzido por programas `jq` escritos a mao em /etc/claude-code/managed-settings.json, ausentes de `install/hooks-spec.sh` (a fonte unica) e de todos os backups",
+      "measured": "Antes do `--enforce`: 2 registradores. Depois: 0. Log parado as 17:32 contra enforce as 17:34, sem uma linha de erro. `grep -c tollens-activation install/hooks-spec.sh` = 0; nos tres backups da politica, 0. E `install/verify.sh:114` publica `ATIVACAO: INDICIO N evento(s)` lendo esse log: a afirmacao de governanca dependia de um instrumento que APLICAR o repositorio destruia. E a classe que o cabecalho de hooks-spec.sh nomeia por escrito",
+      "state": "resolved",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md"
+    },
+    {
+      "finding_id": "G49",
+      "wave": 22,
+      "review_round": "refutacao do diff da onda 22 (portao final)",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "politica-em-vigor-sem-cadeia-de-custodia",
+      "defect": "o kernel em vigor em /etc/claude-code/CLAUDE.md e instalado por procedimento MANUAL; `install/apply-managed-worker.sh` instala a arvore em $OPT e o managed-settings.json, e nunca leu o arquivo canonico",
+      "measured": "`grep -n CLAUDE.md install/apply-managed-worker.sh` nao devolve nenhuma linha nao-comentario. Corrigido PARCIALMENTE nesta onda: `install/verify.sh` passou a comparar o sha256 do kernel em vigor contra `execution/config/CLAUDE.md` e devolve 5 quando diverge (controle positivo: kernel substituido -> DIVERGE, rc=5). O que NAO foi feito: o deploy transacional nao instala o kernel, entao a instalacao segue manual e fora da transacao com rollback",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "Enquanto o kernel nao entrar no `apply-managed-worker.sh` com staging, rollback e pos-condicao, `governed=managed` afirma sobre um artefato cuja COLOCACAO nao e governada - so seu conteudo passou a ser conferido. `install/apply.sh:4-5` diz que nao existe instalar manualmente; para o componente de maior alcance do sistema, existe"
+    },
+    {
+      "finding_id": "G50",
+      "wave": 22,
+      "review_round": "refutacao do diff da onda 22 (portao final)",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "verificador-fraco-com-veredito-forte",
+      "defect": "`install/verify.sh` decide IMPOSTO por 4 chamadas a `stat -c %U` e nao chama `install/apply-managed.sh --verify`, que ja existe, cobre 31 componentes e confere dono, gravabilidade e digest",
+      "measured": "Medido na mesma maquina no mesmo minuto: `apply-managed.sh --verify` acusou `AUSENTE /opt/tollens/hooks/activation-log.sh` e saiu nao-zero, enquanto `verify.sh` imprimiu `governed=managed` e saiu 0. Duas listas da mesma verdade e o defeito que `install/apply.sh:145-148` nomeia",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "O rotulo passou de `governed=user` (hedge honesto) para `governed=managed` e a base da afirmacao ENCOLHEU. `verify.sh` deveria delegar a metade managed ao verificador que ja existe, em vez de reimplementar a parte fraca"
+    },
+    {
+      "finding_id": "G51",
+      "wave": 22,
+      "review_round": "refutacao do diff da onda 22 (portao final)",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "citacao-reconstruida-como-medicao",
+      "defect": "comentario em `install/apply.sh` citava entre aspas `componentes instalados: 48 seguido de exit 1` como MEDIDO NA CI; a string nao aparece no log",
+      "measured": "`gh run view 33007230205 --log | grep -c 'componentes instalados'` = 0. `scripts/status.sh` engole a saida das suites; o que a CI mostra e `SUITE VERMELHA ... contrato-de-instalador.sh (exit=1)`. A saida citada foi observada por mim num contentor ubuntu:24.04. Reconstrucao apresentada como observacao, dentro do comentario que explica uma correcao da mesma familia",
+      "state": "resolved",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md"
+    },
+    {
+      "finding_id": "G52",
+      "wave": 22,
+      "review_round": "refutacao do diff da onda 22 (portao final)",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "verificacao-por-lista-curada-em-vez-do-portao",
+      "defect": "a verificacao local foi feita com uma lista de suites escrita a mao, e nao com `scripts/status.sh --check`, que e o portao que a CI executa",
+      "measured": "Lista a mao: ~20 suites. `.github/workflows/verify-pr.yml` invoca ~40, entre elas `tests/mutation/conformidade.sh`, que reprovou na CI com `MN1 NAO FOI APLICADO` porque a onda 22c reescreveu a linha que o mutante casa. Curar a lista reintroduz, na bancada, a mesma classe que a onda corrigiu no detector de suites: lista escrita a mao nao acompanha o alvo",
+      "state": "resolved",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md"
     }
   ],
   "reading": [
@@ -1242,16 +1307,16 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 92,
+    "n_findings": 97,
     "wave_min": 11,
     "wave_max": 22,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 3,
+      "aplicacao-de-instrumento": 5,
       "auditoria-externa": 29,
       "execucao-em-ambiente-alheio": 2,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
-      "remedicao": 19,
+      "remedicao": 22,
       "verificacao-de-fonte": 14
     },
     "sources": [
@@ -1281,12 +1346,14 @@
       "G44",
       "G46",
       "G47",
+      "G49",
       "G5",
+      "G50",
       "G7"
     ],
     "by_state": {
-      "open": 18,
-      "resolved": 74
+      "open": 20,
+      "resolved": 77
     }
   },
   "historical_states": [

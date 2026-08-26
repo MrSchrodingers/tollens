@@ -184,8 +184,13 @@ PYEOF
   # A GUARDA CONTINUA, e o alvo dela mudou junto com o destino do kernel. Ela existia porque o
   # arquivo sumir do repo tiraria o componente do manifesto EM SILENCIO, e `apply.sh` leria isso
   # como remocao e faria `rm -rf` na config viva. Agora o kernel nao e mais projetado para a
-  # projecao de usuario, mas o arquivo canonico continua sendo a fonte do deploy managed - se ele
-  # sumir, o deploy managed passa a copiar nada, e falhar alto aqui continua sendo o certo.
+  # projecao de usuario, e a justificativa desta guarda MUDOU (F2 do refutador): nao e verdade que
+  # "o deploy managed passa a copiar nada" - `install/apply-managed-worker.sh` nunca leu este
+  # arquivo; ele instala a arvore em $OPT e o managed-settings.json, e o kernel em vigor e posto em
+  # /etc/claude-code/CLAUDE.md por procedimento MANUAL, publicado no README 17.2. O que este
+  # arquivo E, hoje: a fonte contra a qual `install/verify.sh` compara o DIGEST do kernel em vigor.
+  # Se ele sumir, a verificacao de conteudo do kernel deixa de existir em silencio - e por isso
+  # falhar alto aqui continua sendo o certo.
   if [ ! -f execution/config/CLAUDE.md ]; then
     echo "ERRO: execution/config/CLAUDE.md ausente - fonte canonica do kernel managed." >&2
     exit 1

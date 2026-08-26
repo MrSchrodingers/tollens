@@ -1104,7 +1104,7 @@ conjuncao deles sustenta a afirmacao de que uma politica governa um runtime:
 `INSTALADO` e igualdade de digest entre uma entrada do manifesto e um arquivo em disco.
 `IMPOSTO` e a propriedade de o ator governado nao conseguir reescrever o artefato.
 `ATIVADO` e a observacao de que o runtime carregou ou disparou o artefato durante uma sessao.
-O `install/verify.sh` mede o primeiro e publica `governed=user`, que e afirmacao verdadeira
+O `install/verify.sh` passou a medir as tres e a derivar `governed=managed`; a afirmacao
 sobre a projecao de usuario e descricao insuficiente do sistema. Essa insuficiencia esta
 registrada como achado aberto.
 

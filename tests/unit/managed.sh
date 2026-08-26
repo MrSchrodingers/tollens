@@ -40,8 +40,20 @@ chk "  a ESTRUTURA e identica nos dois escopos" \
     "$(cmp -s <(est "$A") <(est "$B") && echo sim || echo nao)" "sim"
 bn(){ jq -r '[..|objects|select(has("command"))|.command] | map(sub(".*/";"")) | sort | join(",")' "$1"; }
 chk "  os scripts sao os mesmos, so muda o caminho" "$(bn "$A")" "$(bn "$B")"
+# ONDA 22d. O ESPERADO E DERIVADO DO ESCOPO IRMAO, NAO PINADO EM LITERAL. Ate aqui o numero era
+# `18`, escrito a mao, e ele nao descrevia nenhuma garantia: descrevia quantos hooks a spec tinha
+# no dia em que a linha foi escrita. Registrar um hook novo - operacao esperada - reprovava esta
+# assercao por CONTAGEM, e o unico conserto disponivel era subir o literal, o que a torna um
+# carimbo. Medido: got=21 want=18 ao registrar o `activation-log.sh`. O que a assercao existe para
+# provar e que `$HOME` sai LITERAL, e isso se verifica contra o escopo MANAGED, cuja base e um
+# caminho absoluto: os dois tem de ter o MESMO numero de comandos com base, senao um dos dois teve
+# a base expandida ou perdida.
 chk "  o \$HOME sai LITERAL no escopo de usuario (quem expande e o runtime)" \
-    "$(grep -c 'bash \$HOME/\.claude/hooks/' "$A" | tr -d ' ')" "18"
+    "$(grep -c 'bash \$HOME/\.claude/hooks/' "$A" | tr -d ' ')" \
+    "$(grep -c 'bash /opt/tollens/hooks/' "$B" | tr -d ' ')"
+# ANTIVACUIDADE: derivar de zero contra zero passaria. A spec tem de ter comandos com base.
+chk "  e a spec de fato registra comandos com base (a derivacao nao e vacua)" \
+    "$([ "$(grep -c 'bash /opt/tollens/hooks/' "$B" | tr -d ' ')" -ge 14 ] && echo sim || echo nao)" "sim"
 # Sem esta assercao, alguem poderia reintroduzir a lista dentro do apply.sh e a fonte unica
 # viraria fonte dupla sem nenhum sinal.
 chk "  apply.sh NAO reintroduziu copia embutida da lista" \
@@ -367,7 +379,7 @@ chk "  e nao restou material de rollback" \
 
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=65
+EXPECTED=66
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

@@ -1,6 +1,7 @@
 # tollens manifest - estado DESEJADO de ~/.claude
 # gerado por install/manifest.sh; conferido por install/verify.sh
 # tipo	origem	destino	sha256
+hook	control/hooks/activation-log.sh	hooks/activation-log.sh	07a8409ba70df8f80570ebeb4b22a04088ef77eb60cd9fcd7e9a7e9f9851a99d
 hook	control/hooks/artifact-discipline.sh	hooks/artifact-discipline.sh	d08667e9c177029658bc069542fa5fe8077f415fdc25134dbd4867b4eef783b8
 hook	control/hooks/fable-guard.sh	hooks/fable-guard.sh	8d4a0cb16ec0ca7fc5d7db8c73eec32d601a0c4848be4bf7590021255add277b
 hook	control/hooks/risk-trigger.sh	hooks/risk-trigger.sh	61a4c713fe597ee78ababa4441e9326f4c2de7448fcee4ff46d429541588827c

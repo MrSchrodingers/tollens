@@ -166,8 +166,16 @@ bash install/verify.sh; _VRC=$?
 # ULTIMO comando do arquivo, entao o exit do verificador virava o exit deste instalador. Quando o
 # verificador passou a auditar tambem o escopo managed, `apply.sh` - que instala EXCLUSIVAMENTE a
 # projecao de usuario - passou a sair 1 em toda maquina sem a fase managed implantada, com os 48
-# componentes corretamente instalados. Medido na CI em d4fd41b (runs 33007234824/33007230205):
-# "componentes instalados: 48" seguido de exit 1.
+# componentes corretamente instalados.
+#
+# ATRIBUICAO CORRIGIDA (F8 do refutador). A versao anterior deste comentario citava, entre aspas,
+# "componentes instalados: 48 seguido de exit 1" como MEDIDO NA CI. Falso: `scripts/status.sh`
+# engole a saida das suites, e `grep -c 'componentes instalados'` no log do run 33007230205 devolve
+# 0. O que a CI mostra e a suite vermelha; a saida citada foi observada por MIM, num contentor.
+# Reconstrucao apresentada como observacao e o defeito que a regra de fonte primaria existe para
+# impedir, cometido dentro do comentario que explica uma correcao da mesma familia.
+#   CI (33007234824 / 33007230205, d4fd41b): `SUITE VERMELHA ... contrato-de-instalador.sh (exit=1)`
+#   contentor ubuntu:24.04:                  `componentes instalados: 48` e, em seguida, exit 1
 #
 # Implantar managed exige root e uma arvore de origem root-owned (ADR 0026); esta chamada roda como
 # o ator. Reprovar aqui e reprovar por algo que este script nao pode consertar - e o operador que
@@ -188,6 +196,10 @@ case "$_VRC" in
      printf 'sustenta: quem e governado pode reescrever a politica que o governa. Isto NAO e\n'
      printf 'consertavel por este instalador, e nao deve ser lido como conformidade.\n'
      printf '  sudo bash %s/install/apply-managed.sh --verify\n' "$REPO"
+     exit 0 ;;
+  5) printf '\nATENCAO: o escopo managed em vigor NAO e o que o repositorio declara - o conteudo\n'
+     printf 'difere da fonte canonica. Isto nao e consertavel por este instalador, e nao deve ser\n'
+     printf 'lido como conformidade.\n'
      exit 0 ;;
   *) exit "$_VRC" ;;
 esac
