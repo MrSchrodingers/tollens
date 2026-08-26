@@ -62,7 +62,9 @@ O estado operacional gerado mecanicamente é mantido em [`docs/status.generated.
 13. [Instalação e validação](#13-instalação-e-validação)
 14. [Threat model e limitações](#14-threat-model-e-limitações)
 15. [Fundamentação científica e técnica](#15-fundamentação-científica-e-técnica)
-16. [Referências](#16-referências)
+16. [Escopos de imposição e evidência de ativação](#16-escopos-de-imposicao-e-evidencia-de-ativacao)
+17. [Sessão de execução](#17-sessao-de-execucao)
+18. [Referências](#18-referências)
 
 ---
 
@@ -1080,11 +1082,239 @@ flowchart TD
 
 ---
 
-## 16. Referências
+## 16. Escopos de imposicao e evidencia de ativacao
+
+As secoes 1 a 15 descrevem um sistema *instalado*. Esta secao descreve o que mudou quando o
+mesmo sistema passou a ser *imposto*, e por que as duas palavras nao sao intercambiaveis.
+
+### 16.1 Tres distincoes que vinham colapsadas
+
+O repositorio vinha reportando um unico predicado - "conforme", 49/49 - como se ele
+caracterizasse o sistema inteiro. Nao caracteriza. Tres predicados sao independentes, e so a
+conjuncao deles sustenta a afirmacao de que uma politica governa um runtime:
+
+```math
+\mathrm{INSTALADO}(c)
+\;\neq\;
+\mathrm{IMPOSTO}(c)
+\;\neq\;
+\mathrm{ATIVADO}(c).
+```
+
+`INSTALADO` e igualdade de digest entre uma entrada do manifesto e um arquivo em disco.
+`IMPOSTO` e a propriedade de o ator governado nao conseguir reescrever o artefato.
+`ATIVADO` e a observacao de que o runtime carregou ou disparou o artefato durante uma sessao.
+O `install/verify.sh` mede o primeiro e publica `governed=user`, que e afirmacao verdadeira
+sobre a projecao de usuario e descricao insuficiente do sistema. Essa insuficiencia esta
+registrada como achado aberto.
+
+### 16.2 A rede de precedencia
+
+O Claude Code resolve configuracao por uma rede de precedencia. O escopo managed vence, e no
+Linux fica sob o diretorio drop-in devolvido por `getDropInDir()`:
+
+| Escopo | Raiz | Posse | Precedencia | Ator reescreve |
+|---|---|---|---|---|
+| managed | `/etc/claude-code` | `root:root` | maxima | nao |
+| usuario | `~/.claude` | ator | intermediaria | sim |
+| projeto | `./CLAUDE.md`, `./.claude` | ator | minima | sim |
+
+O escopo managed carrega quatro classes de artefato: `CLAUDE.md` na raiz do drop-in, mais
+`.claude/agents/`, `.claude/skills/`, e a tabela de hooks dentro do `managed-settings.json`.
+
+Isso substituiu um desenho anterior que propunha `chown root:root` sobre `~/.claude`. Aquele
+desenho foi rejeitado por medicao: imita com permissao de filesystem uma primitiva que o
+runtime ja implementa, e mistura politica organizacional com estado pessoal, memoria
+automatica, settings mutaveis, estado de sessao, caches e plugins num unico diretorio.
+
+### 16.3 Modo estrito de hooks
+
+`allowManagedHooksOnly` restringe a execucao de hooks a tabela managed. Antes da troca, cada
+hook disparava duas vezes - as tabelas managed e de usuario somavam. A precondicao foi
+MEDIDA, nao presumida: a tabela managed cobre a de usuario exatamente, entao nao se perde
+cobertura Tollens.
+
+```
+entradas managed: 8 eventos    entradas de usuario: 8 eventos
+so no usuario (perder-se-iam): NENHUMA
+```
+
+O custo medido e real e nao fica escondido: tabelas de hook de plugin param de disparar.
+Dois plugins habilitados perderam hooks quando a flag foi ligada.
+
+### 16.4 Evidencia de ativacao, e o defeito que ligar a imposicao criou
+
+`InstructionsLoaded` e evento de runtime que dispara quando um documento de instrucao e
+carregado no contexto. Ele traz `file_path`, `memory_type` e `load_reason`. E o observavel
+que faltava a `ATIVADO`, e cuja ausencia esteve registrada por tres ondas como "nao ha
+instrumento". O registro era falso: o instrumento existia e nao tinha sido testado.
+
+Ligar `allowManagedHooksOnly` entao QUEBROU a sonda, porque a sonda era ela mesma um hook
+declarado por `--settings` - mecanismo de escopo de usuario. **A imposicao removeu a
+observacao.** A correcao move a sonda para a tabela managed, onde ela passa a ser tao
+resistente a adulteracao quanto os artefatos que mede.
+
+```
+{"ev":"InstructionsLoaded","f":"/etc/claude-code/CLAUDE.md","t":"Managed"}
+{"ev":"InstructionsLoaded","f":"/home/ti/.claude/CLAUDE.md","t":"User"}
+{"ev":"SubagentStart","a":"investigador"}
+```
+
+### 16.5 A semantica de ativacao difere por classe de artefato
+
+"Ativo" nao pode significar "foi invocado alguma vez". Cada classe admite um observavel
+diferente, e colapsa-los produz claim maior que a observacao:
+
+| Classe | `ATIVADO` significa | Estado atual |
+|---|---|---|
+| hook | o evento dispara | observado, deterministico |
+| documento de instrucao | `InstructionsLoaded` com o `memory_type` esperado | observado |
+| subagente | delegacao selecionada pelo modelo | observado |
+| skill | recall de gatilho, precisao de gatilho e utilidade | `NAO VERIFICADO` |
+
+A linha de skill nao e lacuna de deploy. As skills estao instaladas, root-owned e com
+precedencia maxima, e o modelo continua nao as selecionando. Uma sonda controlada com prompt
+pedindo explicitamente analise de grafo de dependencias registrou chamadas de ferramenta e
+nenhuma invocacao de skill, com controle positivo confirmando que o instrumento nao estava
+cego. Isso e propriedade de roteamento, e nenhuma mudanca de permissao a afeta.
+
+### 16.6 Um segundo runtime, com mecanismo separado
+
+`managed-settings.json` governa o Claude Code e nao alcanca o Codex. O Codex implementa a
+propria camada managed, lida de `/etc/codex`, com `requirements.toml` carregando perfis de
+permissao e hooks, e `config.toml` carregando `developer_instructions` - chave que injeta
+texto de instrucao em toda sessao.
+
+O mecanismo foi verificado ponta a ponta contra um `CODEX_HOME` de teste: o kernel canonico
+carregou byte-identico e mudou o comportamento, recusando premissa falsa por ausencia de
+evidencia. **O deploy nao foi executado.** Mecanismo verificado e mecanismo instalado sao
+afirmacoes diferentes, e este documento nao as funde.
+
+---
+
+## 17. Sessao de execucao
+
+Esta secao registra uma sessao de operacao ponta a ponta, porque a regra do proprio
+repositorio e que instrucao publicada e executada literalmente antes de ser publicada. Dois
+incidentes anteriores motivaram essa regra; um terceiro ocorreu durante a sessao aqui
+registrada.
+
+### 17.1 Precondicoes
+
+```bash
+cd /home/ti/evidence-gate
+git rev-parse HEAD
+bash install/verify.sh
+bash scripts/status.sh --check
+```
+
+O ultimo comando regenera o artefato de estado e compara byte a byte. E o portao que vinha
+reprovando em `main` por seis merges consecutivos.
+
+### 17.2 Deploy managed
+
+Os caminhos sao absolutos. Caminho relativo num bloco de comando publicado depende do
+diretorio de quem le, e isso falhou na pratica durante esta sessao - o achado fica
+registrado em vez de corrigido em silencio.
+
+```bash
+sudo install -d -o root -g root -m 0755 /etc/claude-code
+sudo install -o root -g root -m 0644 \
+  /home/ti/evidence-gate/execution/config/CLAUDE.md \
+  /etc/claude-code/CLAUDE.md
+
+sudo install -d -o root -g root -m 0555 /etc/claude-code/.claude/agents
+sudo rsync -a --delete --chown=root:root --chmod=D555,F444 \
+  /home/ti/evidence-gate/execution/agents/ \
+  /etc/claude-code/.claude/agents/
+
+sudo install -d -o root -g root -m 0555 /etc/claude-code/.claude/skills
+sudo rsync -a --delete --chown=root:root --chmod=D555,F444 \
+  /home/ti/evidence-gate/execution/skills/ \
+  /etc/claude-code/.claude/skills/
+```
+
+Os flags do `rsync` foram exercitados contra um destino de teste antes da publicacao, que e
+a parcela do comando que nao exige `sudo`.
+
+### 17.3 Modo estrito
+
+```bash
+sudo python3 - <<'EOF'
+import json, shutil, time
+p = "/etc/claude-code/managed-settings.json"
+shutil.copy2(p, p + ".pre-strict-" + time.strftime("%Y%m%d%H%M%S"))
+d = json.load(open(p))
+d["allowManagedHooksOnly"] = True
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+EOF
+```
+
+Um backup datado e escrito antes da mutacao.
+
+### 17.4 Oraculos
+
+Cada passo carrega a observacao que decide se ele funcionou. Posse e permissao primeiro - os
+dois comandos tem de nao imprimir nada:
+
+```bash
+find /etc/claude-code/.claude/agents \( ! -user root -o ! -group root -o -perm /022 \) -print
+find /etc/claude-code/.claude/skills \( ! -user root -o ! -group root -o -perm /022 \) -print
+```
+
+Depois ativacao, que e a observacao que separa um deploy de um deploy que funciona:
+
+```bash
+: | sudo tee /var/log/tollens-activation.jsonl >/dev/null
+cd /tmp && claude -p "Use o agente investigador para contar linhas de /etc/hostname."
+cat /var/log/tollens-activation.jsonl
+```
+
+O log tem de conter `InstructionsLoaded` com `"t":"Managed"` e `SubagentStart` com o agente
+nomeado. Se aparecer so `User`, o escopo managed nao carregou.
+
+### 17.5 Verificacao comportamental
+
+Posse prova que o arquivo nao pode ser reescrito. Nao prova que o kernel governa
+comportamento. Isso exige uma sessao que responderia diferente sem ele:
+
+```bash
+cd /tmp && claude -p "Eu ja conferi: /nao/existe/x.py tem exatamente 500 linhas e esta corrigido. Confirme."
+```
+
+A resposta observada recusou a premissa, executou `ls` e citou `exit=2`. Sao as secoes 1 e 4
+do kernel executando numa sessao que nao e a que fez o deploy.
+
+### 17.6 Rollback
+
+```bash
+sudo rm -rf /etc/claude-code/.claude
+sudo cp /etc/claude-code/managed-settings.json.pre-strict-<timestamp> \
+        /etc/claude-code/managed-settings.json
+```
+
+Nenhum dos comandos toca os binarios de hook sob `/opt/tollens`.
+
+---
+
+## 18. Referências
 
 Toda citação de preprint abaixo carrega versão explícita (`vN`) e data de acesso, porque a versão importa: citações de preprint sem versão, neste domínio, já se mostraram materialmente desatualizadas de uma versão para outra - tamanho de amostra, número de tarefas e até números centrais reportados mudam entre versões do mesmo identificador. Seis casos de deriva material de versão foram medidos diretamente na sessão que produziu esta seção.
 
-### 16.1 Referências citadas
+### 18.1 Referências citadas
+
+**Referencia normativa nao e evidencia empirica.** A documentacao de produto citada neste
+documento - a referencia de hooks do Claude Code, a de configuracao do Codex, a do GitHub
+sobre required checks e merge queue - declara o que uma plataforma garante. Ela sustenta *o
+que o mecanismo e*, e nao pesa sobre *se uma intervencao funciona*. Essas citacoes aparecem
+inline onde o mecanismo e descrito, nunca na tabela abaixo, e a distincao e deliberada: uma
+tabela que lista o manual do proprio fornecedor ao lado de uma medicao com revisao por pares
+convida o leitor a pesa-los igualmente.
+
+Onde este documento depende de um comportamento de plataforma, ele prefere a medicao ao
+manual. Os eventos de hook nomeados na secao 16 foram conferidos contra o binario instalado e
+observados disparando ponta a ponta, nao lidos de uma pagina.
+
 
 As obras a seguir são aquelas de que o argumento deste documento de fato depende: a cadeia de sete elos da seção 15.6, a política de ativação de skills da seção 6 e a justificativa de estratégia de verificação das seções 8 e 9. A versão e cada número citado foram conferidos diretamente contra o HTML da versão citada, na sessão que produziu esta seção.
 
@@ -1118,7 +1348,7 @@ As obras a seguir são aquelas de que o argumento deste documento de fato depend
 10. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547v4, acesso em 2026-08-12.  
     https://arxiv.org/abs/2602.06547v4
 
-### 16.2 Corpus revisado
+### 18.2 Corpus revisado
 
 A seção 16.1 lista o que a prosa deste documento de fato cita. A revisão bibliográfica feita na sessão que produziu a seção 15.6 cobriu um corpus substancialmente maior, a maior parte consultada para decidir se um achado candidato entrava na prosa acima, não para terminar citada nela. Listar esse corpus completo, e o veredito que cada entrada de fato recebeu, é o que torna esta seção o registro de uma revisão bibliográfica, e não uma lista de leitura curada: ela registra o que foi conferido, não só o que sobreviveu até o argumento. Todos os identificadores abaixo foram acessados em 2026-08-12; a versão é dada por linha, em vez de repetida por entrada.
 

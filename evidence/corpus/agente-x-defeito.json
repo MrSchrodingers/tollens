@@ -700,10 +700,12 @@
       "mode": "auditoria-externa",
       "class": "fenomeno-sem-instrumento",
       "defect": "evidencia de ATIVACAO nao existe: nada observa que o runtime carregou o documento ou disparou o hook no evento",
-      "measured": "sonda de eventos de runtime NAO VERIFICADA desde a onda 13; InstructionsLoaded nunca observado",
+      "measured": "`InstructionsLoaded` existe no binario 2.1.241, DISPARA, e entrega `file_path`, `memory_type` e `load_reason`. Sonda no escopo imposto: 43 eventos em 8 sessoes; `Managed` presente em 5 de 5 sessoes que carregaram instrucao",
       "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
-      "state": "open",
-      "open_note": "E_A declarada como dimensao candidata, nao implementada"
+      "state": "resolved",
+      "open_note": "E_A declarada como dimensao candidata, nao implementada",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_note": "O estimando de G6b era 'nao existe evidencia observavel de ativacao', e ele foi FALSIFICADO - o instrumento existia e nao tinha sido testado. Ampliar G6b retroativamente para abranger eficacia de roteamento seria mudar o estimando depois de observar o resultado, que e o defeito que este repositorio persegue. O que permanece aberto e OUTRA proposicao, registrada separadamente: recall e precisao de gatilho das skills"
     },
     {
       "finding_id": "G11",
@@ -915,10 +917,10 @@
       "mode": "verificacao-de-fonte",
       "class": "instalado-nao-e-imposto",
       "defect": "35 dos 49 componentes de `~/.claude` sao gravaveis pelo ator que eles governam, inclusive `CLAUDE.md`",
-      "measured": "hook 14 root-only via managed-settings; agent 10 + skill 8 + adapter 11 + doctool 5 + config 1 = 35 gravaveis; `install/verify.sh` ja declarava `governed=user` em toda execucao",
+      "measured": "35 dos 49 componentes de `~/.claude` sao gravaveis pelo ator. ERRATA DE ONTOLOGIA, onda 22: eu escrevi que a precedencia managed torna as duplicatas INERTES, e a propria sonda refuta para `CLAUDE.md` - documentos de instrucao sao CONCATENADOS, nao sobrescritos, e a serie mostra `Managed` e `User` entrando no contexto na MESMA sessao. Sao tres regimes diferentes: `CLAUDE.md` user esta ATIVO (custo de contexto sem informacao, se byte-identico); agents e skills sao SOMBREADOS por nome; hooks user estao INERTES por `allowManagedHooksOnly`, o que e enforcement e nao precedencia",
       "state": "open",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
-      "open_note": "Fechar exige `sudo` sobre `~/.claude` e tem custo real: o operador passa a ser necessario para qualquer mudanca em agente ou skill nesta maquina. E decisao do operador, nao correcao tecnica. O `config: 1` e o de maior alavanca: a regra que governa o ator deixa de ser gravavel por ele."
+      "open_note": "A ordem e: verificador multiescopo (#39) ANTES de remover duplicata. E a PRIMEIRA a remover deve ser a copia user do `CLAUDE.md`, porque e a unica dos tres regimes que custa contexto em toda sessao sem acrescentar informacao. Agents e skills sombreados custam disco, nao contexto"
     },
     {
       "finding_id": "G25",
@@ -1013,6 +1015,97 @@
       "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "resolution_note": "irmao de G26 (`bfs`/`-newermt`) e do `grep -P` sob `LC_ALL=C`: ferramenta que falha em silencio e cuja saida se le como resposta. Aqui a suite foi acreditada contra a sonda, e estava certa"
+    },
+    {
+      "finding_id": "G32",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao impor o kernel",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "comando-publicado-dependente-do-cwd",
+      "defect": "comandos de deploy foram publicados com caminho RELATIVO, e caminho relativo depende do diretorio de quem cola",
+      "measured": "os tres comandos falharam ao serem executados de `~`: `install: cannot stat 'execution/config/CLAUDE.md'` e dois `rsync change_dir failed`. Agravante: a publicacao declarava os comandos como `nao executados por mim` e mesmo assim omitia a parcela testavel - o `rsync --dry-run` que os validou depois nao exigia `sudo`",
+      "state": "resolved",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
+    },
+    {
+      "finding_id": "G33",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao impor o kernel",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "verificador-que-descreve-um-escopo-e-conclui-sobre-o-sistema",
+      "defect": "`install/verify.sh` publica `governed=user` sem conhecer o escopo managed, que passou a ter precedencia",
+      "measured": "`49/49 ok` continua evidencia valida da integridade da projecao de usuario, e deixou de ser suficiente para caracterizar governanca: o kernel agora carrega de `/etc/claude-code` com `memory_type: Managed`, verificado E2E",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "O fecho e compor USER_PROJECTION, MANAGED_PROJECTION e RUNTIME_ACTIVATION em observacoes separadas, e so entao derivar a governanca global. Trocar a string `governed=user` por `governed=managed` seria corrigir o rotulo sem corrigir o instrumento - a classe que a onda 20 corrigiu. Issue #39. E a ORDEM importa: remover as 19 duplicatas antes disso produziria instrumento verde sobre populacao que deixou de representar o runtime."
+    },
+    {
+      "finding_id": "G34",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao impor o kernel",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "imposicao-que-remove-a-observacao",
+      "defect": "ligar `allowManagedHooksOnly` matou a sonda de ativacao, porque a sonda era um hook declarado por `--settings` - mecanismo de escopo de usuario",
+      "measured": "apos a troca, `wc -l` do log da sonda saiu 0; o hook de `InstructionsLoaded` deixou de disparar junto com os hooks de usuario. Corrigido movendo a sonda para a tabela managed: 3 eventos por sessao, com `t:\"Managed\"`",
+      "state": "resolved",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
+    },
+    {
+      "finding_id": "G35",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao impor o kernel",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "assercao-inserida-depois-do-sumario-que-a-publica",
+      "defect": "tres `chk` novos foram inseridos DEPOIS da linha que imprime `PASS=$P`, entao o sumario publicava 61 enquanto a suite executava 64",
+      "measured": "`status.sh` parseia essa linha; o artefato teria publicado 61 para uma suite de 64 assercoes - a classe G22 com outra realizacao. O sinal que denunciou foi o diff VAZIO do artefato apos uma mudanca que tinha de altera-lo. Corrigido movendo o bloco para antes do sumario: `PASS=64` e o artefato foi de 61 para 64",
+      "state": "resolved",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md"
+    },
+    {
+      "finding_id": "G36",
+      "wave": 22,
+      "review_round": "auditoria externa (8a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "gerador-nao-vinculado-a-snapshot",
+      "defect": "`scripts/status.sh` le a arvore ao longo de minutos e nao verifica que ela e a mesma no inicio e no fim",
+      "measured": "editar o corpus enquanto ele gerava produziu artefato combinando DOIS estados: publicou `claims.sh 53 | 1` quando a suite sai 54/0 rodada sozinha, e esvaziou a tabela de cobertura inteira (7 linhas). O artefato publicado nao era funcao de nenhum estado que existiu",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "A correcao NAO e disciplina humana - eu declarei essa regra tres vezes nesta sessao e a violei. O gerador deve calcular impressao digital da arvore no inicio e no fim e ABORTAR se mudou, ou melhor, gerar contra snapshot imutavel e so entao publicar. `Artifact = f(Snapshot)`, nao `f(Tree_t0, Tree_t1, ..., Tree_tn)`"
+    },
+    {
+      "finding_id": "G37",
+      "wave": 22,
+      "review_round": "auditoria externa (8a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "arquitetura-que-permite-assercao-apos-o-sumario",
+      "defect": "`chk()` pode ser chamado DEPOIS da linha que imprime `PASS=$P`, entao o numero publicado pode divergir do executado",
+      "measured": "tres `chk` inseridos apos o sumario fizeram a suite publicar `PASS=61` executando 64; o `status.sh` parseia exatamente essa linha. O G35 registrou a instancia; esta e a classe",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "O fecho e derivar, nao lintar: `chk` incrementa contadores, um `finalize()` imprime PASS/FAIL/TOTAL uma unica vez no fim, e `chk` apos `finalize` deve ser impossivel ou erro. Acrescentar um lint 'nenhum chk depois desta linha' seria a forma que as ondas 17, 19, 20b e 20c ja removeram deste repositorio"
+    },
+    {
+      "finding_id": "G38",
+      "wave": 22,
+      "review_round": "auditoria externa (8a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "paridade-de-runtime-afirmada-sem-medida",
+      "defect": "eu tratei `/etc/codex/config.toml` como equivalente ao escopo managed do Claude Code, e a precedencia do Codex refuta",
+      "measured": "o binario do Codex enumera `Overridden by user config:` e `Overridden by project config:` - config de sistema e DEFAULT sobrescrivivel, nao politica inviolavel. `developer_instructions` vive no struct de config; `allow_managed_hooks_only` vive noutro struct, junto de `allow_appshots` e `allow_remote_control`, o que e consistente com `requirements.toml` ser a camada de restricao administrativa",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "Separar dois objetivos que eu tinha fundido: (a) DEFAULT COMPORTAMENTAL de sistema via `config.toml`, que e possivel e foi verificado E2E; (b) RESTRICAO NAO SOBRESCRIVIVEL via `requirements.toml`, que NAO foi testada. Se `developer_instructions` nao tiver equivalente obrigatorio em `requirements.toml`, a conclusao honesta e que o Codex admite default de sistema e NAO admite enforcement comportamental - nao inventar equivalencia"
     }
   ],
   "reading": [
@@ -1026,16 +1119,16 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 76,
+    "n_findings": 83,
     "wave_min": 11,
-    "wave_max": 21,
+    "wave_max": 22,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
-      "auditoria-externa": 25,
+      "auditoria-externa": 28,
       "execucao-hostil": 1,
       "leitura-estrutural": 22,
       "remedicao": 19,
-      "verificacao-de-fonte": 6
+      "verificacao-de-fonte": 10
     },
     "sources": [
       "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
@@ -1054,14 +1147,17 @@
       "G24",
       "G25",
       "G30",
+      "G33",
+      "G36",
+      "G37",
+      "G38",
       "G4",
       "G5",
-      "G6b",
       "G7"
     ],
     "by_state": {
-      "open": 11,
-      "resolved": 65
+      "open": 14,
+      "resolved": 69
     }
   },
   "historical_states": [

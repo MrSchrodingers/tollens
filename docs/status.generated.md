@@ -7,7 +7,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Suite | Assercoes | Exit |
 |---|---:|---:|
-| `tests/unit/regressao-gate.sh` | 61 | 0 |
+| `tests/unit/regressao-gate.sh` | 64 | 0 |
 | `tests/unit/document-tools.sh` | 57 | 0 |
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |

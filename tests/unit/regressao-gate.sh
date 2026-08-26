@@ -427,10 +427,30 @@ done
 
 cd /
 echo
+# ONDA 22. PARIDADE README EN/PT ERA INVARIANTE MANTIDA A MAO. Os dois arquivos tinham
+# estrutura identica - mesma contagem de cabecalhos, mesma numeracao de secao - e NENHUMA suite
+# conferia isso. Manter em passo por disciplina e o que a secao 6.3 do CLAUDE.md chama de
+# hipotese, nao de garantia: a primeira divergencia so apareceria para um leitor, e um leitor le
+# um idioma so.
+_EN="$REPO_ROOT/README.md"; _PT="$REPO_ROOT/README.pt-BR.md"
+_n_en="$(grep -cE '^#{1,3} ' "$_EN")"; _n_pt="$(grep -cE '^#{1,3} ' "$_PT")"
+chk "README EN e PT tem a mesma contagem de cabecalhos" "$_n_en" "$_n_pt"
+
+# A numeracao de secao tem de casar posicao a posicao. Contagem igual com ordem diferente
+# passaria pela checagem acima - foi por isso que ela nao basta sozinha.
+_sec_en="$(grep -oE '^#{2,3} [0-9]+(\.[0-9]+)?' "$_EN" | grep -oE '[0-9]+(\.[0-9]+)?' | tr '\n' ' ')"
+_sec_pt="$(grep -oE '^#{2,3} [0-9]+(\.[0-9]+)?' "$_PT" | grep -oE '[0-9]+(\.[0-9]+)?' | tr '\n' ' ')"
+chk "README EN e PT tem a MESMA sequencia de numeros de secao" "$_sec_en" "$_sec_pt"
+
+# ANTIVACUIDADE: se os dois grep devolvessem vazio - arquivo renomeado, padrao quebrado - as
+# duas checagens acima passariam comparando nada com nada.
+chk "a varredura de secoes do README nao e vazia" \
+  "$([ "$(printf '%s' "$_sec_en" | wc -w)" -ge 15 ] && echo ok)" ok
+
 echo "================ PASS=$P  FAIL=$F ================"
 # CONTAGEM E INVARIANTE, nao descricao. Sem isto, apagar cinco casos deixa PASS=15/FAIL=0 e a
 # suite segue verde - o numero no relatorio viraria documentacao, nao garantia.
-EXPECTED=61
+EXPECTED=64
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

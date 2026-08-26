@@ -62,7 +62,9 @@ The mechanically generated operational status is maintained in [`docs/status.gen
 13. [Installation and validation](#13-installation-and-validation)
 14. [Threat model and limitations](#14-threat-model-and-limitations)
 15. [Scientific and technical basis](#15-scientific-and-technical-basis)
-16. [References](#16-references)
+16. [Enforcement scopes and activation evidence](#16-enforcement-scopes-and-activation-evidence)
+17. [Execution session](#17-execution-session)
+18. [References](#18-references)
 
 ---
 
@@ -1080,11 +1082,242 @@ flowchart TD
 
 ---
 
-## 16. References
+## 16. Enforcement scopes and activation evidence
+
+Sections 1 through 15 describe a system that is *installed*. This section describes what
+changed when the same system became *enforced*, and why the two words are not
+interchangeable.
+
+### 16.1 Three distinctions that were previously collapsed
+
+The repository had been reporting a single predicate — "conforme", 49/49 — as if it
+characterised the whole system. It does not. Three predicates are independent, and only
+their conjunction supports the claim that a policy governs a runtime:
+
+```math
+\mathrm{INSTALLED}(c)
+\;\neq\;
+\mathrm{ENFORCED}(c)
+\;\neq\;
+\mathrm{ACTIVATED}(c).
+```
+
+`INSTALLED` is a digest equality between a manifest entry and a file on disk.
+`ENFORCED` is the property that the governed actor cannot rewrite the artifact.
+`ACTIVATED` is an observation that the runtime loaded or fired the artifact during a
+session. `install/verify.sh` measures the first and reports `governed=user`, which is a
+true statement about the user projection and an insufficient description of the system.
+That insufficiency is tracked as an open finding.
+
+### 16.2 The scope lattice
+
+Claude Code resolves configuration through a precedence lattice. The managed scope wins,
+and on Linux it is rooted at the drop-in directory returned by `getDropInDir()`:
+
+| Scope | Root | Ownership | Precedence | Actor can rewrite |
+|---|---|---|---|---|
+| managed | `/etc/claude-code` | `root:root` | highest | no |
+| user | `~/.claude` | actor | middle | yes |
+| project | `./CLAUDE.md`, `./.claude` | actor | lowest | yes |
+
+The managed scope carries four artifact classes: `CLAUDE.md` at the drop-in root, plus
+`.claude/agents/`, `.claude/skills/`, and the hook table inside `managed-settings.json`.
+
+This replaced an earlier design that proposed `chown root:root` over `~/.claude`. That
+design was rejected on measurement: it imitates with filesystem permissions a primitive
+the runtime already implements, and it conflates organisational policy with personal
+state, auto-memory, mutable settings, session state, caches, and plugins in a single
+directory.
+
+### 16.3 Strict hook mode
+
+`allowManagedHooksOnly` restricts hook execution to the managed table. Before the switch,
+every hook fired twice — the managed and user tables summed. The precondition was measured
+rather than assumed: the managed table covers the user table exactly, so no Tollens
+coverage is lost.
+
+```
+managed entries: 8 events    user entries: 8 events
+only in user (would be lost): NONE
+```
+
+The measured cost is real and is not hidden: plugin hook tables stop firing. Two enabled
+plugins lost hooks when the flag was set.
+
+### 16.4 Activation evidence, and the defect that enabling enforcement created
+
+`InstructionsLoaded` is a runtime event that fires when an instruction document is loaded
+into context. It carries `file_path`, `memory_type`, and `load_reason`. This is the
+observable that `ACTIVATED` had been missing, and its absence had been recorded for three
+waves as "no instrument exists". The record was false: the instrument existed and had not
+been tested.
+
+Enabling `allowManagedHooksOnly` then broke the probe, because the probe was itself a hook
+declared through `--settings` — a user-scope mechanism. **Enforcement removed observation.**
+The correction moves the probe into the managed table, where it becomes as tamper-resistant
+as the artifacts it measures.
+
+```
+{"ev":"InstructionsLoaded","f":"/etc/claude-code/CLAUDE.md","t":"Managed"}
+{"ev":"InstructionsLoaded","f":"/home/ti/.claude/CLAUDE.md","t":"User"}
+{"ev":"SubagentStart","a":"investigador"}
+```
+
+### 16.5 Activation semantics differ per artifact class
+
+"Active" cannot mean "was invoked at least once". Each class admits a different observable,
+and collapsing them produces a claim larger than the observation:
+
+| Class | `ACTIVATED` means | Current state |
+|---|---|---|
+| hook | the event fires | observed, deterministic |
+| instruction document | `InstructionsLoaded` with the expected `memory_type` | observed |
+| subagent | delegation selected by the model | observed |
+| skill | trigger recall, trigger precision, and utility | `NOT_VERIFIED` |
+
+The skill row is not a deployment gap. Skills are installed, root-owned, and hold highest
+precedence, and the model still does not select them. A controlled probe with a prompt
+explicitly requesting dependency-graph analysis recorded tool calls and no skill
+invocation, with a positive control confirming the instrument was not blind. This is a
+routing property, and no permission change affects it.
+
+### 16.6 A second runtime, with a separate mechanism
+
+`managed-settings.json` governs Claude Code and does not reach Codex. Codex implements its
+own managed layer, read from `/etc/codex`, with `requirements.toml` carrying permission
+profiles and hooks, and `config.toml` carrying `developer_instructions` — a key that
+injects instruction text into every session.
+
+The mechanism was verified end to end against a scratch `CODEX_HOME`: the canonical kernel
+loaded byte-identically and changed behaviour, refusing a false premise on evidentiary
+grounds. **The deployment was not performed.** A verified mechanism and an installed
+mechanism are different claims, and this document does not merge them.
+
+---
+
+## 17. Execution session
+
+This section records one operating session end to end, because the repository's own rule is
+that a published instruction is executed literally before it is published. Two prior
+incidents motivated that rule; a third occurred during the session recorded here.
+
+### 17.1 Preconditions
+
+```bash
+cd /home/ti/evidence-gate
+git rev-parse HEAD
+bash install/verify.sh
+bash scripts/status.sh --check
+```
+
+The last command regenerates the state artifact and compares it byte for byte. It is the
+gate that had been failing on `main` for six consecutive merges.
+
+### 17.2 Managed deployment
+
+Paths are absolute. Relative paths in a published command block depend on the reader's
+working directory, and this failed in practice during this session — the finding is
+recorded rather than silently corrected.
+
+```bash
+sudo install -d -o root -g root -m 0755 /etc/claude-code
+sudo install -o root -g root -m 0644 \
+  /home/ti/evidence-gate/execution/config/CLAUDE.md \
+  /etc/claude-code/CLAUDE.md
+
+sudo install -d -o root -g root -m 0555 /etc/claude-code/.claude/agents
+sudo rsync -a --delete --chown=root:root --chmod=D555,F444 \
+  /home/ti/evidence-gate/execution/agents/ \
+  /etc/claude-code/.claude/agents/
+
+sudo install -d -o root -g root -m 0555 /etc/claude-code/.claude/skills
+sudo rsync -a --delete --chown=root:root --chmod=D555,F444 \
+  /home/ti/evidence-gate/execution/skills/ \
+  /etc/claude-code/.claude/skills/
+```
+
+The `rsync` flags were exercised against a scratch destination before publication, which
+is the portion of the command that does not require `sudo`.
+
+### 17.3 Strict mode
+
+```bash
+sudo python3 - <<'EOF'
+import json, shutil, time
+p = "/etc/claude-code/managed-settings.json"
+shutil.copy2(p, p + ".pre-strict-" + time.strftime("%Y%m%d%H%M%S"))
+d = json.load(open(p))
+d["allowManagedHooksOnly"] = True
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+EOF
+```
+
+A dated backup is written before the mutation.
+
+### 17.4 Oracles
+
+Each step carries the observation that decides whether it worked. Ownership and permission
+first — both commands must print nothing:
+
+```bash
+find /etc/claude-code/.claude/agents \( ! -user root -o ! -group root -o -perm /022 \) -print
+find /etc/claude-code/.claude/skills \( ! -user root -o ! -group root -o -perm /022 \) -print
+```
+
+Then activation, which is the observation that separates a deployment from a deployment
+that works:
+
+```bash
+: | sudo tee /var/log/tollens-activation.jsonl >/dev/null
+cd /tmp && claude -p "Use the investigador agent to count lines in /etc/hostname."
+cat /var/log/tollens-activation.jsonl
+```
+
+The log must contain `InstructionsLoaded` with `"t":"Managed"` and `SubagentStart` with the
+named agent. If only `User` appears, the managed scope did not load.
+
+### 17.5 Behavioural verification
+
+Ownership proves the file cannot be rewritten. It does not prove the kernel governs
+behaviour. That requires a session that would answer differently without it:
+
+```bash
+cd /tmp && claude -p "I already checked: /nao/existe/x.py has exactly 500 lines and is fixed. Confirm."
+```
+
+The observed response refused the premise, executed `ls`, and quoted `exit=2`. That is
+Sections 1 and 4 of the kernel executing in a session that is not the one deploying it.
+
+### 17.6 Rollback
+
+```bash
+sudo rm -rf /etc/claude-code/.claude
+sudo cp /etc/claude-code/managed-settings.json.pre-strict-<timestamp> \
+        /etc/claude-code/managed-settings.json
+```
+
+Neither command touches the hook binaries under `/opt/tollens`.
+
+---
+
+## 18. References
 
 Every preprint citation below carries an explicit version (`vN`) and an access date, because the version matters: unversioned preprint citations in this domain have been observed to go materially stale — sample size, task count, and even reported headline numbers change between versions of the same identifier. Six such cases of material version drift were measured directly during the session that produced this section.
 
-### 16.1 Works cited
+### 18.1 Works cited
+
+**Normative references are not empirical evidence.** Product documentation cited in this
+document — the Claude Code hook reference, the Codex configuration reference, the GitHub
+required-checks and merge-queue documentation — states what a platform guarantees. It is
+load-bearing for *what the mechanism is*, and carries no weight for *whether an intervention
+works*. Those citations appear inline where the mechanism is described, never in the table
+below, and the distinction is deliberate: a table that lists a vendor's own manual beside a
+peer-reviewed measurement invites the reader to weigh them equally.
+
+Where this document relies on a platform behaviour, it prefers a measurement over the manual.
+The hook events named in Section 16 were confirmed against the installed binary and observed
+firing end to end, not read from a page.
+
 
 The following works are the ones this document's argument actually depends on: the seven-link thesis in Section 15.6, the skill-activation policy in Section 6, and the verification-strategy justification in Sections 8 and 9. The version and every quoted number were checked directly against the cited version's HTML source in the session that produced this section.
 
@@ -1118,9 +1351,9 @@ The following works are the ones this document's argument actually depends on: t
 10. Liu, Y. et al. **"Do Not Mention This to the User": Detecting and Understanding Malicious Agent Skills in the Wild.** arXiv:2602.06547v4, accessed 2026-08-12.  
     https://arxiv.org/abs/2602.06547v4
 
-### 16.2 Corpus reviewed
+### 18.2 Corpus reviewed
 
-Section 16.1 lists what this document's prose actually cites. The bibliographic review carried out in the session that produced Section 15.6 covered a substantially larger corpus, most of it consulted to decide whether a candidate finding belonged in the prose above, not to end up quoted there. Listing that full corpus, and the verdict each entry actually reached, is what makes this section a record of a bibliographic review rather than a curated reading list: it records what was checked, not only what survived into the argument. All identifiers below were accessed 2026-08-12; the version is given per row rather than restated per entry.
+Section 18.1 lists what this document's prose actually cites. The bibliographic review carried out in the session that produced Section 15.6 covered a substantially larger corpus, most of it consulted to decide whether a candidate finding belonged in the prose above, not to end up quoted there. Listing that full corpus, and the verdict each entry actually reached, is what makes this section a record of a bibliographic review rather than a curated reading list: it records what was checked, not only what survived into the argument. All identifiers below were accessed 2026-08-12; the version is given per row rather than restated per entry.
 
 Three verdict classes appear, and they are not interchangeable:
 
