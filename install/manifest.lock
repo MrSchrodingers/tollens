@@ -5,7 +5,7 @@ hook	control/hooks/artifact-discipline.sh	hooks/artifact-discipline.sh	d08667e9c
 hook	control/hooks/fable-guard.sh	hooks/fable-guard.sh	8d4a0cb16ec0ca7fc5d7db8c73eec32d601a0c4848be4bf7590021255add277b
 hook	control/hooks/risk-trigger.sh	hooks/risk-trigger.sh	61a4c713fe597ee78ababa4441e9326f4c2de7448fcee4ff46d429541588827c
 hook	control/hooks/self-mod-audit.sh	hooks/self-mod-audit.sh	6267201c3434ce7a8f77cf50216a96bb303ce9abcedb0153558dbf001681fe0c
-hook	control/hooks/session-integrity.sh	hooks/session-integrity.sh	794144edae7a6aebd2b8cd69230b04b2906ac3539089e426a0407ca0df1a6a3c
+hook	control/hooks/session-integrity.sh	hooks/session-integrity.sh	89f41620238bfb76e16d7fe4c92c84fd5ab1b87fdf532cb66d49801e4c9de6eb
 hook	execution/hooks/ds4-notify.sh	hooks/ds4-notify.sh	6cd9d9d53491c91b2fd7f6701cb69d424a41fb66647d74d4990d7208bf883b26
 hook	execution/hooks/graphify-scout-mode.sh	hooks/graphify-scout-mode.sh	76b8954fb91719b35ee14ba443724ec80399f5713760813723bc5a80e8d6a84d
 hook	execution/hooks/lentes.sh	hooks/lentes.sh	06a7085ac89f505953e5402572678e38506d6318df9f1d44bfc4b970afa6390f

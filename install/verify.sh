@@ -76,19 +76,35 @@ printf 'PROJECAO USUARIO: %s/%s ok | %s divergentes | %s ausentes | %s orfaos\n'
 #   INSTALADO  digest bate           (o que este laco mede)
 #   IMPOSTO    o ator nao reescreve  (posse do arquivo em vigor)
 #   ATIVADO    o runtime carregou    (evento observado, fora do alcance de um verificador estatico)
+#
+# ONDA 22c. AUSENTE NAO E DIVERGENTE, E OS DOIS NAO PODEM COMPARTILHAR CONTADOR. A primeira versao
+# desta secao somava AUSENTE e GRAVAVEL num unico `M_FALTA` e devolvia exit 1 para qualquer um dos
+# dois. Consequencia medida na CI (runs 33007234824 e 33007230205, ambos vermelhos em d4fd41b):
+# `install/apply.sh` termina chamando este script, entao o exit deste virou o exit DAQUELE, e o
+# instalador da projecao de USUARIO passou a reprovar em toda maquina onde a fase managed nao esta
+# implantada - que e o caso comum, e um estado que `apply.sh` NAO PODE corrigir, porque implantar
+# managed exige root e snapshot root-owned (ADR 0026). O instalador reprovava por um escopo alheio.
+#
+# O principio ja estava escrito neste repositorio, em control/hooks/session-integrity.sh:29:
+# "`absent` NAO e `conformant`: maquina sem fase managed e o caso comum, e reportar drift ali seria
+# o falso positivo que faz o operador desligar o mecanismo". O hook acertava; este verificador, nao.
+#
+# Os dois estados sao materialmente diferentes e por isso tem contador e codigo de saida proprios:
+#   AUSENTE   a fase managed nao foi implantada        -> benigno, acionavel, exit 3
+#   GRAVAVEL  foi implantada e o ator pode reescrever  -> imposicao NAO se sustenta, exit 4
 MGD_DIR="${TOLLENS_MANAGED_DIR:-/etc/claude-code}"
-M_OK=0; M_FALTA=0
+M_OK=0; M_AUSENTE=0; M_GRAVAVEL=0
 _posse(){ stat -c '%U' "$1" 2>/dev/null || echo '?'; }
 printf '\nPROJECAO MANAGED:\n'
 for _alvo in "$MGD_DIR/CLAUDE.md" "$MGD_DIR/managed-settings.json" "$MGD_DIR/.claude/agents" "$MGD_DIR/.claude/skills"; do
   if [ ! -e "$_alvo" ]; then
-    printf '  AUSENTE   %-42s\n' "${_alvo#$MGD_DIR/}"; M_FALTA=$((M_FALTA+1)); continue
+    printf '  AUSENTE   %-42s\n' "${_alvo#$MGD_DIR/}"; M_AUSENTE=$((M_AUSENTE+1)); continue
   fi
   _d="$(_posse "$_alvo")"
   if [ "$_d" = root ]; then
     printf '  IMPOSTO   %-42s (root)\n' "${_alvo#$MGD_DIR/}"; M_OK=$((M_OK+1))
   else
-    printf '  GRAVAVEL  %-42s (%s - imposicao NAO se sustenta)\n' "${_alvo#$MGD_DIR/}" "$_d"; M_FALTA=$((M_FALTA+1))
+    printf '  GRAVAVEL  %-42s (%s - imposicao NAO se sustenta)\n' "${_alvo#$MGD_DIR/}" "$_d"; M_GRAVAVEL=$((M_GRAVAVEL+1))
   fi
 done
 
@@ -105,11 +121,21 @@ else
   printf '  NAO VERIFICADO  sem registro de ativacao em %s\n' "$ATV"
 fi
 
+# O CODIGO DE SAIDA NOMEIA O ESCOPO, e nao so o veredito. Quem chama este script cuida de UM
+# escopo: `apply.sh` instala a projecao de usuario e nada mais; o hook de sessao audita managed com
+# um verificador proprio. Um unico "nao-zero" para tres causas obriga o chamador a adivinhar de
+# quem e a falha - e foi assim que a falha de um escopo derrubou o instalador do outro.
+#   0  as duas projecoes integras
+#   1  projecao de USUARIO divergente        (do instalador de usuario, e propagavel)
+#   3  usuario integra, managed AUSENTE      (fase nao implantada; exige root, nao e do apply.sh)
+#   4  usuario integra, managed GRAVAVEL     (implantada e reescrivivel: imposicao nao se sustenta)
 printf '\nGOVERNANCA GLOBAL: '
 if [ $((DRIFT+MISSING+EXTRA)) -ne 0 ]; then
   echo "DIVERGENTE - a projecao de usuario nao e o que o repositorio declara."; exit 1
-elif [ "$M_FALTA" -ne 0 ]; then
-  echo "PARCIAL - projecao de usuario integra, escopo managed incompleto ou gravavel."; exit 1
+elif [ "$M_GRAVAVEL" -ne 0 ]; then
+  echo "NAO IMPOSTO - projecao de usuario integra, mas o escopo managed e gravavel pelo ator."; exit 4
+elif [ "$M_AUSENTE" -ne 0 ]; then
+  echo "PARCIAL - projecao de usuario integra; fase managed nao implantada (exige root, ADR 0026)."; exit 3
 else
   echo "governed=managed (projecao de usuario integra; politica em vigor root-owned; ativacao com indicio, nao prova)"
   exit 0

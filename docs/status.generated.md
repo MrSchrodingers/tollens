@@ -23,7 +23,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
-| `tests/unit/contrato-de-instalador.sh` | 34 | 0 |
+| `tests/unit/contrato-de-instalador.sh` | 43 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | variavel (base) | 0 |
 | `tests/unit/capability-conformance.py` | variavel (base) | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |

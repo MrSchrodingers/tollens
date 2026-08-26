@@ -220,11 +220,79 @@ chk "arena propria de dono morto E removida (o laco varre mesmo)" \
     "$([ -d "$MORTA" ] && echo nao || echo sim)" sim
 
 
+# ---------------------------------------------------------------------------------------------
+echo "== CI8. o instalador de usuario nao reprova por um escopo que nao instala =="
+# REGRESSAO MEDIDA NA CI, d4fd41b, runs 33007234824 e 33007230205, ambos vermelhos. `apply.sh`
+# termina chamando `install/verify.sh`, e quando este passou a auditar TAMBEM o escopo managed o
+# exit dele virou o exit do instalador: em toda maquina sem a fase managed implantada - o caso
+# comum, e um estado que exige root para corrigir (ADR 0026) - `apply.sh` imprimia "componentes
+# instalados: 48" e saia 1.
+#
+# ESTE E O CASO QUE A MAQUINA LOCAL NAO EXERCITA. Aqui `/etc/claude-code` esta implantado, entao a
+# suite ficou verde localmente enquanto reprovava na CI, e a verificacao local respondeu sobre um
+# ambiente em que a condicao nao ocorre. `TOLLENS_MANAGED_DIR` desloca o escopo auditado, entao os
+# dois estados passam a ser exercitados em QUALQUER maquina, sem depender do que ha em /etc.
+_MGD_VAZIO="$(mktemp -d "$TMP/mgd0.XXXXXX")"
+_MGD_ATOR="$(mktemp -d "$TMP/mgd1.XXXXXX")"
+mkdir -p "$_MGD_ATOR/.claude/agents" "$_MGD_ATOR/.claude/skills"
+: > "$_MGD_ATOR/CLAUDE.md"; : > "$_MGD_ATOR/managed-settings.json"
+# A FIXTURA TEM DE SER NAO-ROOT INDEPENDENTE DE QUEM RODA A SUITE. O criterio de `verify.sh` e a
+# POSSE: root -> IMPOSTO, qualquer outro -> GRAVAVEL. Rodando como root - contentor, ou `sudo bash
+# tests/...` - o diretorio que a suite acaba de criar nasce root-owned e e LEGITIMAMENTE imposto,
+# entao o caso deixava de exercitar a condicao e reprovava por isso (medido: got=0 want=4 sob
+# ubuntu:24.04 como root). Sob root, quem cria pode reatribuir; sob usuario comum ja esta certo.
+[ "$(id -u)" -eq 0 ] && chown -R 65534:65534 "$_MGD_ATOR" 2>/dev/null
+# CONTROLE POSITIVO DA FIXTURA: sem isto, um `chown` que falhasse em silencio faria a assercao
+# seguinte medir o mesmo estado do caso AUSENTE e ainda assim parecer especifica.
+chk "a fixtura GRAVAVEL nao pertence a root (a condicao ocorre)" \
+    "$(stat -c '%U' "$_MGD_ATOR/CLAUDE.md" 2>/dev/null | grep -c '^root$')" 0
+
+# A PROJECAO DE USUARIO E ISOLADA, e nao por preciosismo: sem `CLAUDE_HOME` proprio estas
+# assercoes leem o `~/.claude` VIVO da maquina, entao qualquer divergencia pendente ali - um
+# componente editado e ainda nao reaplicado, que e o estado normal durante uma onda - devolve exit
+# 1 e o caso passa a medir a bancada em vez do escopo managed. Medido: as duas reprovaram com
+# got=1 por essa razao antes deste isolamento.
+_DA="$(mktemp -d "$TMP/ap0.XXXXXX")"
+_OUTA="$(CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh 2>&1)"
+_RCA=$?
+CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/verify.sh >/dev/null 2>&1
+chk "verify: managed AUSENTE tem codigo proprio (3, nao 1)"        "$?" 3
+CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/verify.sh >/dev/null 2>&1
+chk "verify: managed GRAVAVEL pelo ator tem codigo proprio (4)"    "$?" 4
+
+# O instalador: exit 0 com a projecao de usuario integra, nos DOIS estados de managed. Nenhum dos
+# dois e consertavel por ele, e nos dois os 48 componentes de usuario ficaram como o manifesto diz.
+set -- "$_RCA"
+chk "apply: instala com exit 0 mesmo sem a fase managed"           "$1" 0
+chk "apply: e publica o passo acionavel em vez de calar" \
+    "$(printf '%s' "$_OUTA" | grep -c 'apply-managed.sh --enforce')" 1
+_DB="$(mktemp -d "$TMP/ap1.XXXXXX")"
+CLAUDE_HOME="$_DB" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/apply.sh >/dev/null 2>&1
+chk "apply: exit 0 tambem com managed gravavel (nao e dele consertar)" "$?" 0
+
+# ANTIVACUIDADE: os cinco acima so significam algo se o verificador AINDA reprovar o que e dele.
+# Sem isto, trocar o corpo de `verify.sh` por `exit 0` passaria em todos eles.
+_DC="$(mktemp -d "$TMP/ap2.XXXXXX")"
+CLAUDE_HOME="$_DC" bash install/apply.sh >/dev/null 2>&1
+printf 'DIVERGENCIA INTRODUZIDA PELO TESTE\n' >> "$_DC/$_ESPECIME"
+TOLLENS_MANAGED_DIR="$_MGD_VAZIO" CLAUDE_HOME="$_DC" bash install/verify.sh >/dev/null 2>&1
+chk "verify AINDA reprova (1) o que E do escopo de usuario"        "$?" 1
+
+# ---------------------------------------------------------------------------------------------
+echo "== CI9. o hook de sessao le o verificador que existe, nao o que existia =="
+# MESMA FAMILIA DO G45: a onda 22 renomeou a linha de resumo de `conformidade:` para
+# `PROJECAO USUARIO:`, e o hook seguia procurando a etiqueta antiga. `grep` que nao casa devolve
+# vazio, e vazio no campo `summary` do heartbeat le-se como "nada a relatar" - degradacao muda.
+chk "o hook casa a etiqueta que o verificador emite HOJE" \
+    "$(bash install/verify.sh 2>&1 | grep -cE '^(PROJECAO USUARIO|conformidade):')" 1
+chk "e o casador do hook cobre as duas etiquetas" \
+    "$(grep -c "grep -E '\^(PROJECAO USUARIO|conformidade):'" control/hooks/session-integrity.sh)" 2
+
 # ONDA 21c. PINO DE CONTAGEM, exigido pelo oraculo novo em `tests/unit/regressao-gate.sh`: suite
 # que NAO fixa a propria contagem nao pode ter o numero publicado em `docs/status.generated.md`,
 # porque um caso pulado em silencio mudaria o artefato sem deixar a suite vermelha - que e o G22.
-# Esta suite tem contagem estavel medida (34); o pino a torna verificavel em vez de presumida.
-EXPECTED=34
+# Esta suite tem contagem estavel medida (43); o pino a torna verificavel em vez de presumida.
+EXPECTED=43
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

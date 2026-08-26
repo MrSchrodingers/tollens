@@ -34,6 +34,10 @@
     "verificacao-de-fonte": {
       "agent": null,
       "desc": "Conferir na FONTE PRIMARIA um numero que outra rodada mandou corrigir na prosa, e achar a mesma forma no instrumento que o produz. Sem agente: e a sessao principal executando a regra de verificacao de fonte. NAO e `leitura-estrutural`, que le diff e tem agente proprio; atribuir a ele o que a sessao principal leu inflaria o saldo dos modos internos contra `auditoria-externa`, que originou a familia."
+    },
+    "execucao-em-ambiente-alheio": {
+      "agent": null,
+      "desc": "O MESMO codigo executado onde as precondicoes da bancada local NAO valem - a CI, ou um contentor montado para nao ter o que esta maquina tem. Sem agente: nao e adversario construido para atacar (isso e `execucao-hostil`, que tem agente proprio), e sim o ambiente comum de outra pessoa. Atribui-lo a `execucao-hostil` daria ao `auditor-seguranca` credito por achado que ele nao produziu, e a distincao importa porque a classe que este modo revela - verde local sobre precondicao que so a bancada satisfaz - nao e alcancavel por leitura nenhuma."
     }
   },
   "findings": [
@@ -1199,6 +1203,32 @@
       "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "resolution_note": "O padrao das cinco e o mesmo: a sonda nao acha o caso positivo conhecido e o vazio le-se como resposta. A regra 2 do kernel enxuto - `confira que o instrumento acha o caso positivo conhecido` - existe por causa desta familia, e eu a violei DEPOIS de escreve-la. Enunciar a regra nao a executa, e isso ja e precedente registrado no ADR 0011"
+    },
+    {
+      "finding_id": "G46",
+      "wave": 22,
+      "review_round": "CI vermelha apos a onda 22b",
+      "found_by": "execucao-em-ambiente-alheio",
+      "mode": "execucao-em-ambiente-alheio",
+      "class": "verificacao local sobre ambiente que nao tem a condicao",
+      "defect": "o verificador passou a auditar DOIS escopos e `install/apply.sh` termina chamando-o, entao o exit de um escopo que o instalador NAO instala virou o exit do instalador: em maquina sem a fase managed, `apply.sh` imprimia `componentes instalados: 48` e saia 1",
+      "measured": "CI vermelha em d4fd41b (runs 33007234824 e 33007230205) contra 16/16 rc=0 na bancada local. A diferenca nao era o codigo: aqui `/etc/claude-code` ESTA implantado, entao a condicao que derruba o instalador nunca ocorre localmente. Reproduzido em ubuntu:24.04 (GNU findutils 4.9.0, jq 1.7, /etc/claude-code AUSENTE): `apply.sh` rc=1 com a projecao de usuario 48/48 integra. Corrigido separando os codigos de saida por ESCOPO (1 usuario / 3 managed ausente / 4 managed gravavel) e fazendo o instalador propagar so o que e dele. O principio ja estava escrito em control/hooks/session-integrity.sh:29 - `absent` NAO e `conformant` - e o verificador o violava",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "Bancada verde nao caracteriza o ambiente do portao. Enquanto a suite nao exercitar os dois estados de managed em QUALQUER maquina, o verde local segue respondendo sobre um ambiente em que a condicao nao ocorre. CI8 passou a exercitar os dois via TOLLENS_MANAGED_DIR, mas a classe permanece aberta para toda precondicao que a maquina local satisfaz em silencio"
+    },
+    {
+      "finding_id": "G47",
+      "wave": 22,
+      "review_round": "CI vermelha apos a onda 22b",
+      "found_by": "execucao-em-ambiente-alheio",
+      "mode": "execucao-em-ambiente-alheio",
+      "class": "sonda-que-devolve-zero-por-nao-casar",
+      "defect": "`control/hooks/session-integrity.sh` procurava a linha `^conformidade:` para compor o resumo do heartbeat, etiqueta que a onda 22 renomeou para `PROJECAO USUARIO:`",
+      "measured": "`bash install/verify.sh | grep -cE '^conformidade:'` devolve 0 na saida desta onda, e 1 na do snapshot anterior. O campo `summary` do heartbeat e a linha de resumo do banner ficariam VAZIOS - degradacao muda, nao falha. SEXTA instancia da familia do G45 na mesma sessao, e a primeira em que a renomeacao foi feita por mim no mesmo dia. Corrigido casando as DUAS etiquetas, porque o hook roda de `~/.claude` e chama o verificador de `$REPO`: os dois podem estar em versoes diferentes, e essa divergencia e o que o hook existe para detectar",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "Renomear string que outro componente casa e mudanca de contrato entre arquivos, e nenhum portao deste repositorio mede acoplamento por etiqueta de texto. CI9 fixa este par; o par generico continua sem instrumento"
     }
   ],
   "reading": [
@@ -1212,12 +1242,13 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 90,
+    "n_findings": 92,
     "wave_min": 11,
     "wave_max": 22,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
       "auditoria-externa": 29,
+      "execucao-em-ambiente-alheio": 2,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
       "remedicao": 19,
@@ -1248,11 +1279,13 @@
       "G40",
       "G43",
       "G44",
+      "G46",
+      "G47",
       "G5",
       "G7"
     ],
     "by_state": {
-      "open": 16,
+      "open": 18,
       "resolved": 74
     }
   },
