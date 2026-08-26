@@ -67,20 +67,30 @@ chk "sem argumento instala"                 "${r%% *}" 0
                      || { echo "  FAIL  sem argumento deveria escrever muitos (got=${r#* })"; F=$((F+1)); }
 
 # ---------------------------------------------------------------------------------------------
-echo "== CI2. apply.sh: backup cobre CLAUDE.md, nao so hooks/agents/skills =="
+echo "== CI2. apply.sh: backup cobre edicao do operador antes de sobrescrever =="
 # A semeadura byte-exata torna o PRIMEIRO apply um no-op. Ela nao protege o SEGUNDO, e o segundo
-# e exatamente o caso descrito por escrito em install/manifest.sh. Sem este caso, a perda de 288
-# linhas de politica escrita a mao passaria em silencio.
+# e exatamente o caso descrito por escrito em install/manifest.sh. Sem este caso, a perda de
+# politica escrita a mao passaria em silencio.
+#
+# ONDA 22b: O ESPECIME MUDOU, A GARANTIA NAO. Este caso usava `CLAUDE.md`, que saiu da projecao de
+# usuario quando o kernel passou a viver so no escopo managed. A garantia testada - `apply.sh`
+# preserva a edicao do operador antes de convergir - continua valendo para os 48 componentes que
+# permaneceram, e apagar o caso junto com o especime teria removido cobertura real por um motivo
+# que nao e o dela. O especime passou a ser um hook, que e componente de manifesto com destino
+# ARQUIVO (nao diretorio), a mesma forma que `CLAUDE.md` tinha.
 D="$(mktemp -d "$TMP/bk.XXXXXX")"
-printf 'CONFIG DIVERGENTE DO OPERADOR\n' > "$D/CLAUDE.md"
-SHA_ORIG="$(sha256sum "$D/CLAUDE.md" | cut -d' ' -f1)"
+_ESPECIME="$(awk -F'\t' '$1=="hook"{print $3; exit}' install/manifest.lock)"
+[ -n "$_ESPECIME" ] || { echo "  FAIL  CI2 sem especime: nenhum hook no manifesto"; F=$((F+1)); }
+mkdir -p "$D/$(dirname "$_ESPECIME")"
+printf 'EDICAO DIVERGENTE DO OPERADOR\n' > "$D/$_ESPECIME"
+SHA_ORIG="$(sha256sum "$D/$_ESPECIME" | cut -d' ' -f1)"
 CLAUDE_HOME="$D" bash install/apply.sh >/dev/null 2>&1
-BK="$(find "$D/backups" -name CLAUDE.md 2>/dev/null | head -1)"
-chk "existe backup do CLAUDE.md sobrescrito" "$([ -n "$BK" ] && echo sim || echo nao)" sim
+BK="$(find "$D/backups" -name "$(basename "$_ESPECIME")" 2>/dev/null | head -1)"
+chk "existe backup do componente sobrescrito" "$([ -n "$BK" ] && echo sim || echo nao)" sim
 chk "o backup preserva o conteudo ORIGINAL" \
     "$([ -n "$BK" ] && [ "$(sha256sum "$BK" | cut -d' ' -f1)" = "$SHA_ORIG" ] && echo sim || echo nao)" sim
 chk "o destino foi de fato sobrescrito (o caso e real)" \
-    "$([ "$(sha256sum "$D/CLAUDE.md" | cut -d' ' -f1)" != "$SHA_ORIG" ] && echo sim || echo nao)" sim
+    "$([ "$(sha256sum "$D/$_ESPECIME" | cut -d' ' -f1)" != "$SHA_ORIG" ] && echo sim || echo nao)" sim
 
 # ---------------------------------------------------------------------------------------------
 echo "== CI3. apply-managed.sh: os quatro modos passam, o resto e recusado =="
@@ -155,14 +165,31 @@ ANTES="$(wc -l < "$CL/install/manifest.lock")"
 rm -f "$CL/execution/config/CLAUDE.md"
 ( cd "$CL" && bash install/manifest.sh install/manifest.lock >/dev/null 2>&1 ); rc=$?
 DEPOIS="$(wc -l < "$CL/install/manifest.lock")"
-chk "manifest.sh reprova quando a fonte do config some" "$rc" 1
-chk "e o manifesto NAO foi truncado"                    "$DEPOIS" "$ANTES"
-chk "a linha config sobreviveu"                         "$(grep -c '^config' "$CL/install/manifest.lock")" 1
+# ONDA 22b. A GUARDA CONTINUA, O QUE ELA PROTEGE MUDOU. Ate aqui o kernel era projetado para
+# `~/.claude/CLAUDE.md` e emitia linha `config` no manifesto; a terceira assercao conferia que
+# essa linha sobrevivia. O kernel passou a viver so no escopo managed, entao nao ha mais linha
+# `config` - e a guarda deixou de proteger a linha para proteger a FONTE CANONICA, que continua
+# sendo `execution/config/CLAUDE.md` e continua sendo de onde o deploy managed copia. Se ela
+# sumir, o deploy managed passa a copiar nada, e falhar alto continua sendo o certo.
+chk "manifest.sh reprova quando a fonte canonica do kernel some" "$rc" 1
+chk "e o manifesto NAO foi truncado"                             "$DEPOIS" "$ANTES"
+chk "o manifesto do clone permanece integro"                     "$(awk -F'\t' 'NF>=4' "$CL/install/manifest.lock" | wc -l)" \
+                                                                 "$(awk -F'\t' 'NF>=4' install/manifest.lock | wc -l)"
 
 echo "== CI6. apply.sh aborta se uma origem do manifesto nao existe =="
 # Antes, `cp -a` nao tinha retorno conferido e o contador somava assim mesmo: o instalador
 # imprimia "componentes instalados: 49" com o componente AUSENTE no destino.
+#
+# ONDA 22b. O CASO PERDEU O ESTIMULO, NAO A GARANTIA. Ele reaproveitava o clone do CI5, onde
+# `execution/config/CLAUDE.md` fora removido - e isso deixava uma origem do manifesto ausente.
+# Com o kernel fora da projecao de usuario, remover aquele arquivo nao produz mais origem ausente
+# nenhuma, entao `apply.sh` retornava 0 corretamente e o caso reprovava por ter deixado de
+# exercitar a condicao. Um teste que passa a nao estimular o que testa e teste inerte, e a onda 20
+# ja pagou por um mutante nessa situacao. O estimulo passou a ser explicito: remover a origem de
+# um componente que ESTA no manifesto.
 DD="$(mktemp -d "$TMP/miss.XXXXXX")"
+_ORIG_AUSENTE="$(awk -F"\t" '/^#/{next} NF>=4{print $2; exit}' "$CL/install/manifest.lock")"
+rm -rf "$CL/$_ORIG_AUSENTE"
 chk "origem ausente aborta a instalacao" \
     "$( cd "$CL" && CLAUDE_HOME="$DD" bash install/apply.sh >/dev/null 2>&1; echo $? )" 1
 

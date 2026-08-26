@@ -1139,8 +1139,16 @@ entradas managed: 8 eventos    entradas de usuario: 8 eventos
 so no usuario (perder-se-iam): NENHUMA
 ```
 
-O custo medido e real e nao fica escondido: tabelas de hook de plugin param de disparar.
-Dois plugins habilitados perderam hooks quando a flag foi ligada.
+**Esta medicao e DATADA, e o proprio documento a invalida.** Ela foi tomada *antes* da correcao
+descrita em 16.4, que moveu a sonda de ativacao para a tabela managed. A tabela managed passou a
+ter **nove** tipos de evento; o nono e `InstructionsLoaded`. A linha `so no usuario` continua
+verdadeira - nenhuma entrada de usuario se perdeu -, mas a simetria `8 = 8` deixou de valer, e
+publica-la como estado corrente seria o mesmo defeito que este documento registra como `G36`: um
+artefato que nao e funcao de nenhum estado que existiu.
+
+O custo medido e real e nao fica escondido: tabelas de hook de plugin param de disparar. Dois
+plugins habilitados perderam hooks quando a flag foi ligada; o conjunto exato no momento da
+medicao nao foi registrado, entao essa contagem e `NAO VERIFICADO` em reinspecao.
 
 ### 16.4 Evidencia de ativacao, e o defeito que ligar a imposicao criou
 

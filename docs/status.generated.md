@@ -7,7 +7,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Suite | Assercoes | Exit |
 |---|---:|---:|
-| `tests/unit/regressao-gate.sh` | 64 | 0 |
+| `tests/unit/regressao-gate.sh` | 65 | 0 |
 | `tests/unit/document-tools.sh` | 57 | 0 |
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
@@ -72,11 +72,10 @@ assercao).
 |---|---:|
 | adapter | 11 |
 | agent | 10 |
-| config | 1 |
 | doctool | 5 |
 | hook | 14 |
 | skill | 8 |
-| **total** | **49** |
+| **total** | **48** |
 
 ## Limites declarados
 

@@ -1141,8 +1141,16 @@ managed entries: 8 events    user entries: 8 events
 only in user (would be lost): NONE
 ```
 
+**This measurement is dated, and the document itself invalidates it.** It was taken *before* the
+correction described in 16.4, which moved the activation probe into the managed table. The managed
+table now carries **nine** event types; the ninth is `InstructionsLoaded`. The `only in user` line
+is still true — no user entry was lost — but the symmetry `8 = 8` no longer holds, and publishing
+it as current state would be the same defect this document records as `G36`: an artifact that is
+not a function of any state that existed.
+
 The measured cost is real and is not hidden: plugin hook tables stop firing. Two enabled
-plugins lost hooks when the flag was set.
+plugins lost hooks when the flag was set; the exact set at the moment of measurement was not
+recorded, so that count is `NOT_VERIFIED` on re-inspection.
 
 ### 16.4 Activation evidence, and the defect that enabling enforcement created
 

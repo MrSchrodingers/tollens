@@ -85,7 +85,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "analista-otimalidade": {
       "kind": "agent",
@@ -110,7 +111,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "artifact-discipline.sh": {
       "kind": "hook_gate",
@@ -133,7 +135,8 @@
             "ref": "tests/unit/hooks-de-guarda.sh"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "auditor-seguranca": {
       "kind": "agent",
@@ -158,13 +161,14 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "claude-md": {
       "kind": "guidance_document",
       "source": "execution/config/CLAUDE.md",
       "state": "candidate",
-      "installed": true,
+      "installed": false,
       "activation": "always",
       "measured_size_bytes": 18274,
       "evidence": {
@@ -179,7 +183,8 @@
           }
         }
       },
-      "note": "nome em minusculo por exigencia de CC3; o caminho real esta em `source`."
+      "note": "nome em minusculo por exigencia de CC3; o caminho real esta em `source`. ONDA 22b: o kernel deixou a projecao de usuario e passa a ser projetado para /etc/claude-code/CLAUDE.md, root-owned. Documentos de instrucao sao CONCATENADOS pelo runtime, entao manter as duas copias custava contexto em toda sessao sem acrescentar informacao. `installed` continua descrevendo a projecao de USUARIO - e por isso False.",
+      "projection": "managed"
     },
     "defesa-de-tese": {
       "kind": "skill",
@@ -194,7 +199,8 @@
       },
       "retired_at": "2026-08-14",
       "superseded_by": "refutador",
-      "reason": "validava na MESMA resposta que propos - auto-correcao intrinseca; o agente refutador faz a mesma pergunta com contexto separado (ADR 0011)"
+      "reason": "validava na MESMA resposta que propos - auto-correcao intrinseca; o agente refutador faz a mesma pergunta com contexto separado (ADR 0011)",
+      "projection": "user"
     },
     "depreciar": {
       "kind": "skill",
@@ -219,7 +225,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "design-system-proposal": {
       "kind": "skill",
@@ -244,7 +251,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "ds4-notify.sh": {
       "kind": "hook_instrument",
@@ -262,7 +270,8 @@
             "ref": "tests/unit/hooks-de-guarda.sh"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "fable-guard.sh": {
       "kind": "hook_gate",
@@ -285,7 +294,8 @@
             "ref": "tests/unit/hooks-de-guarda.sh"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "forge": {
       "kind": "skill",
@@ -310,7 +320,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "graphify": {
       "kind": "skill",
@@ -335,7 +346,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "graphify-scout-mode.sh": {
       "kind": "hook_guidance",
@@ -359,7 +371,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "grill-me": {
       "kind": "skill",
@@ -384,7 +397,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "implementador": {
       "kind": "agent",
@@ -409,7 +423,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "investigador": {
       "kind": "agent",
@@ -434,7 +449,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "lentes.sh": {
       "kind": "hook_guidance",
@@ -458,7 +474,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "mapeador-dependencias": {
       "kind": "agent",
@@ -483,7 +500,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "output-budget.sh": {
       "kind": "hook_guidance",
@@ -507,7 +525,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "poka-yoke-lint.sh": {
       "kind": "hook_gate",
@@ -530,7 +549,8 @@
             "ref": "tests/unit/hooks-de-guarda.sh"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "prd-to-issues": {
       "kind": "skill",
@@ -555,7 +575,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "prd-to-plan": {
       "kind": "skill",
@@ -580,7 +601,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "read-budget.sh": {
       "kind": "hook_gate",
@@ -601,7 +623,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "refutador": {
       "kind": "agent",
@@ -626,7 +649,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "revisor-codigo": {
       "kind": "agent",
@@ -651,7 +675,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "revisor-frontend": {
       "kind": "agent",
@@ -676,7 +701,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "risk-trigger.sh": {
       "kind": "hook_guidance",
@@ -700,7 +726,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "self-mod-audit.sh": {
       "kind": "hook_guidance",
@@ -724,7 +751,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "session-integrity.sh": {
       "kind": "hook_guidance",
@@ -748,7 +776,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "subagent-contract.sh": {
       "kind": "hook_gate",
@@ -769,7 +798,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "subagent-probe.sh": {
       "kind": "hook_instrument",
@@ -787,7 +817,8 @@
             "ref": "tests/unit/hooks-de-guarda.sh"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "tdd": {
       "kind": "agent",
@@ -812,7 +843,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "verify-gate.sh": {
       "kind": "hook_gate",
@@ -833,7 +865,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     },
     "write-a-prd": {
       "kind": "skill",
@@ -858,7 +891,8 @@
             "status": "absent"
           }
         }
-      }
+      },
+      "projection": "user"
     }
   },
   "workflows": [

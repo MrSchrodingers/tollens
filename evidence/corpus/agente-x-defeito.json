@@ -700,10 +700,9 @@
       "mode": "auditoria-externa",
       "class": "fenomeno-sem-instrumento",
       "defect": "evidencia de ATIVACAO nao existe: nada observa que o runtime carregou o documento ou disparou o hook no evento",
-      "measured": "`InstructionsLoaded` existe no binario 2.1.241, DISPARA, e entrega `file_path`, `memory_type` e `load_reason`. Sonda no escopo imposto: 43 eventos em 8 sessoes; `Managed` presente em 5 de 5 sessoes que carregaram instrucao",
+      "measured": "`InstructionsLoaded` existe no binario 2.1.241, DISPARA, e entrega `file_path`, `memory_type` e `load_reason`. COBERTURA POR SESSAO, com o denominador correto: `Managed` em 5 de 8 sessoes OBSERVADAS (5 de 6 entre as que emitiram `InstructionsLoaded`). A metrica publicada antes - `5 de 5 sessoes que carregaram instrucao` - condicionava no desfecho: excluia por construcao as sessoes onde a sonda falhou. Snapshot nao recuperavel: o evento NAO tem campo de tempo, e a contagem de eventos ja foi 43 e depois 56 com o mesmo n=8 - ver G39",
       "source_ref": "docs/adr/0036-instalar-nao-e-ativar.md",
       "state": "resolved",
-      "open_note": "E_A declarada como dimensao candidata, nao implementada",
       "resolution_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "resolution_note": "O estimando de G6b era 'nao existe evidencia observavel de ativacao', e ele foi FALSIFICADO - o instrumento existia e nao tinha sido testado. Ampliar G6b retroativamente para abranger eficacia de roteamento seria mudar o estimando depois de observar o resultado, que e o defeito que este repositorio persegue. O que permanece aberto e OUTRA proposicao, registrada separadamente: recall e precisao de gatilho das skills"
     },
@@ -918,9 +917,10 @@
       "class": "instalado-nao-e-imposto",
       "defect": "35 dos 49 componentes de `~/.claude` sao gravaveis pelo ator que eles governam, inclusive `CLAUDE.md`",
       "measured": "35 dos 49 componentes de `~/.claude` sao gravaveis pelo ator. ERRATA DE ONTOLOGIA, onda 22: eu escrevi que a precedencia managed torna as duplicatas INERTES, e a propria sonda refuta para `CLAUDE.md` - documentos de instrucao sao CONCATENADOS, nao sobrescritos, e a serie mostra `Managed` e `User` entrando no contexto na MESMA sessao. Sao tres regimes diferentes: `CLAUDE.md` user esta ATIVO (custo de contexto sem informacao, se byte-identico); agents e skills sao SOMBREADOS por nome; hooks user estao INERTES por `allowManagedHooksOnly`, o que e enforcement e nao precedencia",
-      "state": "open",
+      "state": "resolved",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
-      "open_note": "A ordem e: verificador multiescopo (#39) ANTES de remover duplicata. E a PRIMEIRA a remover deve ser a copia user do `CLAUDE.md`, porque e a unica dos tres regimes que custa contexto em toda sessao sem acrescentar informacao. Agents e skills sombreados custam disco, nao contexto"
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_note": "kernel saiu da projecao de usuario: manifesto de 49 para 48 componentes, custo por sessao de 36.548 para 2.924 bytes (-92%). A remocao foi possivel porque o verificador multiescopo (G33) veio ANTES - a ordem inversa produziria instrumento vermelho sobre sistema correto, ou pior, verde sobre populacao que deixou de representar o runtime"
     },
     {
       "finding_id": "G25",
@@ -1038,9 +1038,10 @@
       "class": "verificador-que-descreve-um-escopo-e-conclui-sobre-o-sistema",
       "defect": "`install/verify.sh` publica `governed=user` sem conhecer o escopo managed, que passou a ter precedencia",
       "measured": "`49/49 ok` continua evidencia valida da integridade da projecao de usuario, e deixou de ser suficiente para caracterizar governanca: o kernel agora carrega de `/etc/claude-code` com `memory_type: Managed`, verificado E2E",
-      "state": "open",
+      "state": "resolved",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
-      "open_note": "O fecho e compor USER_PROJECTION, MANAGED_PROJECTION e RUNTIME_ACTIVATION em observacoes separadas, e so entao derivar a governanca global. Trocar a string `governed=user` por `governed=managed` seria corrigir o rotulo sem corrigir o instrumento - a classe que a onda 20 corrigiu. Issue #39. E a ORDEM importa: remover as 19 duplicatas antes disso produziria instrumento verde sobre populacao que deixou de representar o runtime."
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_note": "`install/verify.sh` passou a publicar tres observacoes independentes - PROJECAO USUARIO, PROJECAO MANAGED e ATIVACAO - e so entao derivar GOVERNANCA GLOBAL. A linha de ATIVACAO carrega o LIMITE de G39 (o log e gravavel pelo ator), porque publicar ativacao sem a ressalva seria cometer no relatorio a forma que o ADR descreve. Nao foi troca de string: `governed=managed` e derivado das tres, e reprova PARCIAL se o escopo managed estiver incompleto ou gravavel"
     },
     {
       "finding_id": "G34",
@@ -1106,6 +1107,84 @@
       "state": "open",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "open_note": "Separar dois objetivos que eu tinha fundido: (a) DEFAULT COMPORTAMENTAL de sistema via `config.toml`, que e possivel e foi verificado E2E; (b) RESTRICAO NAO SOBRESCRIVIVEL via `requirements.toml`, que NAO foi testada. Se `developer_instructions` nao tiver equivalente obrigatorio em `requirements.toml`, a conclusao honesta e que o Codex admite default de sistema e NAO admite enforcement comportamental - nao inventar equivalencia"
+    },
+    {
+      "finding_id": "G39",
+      "wave": 22,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "instrumento-que-mede-imposicao-nao-e-imposto",
+      "defect": "`/var/log/tollens-activation.jsonl` e `ti:ti 0644` - o ator governado e dono da evidencia de que e governado",
+      "measured": "medido: `CLAUDE.md`, `managed-settings.json` e `.claude/agents` sao `root:root`; o log e `ti:ti` e `test -w` confirma escrita. O ator pode truncar, reescrever e FORJAR linhas `\"t\":\"Managed\"` que nunca ocorreram. E o evento nao tem campo de tempo - campos sao ['a','ev','f','k','s','t'] -, entao nem deteccao por ordenacao existe. Eu criei o log assim de proposito, com `install -o ti -g ti`, para que os hooks (que rodam como usuario) pudessem gravar",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "E `INSTALLED != ENFORCED` aplicado ao instrumento que mede `ENFORCED`. O fecho exige sumidouro root-owned com append por helper root, ou `logger`/journald; `chattr +a` e o minimo. PROPAGACAO que impede correcao ingenua: o oraculo publicado no README (`: | sudo tee /var/log/...`) DEPENDE de o ator poder escrever ali, e endurecer a posse quebra a instrucao como esta escrita"
+    },
+    {
+      "finding_id": "G40",
+      "wave": 22,
+      "review_round": "revisor-codigo",
+      "found_by": "revisor-codigo",
+      "mode": "leitura-estrutural",
+      "class": "sonda-com-falso-negativo-parcial",
+      "defect": "`InstructionsLoaded` registrou apenas `Project` numa sessao em que os documentos `Managed` e `User` estavam comprovadamente em contexto",
+      "measured": "sessao `68e9eb26`: duas linhas `\"t\":\"Project\"` e nenhuma `Managed`/`User`, enquanto o texto integral do `/etc/claude-code/CLAUDE.md` chegava ao prompt e os dois arquivos sao `sha256 a5e6416f`, identicos. Uma sessao com carga completa (`12ba59b9`) registra os tres escopos",
+      "state": "open",
+      "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "open_note": "MECANISMO NAO DETERMINADO. Hipoteses concorrentes que nao consegui separar sem escrever no log: o evento so dispara para carga tardia e a inicial usa outro caminho; ou o id de sessao de thread de subagente difere do da sessao que carrega. Repro dirigida: zerar o log, abrir sessao limpa sem subagente, contar `memory_type`. Consequencia imediata: a linha `documento de instrucao | observado` da tabela 16.5 do README precisa da qualificacao de que o observavel existe e NAO e completo"
+    },
+    {
+      "finding_id": "G41",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao medir o defeito de producao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "action-calibration-sem-instrumento",
+      "defect": "o harness tem numerosos mecanismos contra INTERVENCAO OMITIDA e nenhum equivalente contra INTERVENCAO DESNECESSARIA - foi otimizado para recall de necessidade, nao para precisao",
+      "measured": "sessao de 2026-08-26 15:10, sob kernel managed imposto desde 2026-08-25 15:14 e modo estrito desde 17:27, afirmou que um campo era novo estando ele no proprio diff nao commitado, em branch com o nome do trabalho. Contestada, mediu com `grep -A20` que cortava antes da linha do campo e apresentou o erro como confirmacao. Taxonomia correta: intervencao correta / omissao / intervencao desnecessaria / no-op correto, com NeedPrecision e NeedRecall medidos separadamente. NO-OP nao e desfecho de primeira classe no fluxo atual, que comeca em `como fazer` e nunca em `ha algo a fazer`",
+      "state": "resolved",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md"
+    },
+    {
+      "finding_id": "G42",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao medir o defeito de producao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "kernel-que-argumenta-contra-comprimento-e-cresce",
+      "defect": "o kernel declarava que texto nele custa em toda sessao e carregava 18.274 caracteres, duplicados por concatenacao",
+      "measured": "custo real medido: 36.548 bytes (~9.100 tokens) por sessao, porque documentos de instrucao sao concatenados e havia copia identica em managed e user. A citacao invocada para sustentar concisao (`arXiv:2402.14848`) NAO esta no ledger deste repositorio - vive na prosa e nunca passou pelo instrumento que o proprio repo construiu para citacoes",
+      "state": "resolved",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md"
+    },
+    {
+      "finding_id": "G43",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao medir o defeito de producao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "documentacao-exaustiva-sobre-o-assunto-errado",
+      "defect": "40 ADRs documentam o aparato; nenhum documenta os modos de falha do TRABALHO",
+      "measured": "nao ha em 40 ADRs uma taxonomia dos erros que uma sessao comete ao atender um pedido real: afirmar necessidade falsa, cortar a janela de uma medicao, contradizer o proprio diff, expandir escopo. O repositorio ja registrava a forma geral (`consistencia interna NAO IMPLICA completude`, ADR 0036) e a aplicava ao corpus, nao a si",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "O fecho e um corpus de modos de falha de TRABALHO, alimentado por sessoes reais fora deste repositorio, e nao por auditoria do aparato. Sem isso, cada defeito operacional continua sendo descoberto pelo operador em vez de pelo instrumento. Nao construido aqui: exige coleta que este repositorio nao faz hoje"
+    },
+    {
+      "finding_id": "G44",
+      "wave": 22,
+      "review_round": "auditoria externa (9a rodada)",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "kernel-encolhido-sem-canal-de-reposicao",
+      "defect": "encolher o kernel pressupoe que o conteudo removido volte por skill sob demanda, e o roteamento de skill deste repositorio nao funciona",
+      "measured": "telemetria da onda 22: ZERO invocacoes automaticas das oito skills, com o canal comprovadamente funcional - uma skill NAO-Tollens foi observada disparando na mesma serie. Trocar `contexto demais` por `contexto que nunca aparece` substitui um defeito por outro pior, porque o segundo e silencioso",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "O kernel enxuto tem de bastar para trabalho normal SEM skill deste repositorio; skills sao incrementais, nao supletivas. O que decide e o benchmark de roteamento (E_A), nao mais deploy. Registrado como condicao de desenho para que o encolhimento nao seja lido como progressive disclosure que nao existe"
     }
   ],
   "reading": [
@@ -1119,16 +1198,16 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 83,
+    "n_findings": 89,
     "wave_min": 11,
     "wave_max": 22,
     "counts_by_mode": {
       "aplicacao-de-instrumento": 3,
-      "auditoria-externa": 28,
+      "auditoria-externa": 29,
       "execucao-hostil": 1,
-      "leitura-estrutural": 22,
+      "leitura-estrutural": 24,
       "remedicao": 19,
-      "verificacao-de-fonte": 10
+      "verificacao-de-fonte": 13
     },
     "sources": [
       "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
@@ -1137,6 +1216,7 @@
       "docs/adr/0038-referencia-que-resolve-e-estado-que-nao-e-prosa.md",
       "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
+      "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
     ],
     "open_findings": [
@@ -1144,20 +1224,22 @@
       "G19",
       "G20",
       "G21",
-      "G24",
       "G25",
       "G30",
-      "G33",
       "G36",
       "G37",
       "G38",
+      "G39",
       "G4",
+      "G40",
+      "G43",
+      "G44",
       "G5",
       "G7"
     ],
     "by_state": {
-      "open": 14,
-      "resolved": 69
+      "open": 16,
+      "resolved": 73
     }
   },
   "historical_states": [

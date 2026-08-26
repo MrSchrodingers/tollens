@@ -165,10 +165,29 @@ PYEOF
   # com `managed-files.lock`, ve `CLAUDE.md` como componente removido, e a convergencia executa
   # `rm -rf "$DEST/CLAUDE.md"` - apagando a config viva do operador por causa de um arquivo
   # faltando no repo. Aqui o alvo e UM caminho conhecido, nao um glob: ausencia e defeito.
-  if [ -f execution/config/CLAUDE.md ]; then
-    emit config execution/config/CLAUDE.md "CLAUDE.md"
-  else
-    echo "ERRO: execution/config/CLAUDE.md ausente - o destino nao sera tocado." >&2
+  # ONDA 22b (G24). O KERNEL SAIU DA PROJECAO DE USUARIO E VIVE SO NO ESCOPO MANAGED.
+  #
+  # A razao e medida, nao estetica: documentos de instrucao sao CONCATENADOS pelo runtime, nao
+  # sobrescritos - a sonda de ativacao observou `Managed` e `User` entrando no contexto na MESMA
+  # sessao. Com as duas copias, a sessao pagava 36.548 bytes por um kernel de 18.274. Ao trocar o
+  # managed pelo kernel enxuto sem tirar a copia user, o total ficou 21.198 - reducao de 42% onde
+  # o desenho previa 84%. Copia de instrucao nao e redundancia inerte: e custo de contexto em
+  # toda sessao, e a evidencia externa de que comprimento degrada esta no proprio ADR.
+  #
+  # O kernel canonico continua VERSIONADO em `execution/config/`. O que mudou e o destino: ele e
+  # projetado para `/etc/claude-code/CLAUDE.md`, root-owned, e nao mais para `~/.claude`.
+  # `install/verify.sh` passou a compor as tres projecoes em vez de descrever so a de usuario.
+  #
+  # NAO EMITIR aqui e o que faz `apply.sh` CONVERGIR: ele compara com `managed-files.lock`, ve o
+  # componente removido e limpa o destino. Sem isso a copia user ficaria orfa e continuaria sendo
+  # concatenada - o pior dos dois mundos, porque some do inventario e permanece no contexto.
+  # A GUARDA CONTINUA, e o alvo dela mudou junto com o destino do kernel. Ela existia porque o
+  # arquivo sumir do repo tiraria o componente do manifesto EM SILENCIO, e `apply.sh` leria isso
+  # como remocao e faria `rm -rf` na config viva. Agora o kernel nao e mais projetado para a
+  # projecao de usuario, mas o arquivo canonico continua sendo a fonte do deploy managed - se ele
+  # sumir, o deploy managed passa a copiar nada, e falhar alto aqui continua sendo o certo.
+  if [ ! -f execution/config/CLAUDE.md ]; then
+    echo "ERRO: execution/config/CLAUDE.md ausente - fonte canonica do kernel managed." >&2
     exit 1
   fi
 } > "$_MTMP"
