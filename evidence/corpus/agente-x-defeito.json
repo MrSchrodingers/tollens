@@ -1185,6 +1185,20 @@
       "state": "open",
       "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "open_note": "O kernel enxuto tem de bastar para trabalho normal SEM skill deste repositorio; skills sao incrementais, nao supletivas. O que decide e o benchmark de roteamento (E_A), nao mais deploy. Registrado como condicao de desenho para que o encolhimento nao seja lido como progressive disclosure que nao existe"
+    },
+    {
+      "finding_id": "G45",
+      "wave": 22,
+      "review_round": "verificacao de fonte ao medir reaplicacao",
+      "found_by": "verificacao-de-fonte",
+      "mode": "verificacao-de-fonte",
+      "class": "sonda-que-devolve-zero-por-nao-casar",
+      "defect": "a medicao de `ChangedFiles INTERSEC InstallManifest` comparava caminho de ARQUIVO com entrada de DIRETORIO por igualdade exata, e devolvia zero",
+      "measured": "`execution/skills/forge/SKILL.md` no diff contra `execution/skills/forge` no manifesto: `$2==f` nao casa. Publiquei `interseccao vazia` com 2 componentes atingidos. Corrigido por prefixo: 2 de 48. QUINTA instancia desta familia nesta sessao - `find -newermt` (G26), `Task` em vez de `Agent`, `grep -A20` cortando a linha, `/dev/tcp` sob zsh (G31), e esta",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "resolution_note": "O padrao das cinco e o mesmo: a sonda nao acha o caso positivo conhecido e o vazio le-se como resposta. A regra 2 do kernel enxuto - `confira que o instrumento acha o caso positivo conhecido` - existe por causa desta familia, e eu a violei DEPOIS de escreve-la. Enunciar a regra nao a executa, e isso ja e precedente registrado no ADR 0011"
     }
   ],
   "reading": [
@@ -1198,7 +1212,7 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 89,
+    "n_findings": 90,
     "wave_min": 11,
     "wave_max": 22,
     "counts_by_mode": {
@@ -1207,7 +1221,7 @@
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
       "remedicao": 19,
-      "verificacao-de-fonte": 13
+      "verificacao-de-fonte": 14
     },
     "sources": [
       "docs/adr/0035-a-divida-era-de-uma-classe-so.md",
@@ -1239,7 +1253,7 @@
     ],
     "by_state": {
       "open": 16,
-      "resolved": 73
+      "resolved": 74
     }
   },
   "historical_states": [
