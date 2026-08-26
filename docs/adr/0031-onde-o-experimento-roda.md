@@ -25,6 +25,12 @@ listados no cabecalho de `tests/lib/arena.sh:12-23`. O pior deles nao foi um tes
 O agravante estrutural: `scripts/status.sh --check` executa os arneses. O verificador do
 documento de estado e ele mesmo um mutador de estado.
 
+> **ERRATA, onda 21 (2026-08-25).** A frase acima descrevia o mecanismo vigente em 2026-08-19 e
+> nao descreve mais: a onda 21 removeu a execucao dos arneses de `scripts/status.sh`, porque os
+> onze tem passo dedicado no workflow e ali o exit code so era reimpresso. A observacao datada
+> fica como foi escrita; a arena segue justificada pelos passos dedicados e pela execucao manual,
+> que mutam a arvore do mesmo jeito. Ver ADR 0040.
+
 ## Decisao
 
 O arnes deixa de operar na arvore candidata. `tests/lib/arena.sh`, sourced pelos treze, copia a

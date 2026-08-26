@@ -98,9 +98,9 @@
       "valid_when": [
         "o arquivo em `ref` existe na arvore",
         "a suite em `ref` INVOCA o componente (nao apenas o menciona)",
-        "`ref` e ENUMERADA por scripts/status.sh - isto e, o gerador de relatorio de fato a executa"
+        "`ref` e ENUMERADA por scripts/status.sh - para suite de UNIDADE isso implica execucao pelo gerador; para arnes de `tests/mutation/` NAO implica desde a onda 21, e ali o que garante execucao e o passo dedicado do workflow, conferido por `onde_roda()`"
       ],
-      "note": "A segunda condicao existe porque mencao nao e execucao: a medicao que abriu esta onda encontrou hooks citados por nome em suites que nunca os rodavam. A terceira condicao mudou na propria onda 15: a redacao original falava em 'aparece em docs/status.generated.md com exit 0', que e circular (a suite nova nao esta no documento antes da primeira geracao). Enumeracao no gerador e o que de fato garante execucao."
+      "note": "A segunda condicao existe porque mencao nao e execucao: a medicao que abriu esta onda encontrou hooks citados por nome em suites que nunca os rodavam. A terceira condicao mudou na propria onda 15: a redacao original falava em 'aparece em docs/status.generated.md com exit 0', que e circular (a suite nova nao esta no documento antes da primeira geracao). Enumeracao no gerador e o que de fato garante execucao PARA SUITE DE UNIDADE. ERRATA da onda 21b, achado do `revisor-codigo`: a onda 21 tirou os arneses de mutacao do gerador, entao para `tests/mutation/*.sh` a enumeracao deixou de implicar execucao. Hoje o risco e LATENTE - nenhum `ref` em uso aponta para `tests/mutation/`, medido sobre as 17 evidencias `executed_suite` do registry -, mas no dia em que alguem pagar E_M com um arnes o portao creditaria sem execucao. A condicao foi estreitada para o que ela de fato sustenta."
     },
     "dossier": {
       "requires": [

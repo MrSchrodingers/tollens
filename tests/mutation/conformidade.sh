@@ -68,8 +68,8 @@ echo "== mutacao: cada garantia removida DEVE quebrar a conformidade de dois esc
 # defeito medido: escopo de usuario conforme autorizava calar sobre a arvore root-owned.
 mutante MN1 "silencio exige os DOIS escopos conformes" \
   "hook NAO se cala quando so o escopo managed diverge" \
-  troca '[ "$RC" -eq 0 ] && [ "$MRC" -eq 0 ] && exit 0' \
-        '[ "$RC" -eq 0 ] && exit 0'
+  troca '[ "$URC" -eq 0 ] && [ "$RC" -ne 4 ] && [ "$MRC" -eq 0 ] && exit 0' \
+        '[ "$URC" -eq 0 ] && exit 0'
 
 # MN2 - o bloco managed some da mensagem. O hook detecta e agrega, mas o operador nunca fica
 # sabendo QUAL escopo divergiu: deteccao sem canal e o defeito do ADR 0021 outra vez.

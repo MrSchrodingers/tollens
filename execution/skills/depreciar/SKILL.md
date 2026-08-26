@@ -1,7 +1,7 @@
 ---
 name: depreciar
 description: Mede o uso REAL de cada skill e agente a partir dos transcripts e propoe depreciacao com evidencia. Acionar com /depreciar periodicamente, quando as skills instaladas passarem de ~10, quando o custo de descricao no system prompt incomodar, ou antes de instalar algo novo. Nunca arquiva sozinho - propoe e mostra a evidencia.
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # /depreciar - fechar o ciclo de vida
@@ -9,7 +9,19 @@ disable-model-invocation: false
 Skill acumula. Nada as remove. E assim que uma config chega a 25 skills das quais 22 nunca
 foram usadas, pagando descricao no system prompt de toda sessao por capacidade que nao existe.
 
-Este e o outro lado do `/forge`: criar exige benchmark, **manter exige uso**.
+Este e o outro lado do `/forge`: criar exige benchmark, manter exige **utilidade sobre
+oportunidade elegivel**.
+
+A formulacao anterior era "manter exige uso", e o denominador estava errado. Uma capability de
+recuperacao de desastre com zero uso em doze meses pode estar perfeita - nao houve desastre. O
+que se mede e:
+
+    TriggerRecall    = disparos elegiveis / oportunidades elegiveis
+    TriggerPrecision = disparos elegiveis / disparos totais
+    UtilidadeMarginal = Q_com - Q_sem
+
+`sessoes` nao e denominador: uma capability especializada deve ficar em silencio quando nenhuma
+tarefa elegivel ocorreu, e silencio nesse caso e o comportamento CORRETO.
 
 ## Passo 1 - MEDIR, os dois canais
 
@@ -34,6 +46,9 @@ Aplicar cada uma, por escrito, antes de propor:
 
 **(a) A skill e nova?** Sem tempo de uso, zero e ausencia de dado, nao evidencia. Regra: menos
 de 30 dias ou menos de ~20 sessoes desde a criacao -> nao proponha.
+   Estes dois numeros sao DEFAULT OPERACIONAL PROVISORIO, nao limiar empiricamente validado.
+   Nao ha medicao que os sustente; eles existem para impedir depreciacao apressada, e devem
+   ceder a contagem de oportunidades elegiveis assim que ela existir.
 
 **(b) O gatilho da `description` esta errado?** A skill pode ser util e nunca disparar porque a
 descricao nao casa com o jeito que voce pede. Aqui o defeito e de ROTEAMENTO, e depreciar seria
