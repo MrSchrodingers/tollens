@@ -31,7 +31,7 @@ skill	execution/skills/design-system-proposal	skills/design-system-proposal	93a5
 skill	execution/skills/forge	skills/forge	34ed31b2096993416a317a7cf4008d0152422104f953c12f7211d580f23962a8
 skill	execution/skills/graphify	skills/graphify	4e2ba651342dbb5a3dcb3b440f2ea64db1c3ecd5e4636840987d09a4b2344bf3
 skill	execution/skills/grill-me	skills/grill-me	6ac5c0ed3d81170cade87b9c6ac74bb1d0dd1940c03f8ea19eb64b18c2b7540c
-skill	execution/skills/prd-to-issues	skills/prd-to-issues	a95c3ed2a50c7e686e4ce471f9c41753b1c60f0f3830a8101cd7abcbe8d04a3c
+skill	execution/skills/prd-to-issues	skills/prd-to-issues	6752322d9f817708b6983e2a5cce4f9031a7443bc49565ed3ee978e6cd48a431
 skill	execution/skills/prd-to-plan	skills/prd-to-plan	5d4e4011765284398acd75f9031dcabbed774807a808a379b65f9e92c3a56e7d
 skill	execution/skills/write-a-prd	skills/write-a-prd	14e0c9418b57ffeac3db77314679cad0bb7c299a35ae2049b7d1c2fc16e319ac
 adapter	execution/adapters/code/dotnet.json	tollens/adapters/code/dotnet.json	de8ce4993f738dd281683bf3297cb986bcc64b14dc4f968bb7fde75f94c1261a
