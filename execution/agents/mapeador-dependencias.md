@@ -1,7 +1,7 @@
 ---
 name: mapeador-dependencias
 description: Use PROATIVAMENTE antes de qualquer alteracao nao trivial para construir o mapa e o grafo de dependencias do trecho a ser mudado. Identifica importadores, chamadores, contratos, testes, schema e config afetados, para planejar a propagacao. Read-only.
-tools: Read, Grep, Glob, Bash
+tools: Read, Bash
 model: opus
 color: cyan
 ---

@@ -1,7 +1,7 @@
 ---
 name: tdd
 description: Use PROATIVAMENTE para escrever e conduzir o ciclo red-green de testes que verificam comportamento observavel. Especialista em testar comportamento real, nunca tautologia. Pode editar testes e codigo minimo para passar.
-tools: Read, Write, Edit, Bash, Grep, Glob
+tools: Read, Write, Edit, Bash
 model: sonnet
 color: yellow
 ---

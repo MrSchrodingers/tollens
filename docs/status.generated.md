@@ -63,7 +63,7 @@ assercao).
 | `evidence/probes/github-ruleset.py` | 86.0% | 86.0% | OK |
 | `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
-| `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
+| `evidence/runtime-probes/declared-capabilities.py` | 83.0% | 92.6% | ABAIXO DO PISO |
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
 | `evidence/corpus/render.py` | 93.6% | 93.6% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
