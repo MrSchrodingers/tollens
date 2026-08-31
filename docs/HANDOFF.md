@@ -196,7 +196,8 @@ snapshot e verificacao, composicao de autoridades.
 Nao declare a sessao concluida sem, colado na resposta:
 
 - [ ] `bash scripts/status.sh --check` -> exit 0
-- [ ] `bash install/verify.sh` -> exit 0, sem orfaos
+- [ ] `bash install/verify.sh` -> exit 0, ou 3 se a fase managed nao esta implantada nesta
+      maquina (implantar exige root; 1 = projecao de usuario divergente, e ai sim e falha)
 - [ ] as 9 suites unitarias e os 3 runners de mutacao -> exit 0
 - [ ] `python3 evidence/validate-claims.py` -> exit 0
 - [ ] CI verde no commit final, com SHA e URL, e o PR mergeado pelo ruleset

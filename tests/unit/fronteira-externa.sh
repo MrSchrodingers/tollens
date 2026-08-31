@@ -243,6 +243,17 @@ echo "== FE5. o ruleset que o cabecalho manda configurar existe de fato =="
 chk "o contexto declarado e produzido por algum job" \
     "$([ "$(campo produtores_do_exigido)" -ge 1 ] && echo sim || echo nao)" "sim"
 
+
+# ONDA 21c. PINO DE CONTAGEM, exigido pelo oraculo novo em `tests/unit/regressao-gate.sh`: suite
+# que NAO fixa a propria contagem nao pode ter o numero publicado em `docs/status.generated.md`,
+# porque um caso pulado em silencio mudaria o artefato sem deixar a suite vermelha - que e o G22.
+# Esta suite tem contagem estavel medida (13); o pino a torna verificavel em vez de presumida.
+EXPECTED=13
+if [ "$P" -ne "$EXPECTED" ]; then
+  echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
+  exit 1
+fi
+
 echo
 printf '================ PASS=%s  FAIL=%s ================\n' "$P" "$F"
 if [ "$F" -eq 0 ]; then echo "fronteira externa verde ($P/$P)"; exit 0
