@@ -934,10 +934,10 @@
       "mode": "verificacao-de-fonte",
       "class": "escopo-imposto-publica-instrucao-para-caminho-do-ator",
       "defect": "`/opt/tollens/hooks/read-budget.sh`, root-owned, PUBLICA uma receita nomeando `~/.claude/tollens/document-tools/doctool.sh`, que e `ti:ti` e gravavel pelo ator",
-      "measured": "ERRATA DE AMPLITUDE, onda 21c: a primeira redacao dizia que o hook EXECUTA o doctool. Inspecao direta refuta - `read-budget.sh:94` testa `[ -x \"$DOCTOOL\" ]` e `:104` emite `$DOCTOOL probe '$F'` dentro de um `deny`; quem executa e o agente, depois. `DOCTOOL_BIN` continua ausente do ambiente (0 ocorrencias) e do `managed-settings.json`, e o fallback de :91 resolve para `~/.claude/document-tools`, caminho inexistente. O defeito de trust root permanece: a camada que o ator nao controla instrui o agente a rodar codigo que o ator controla. A gravidade nao muda a conclusao, mas a claim tinha de encolher para o que a inspecao sustenta",
-      "state": "open",
+      "measured": "ERRATA DE AMPLITUDE, onda 21c: a primeira redacao dizia que o hook EXECUTA o doctool. Inspecao direta refuta - `read-budget.sh:94` testa `[ -x \"$DOCTOOL\" ]` e `:104` emite `$DOCTOOL probe '$F'` dentro de um `deny`; quem executa e o agente, depois. `DOCTOOL_BIN` continua ausente do ambiente (0 ocorrencias) e do `managed-settings.json`, e o fallback de :91 resolve para `~/.claude/document-tools`, caminho inexistente. O defeito de trust root permanece: a camada que o ator nao controla instrui o agente a rodar codigo que o ator controla. A gravidade nao muda a conclusao, mas a claim tinha de encolher para o que a inspecao sustenta FECHADO 2026-08-31 pelo merge do PR #35 (main 915b185), com portao dedicado proprio `verify-managed-transitive-trust` verde na CI e `tests/unit/managed-transitive-trust.sh` no conjunto. O hook rodando de `/opt/tollens/hooks` deriva a trust root da PROPRIA localizacao fisica e ignora `DOCTOOL_BIN` e `DOC_ADAPTERS_DIR` do ator; medido no repo: 3 ocorrencias de TRUST_ROOT em `execution/hooks/read-budget.sh`.",
+      "state": "resolved",
       "source_ref": "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
-      "open_note": "Endereçado no PR #35, fora desta onda: a trust root passa a ser derivada da LOCALIZACAO FISICA do hook - sob `*/opt/tollens/hooks`, doctool e registry vem obrigatoriamente da arvore irma `/opt/tollens`; no escopo de usuario os overrides seguem valendo. Duas implementacoes anteriores foram RETIRADAS por reprovarem portoes legitimos (equivalencia estrutural user/managed, e digest stale no manifest.lock) - novo teste verde nao autoriza ignorar evidencia contraria de outro portao"
+      "resolution_ref": "docs/architecture/managed-guidance-trust.pt.md"
     },
     {
       "finding_id": "G26",
@@ -1294,6 +1294,19 @@
       "state": "resolved",
       "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "resolution_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md"
+    },
+    {
+      "finding_id": "G53",
+      "wave": 23,
+      "review_round": "validacao da configuracao a pedido do operador",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "politica-imposta-diluida-por-texto-nao-governado",
+      "defect": "documentos de instrucao sao CONCATENADOS, e o kernel imposto e a menor parte do que a sessao carrega: os `CLAUDE.md` de projeto nao estao em manifesto nenhum, sao gravaveis pelo ator e chegam a 15x o tamanho do kernel",
+      "measured": "Medido em 2026-08-31 na maquina governada: kernel managed 2.924 B contra `/home/ti/wt/hub-egress/CLAUDE.md` 44.775 B, `/var/www/DEBTHUB-2.1/.claude/CLAUDE.md` 44.595 B, `/var/www/amaral-intern-hub/CLAUDE.md` 36.408 B; 31 arquivos de projeto DISTINTOS por conteudo. O log de ativacao corrobora a proporcao: `Project` 60 eventos contra `Managed` 41. A imposicao esta completa e verificada - 37 de 37 sessoes com `memory_type=Managed`, politica root-owned e nao-gravavel pelo ator - e mesmo assim a instrucao que o modelo LE e dominada por texto que nenhum portao deste repositorio governa. A onda 22 encolheu o kernel em 15 KB; o texto de projeto carrega 45 KB por cima. LIMITE DA BUSCA POR CONTRADICAO: procurei dispensa de verificacao nos 31 arquivos com grep lexico sobre prosa e o unico acerto foi FALSO POSITIVO ('Sem teste offline com S3 real', que e disciplina de teste, nao dispensa). Sonda de baixa sensibilidade: o correto e 'nenhuma contradicao encontrada', nao 'nao ha contradicao'.",
+      "state": "open",
+      "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "open_note": "Tres caminhos com custos diferentes, e a escolha e do operador: (a) medir a carga real por projeto com instrumento proprio; (b) portao de tamanho no hook de sessao, que incomoda quem trabalha nos repos e exige limiar que hoje seria arbitrario; (c) trazer os 31 arquivos para o manifesto, o que muda o dono deles. Sem numero de referencia, (b) repetiria a classe que o `/depreciar` acabou de corrigir - limiar publicado sem medicao que o sustente."
     }
   ],
   "reading": [
@@ -1307,11 +1320,11 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 97,
+    "n_findings": 98,
     "wave_min": 11,
-    "wave_max": 22,
+    "wave_max": 23,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 5,
+      "aplicacao-de-instrumento": 6,
       "auditoria-externa": 29,
       "execucao-em-ambiente-alheio": 2,
       "execucao-hostil": 1,
@@ -1334,7 +1347,6 @@
       "G19",
       "G20",
       "G21",
-      "G25",
       "G30",
       "G36",
       "G37",
@@ -1349,11 +1361,12 @@
       "G49",
       "G5",
       "G50",
+      "G53",
       "G7"
     ],
     "by_state": {
       "open": 20,
-      "resolved": 77
+      "resolved": 78
     }
   },
   "historical_states": [
