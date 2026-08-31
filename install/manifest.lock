@@ -1,17 +1,18 @@
 # tollens manifest - estado DESEJADO de ~/.claude
 # gerado por install/manifest.sh; conferido por install/verify.sh
 # tipo	origem	destino	sha256
+hook	control/hooks/activation-log.sh	hooks/activation-log.sh	07a8409ba70df8f80570ebeb4b22a04088ef77eb60cd9fcd7e9a7e9f9851a99d
 hook	control/hooks/artifact-discipline.sh	hooks/artifact-discipline.sh	d08667e9c177029658bc069542fa5fe8077f415fdc25134dbd4867b4eef783b8
 hook	control/hooks/fable-guard.sh	hooks/fable-guard.sh	8d4a0cb16ec0ca7fc5d7db8c73eec32d601a0c4848be4bf7590021255add277b
 hook	control/hooks/risk-trigger.sh	hooks/risk-trigger.sh	61a4c713fe597ee78ababa4441e9326f4c2de7448fcee4ff46d429541588827c
 hook	control/hooks/self-mod-audit.sh	hooks/self-mod-audit.sh	6267201c3434ce7a8f77cf50216a96bb303ce9abcedb0153558dbf001681fe0c
-hook	control/hooks/session-integrity.sh	hooks/session-integrity.sh	794144edae7a6aebd2b8cd69230b04b2906ac3539089e426a0407ca0df1a6a3c
+hook	control/hooks/session-integrity.sh	hooks/session-integrity.sh	89f41620238bfb76e16d7fe4c92c84fd5ab1b87fdf532cb66d49801e4c9de6eb
 hook	execution/hooks/ds4-notify.sh	hooks/ds4-notify.sh	6cd9d9d53491c91b2fd7f6701cb69d424a41fb66647d74d4990d7208bf883b26
 hook	execution/hooks/graphify-scout-mode.sh	hooks/graphify-scout-mode.sh	76b8954fb91719b35ee14ba443724ec80399f5713760813723bc5a80e8d6a84d
 hook	execution/hooks/lentes.sh	hooks/lentes.sh	06a7085ac89f505953e5402572678e38506d6318df9f1d44bfc4b970afa6390f
 hook	execution/hooks/output-budget.sh	hooks/output-budget.sh	62a321cc6b504d2f2520a7ff8db045cb765671eb530dc5827fba206e8b0c3fcb
 hook	execution/hooks/poka-yoke-lint.sh	hooks/poka-yoke-lint.sh	1fc83e6b1c085de08588722c3b05cbd97bd4045ac5c6fefb445d520ffb636981
-hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	a4d7a5c50820ba0560d64a0dccdd991bd983939dbdb09403083b17d1cb3ea40f
+hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	14d705cde6401a47abf6b8f006504457fef04e662f864190ed032953f943cbed
 hook	evidence/hooks/subagent-contract.sh	hooks/subagent-contract.sh	adcbddb4b1fdee0f684da7a876e2413cae9271ba315b74599b931c62f5daad68
 hook	evidence/hooks/subagent-probe.sh	hooks/subagent-probe.sh	9dd4623a90042f2beada89177e4619b78bed5582154bd6c8878cb54d82c3567a
 hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	486427303de84d23e5e0e8da06151ad1c7107bb3841a721144a61cd7c96dd3c2
@@ -25,9 +26,9 @@ agent	execution/agents/refutador.md	agents/refutador.md	6c0098599d871f4a615b4b79
 agent	execution/agents/revisor-codigo.md	agents/revisor-codigo.md	f082a92643fd293bcb5ebfdb2f066ebfaafe5e860f483d0d595e244b43bb9743
 agent	execution/agents/revisor-frontend.md	agents/revisor-frontend.md	c8ff2223a8570e950c95f1b74f474a8978a18d014ee4e06c062c890f776a2672
 agent	execution/agents/tdd.md	agents/tdd.md	c6be3b0981af0dcc6bb0c323ab5873ac81afbd1295995a72e7624ccd557661c2
-skill	execution/skills/depreciar	skills/depreciar	42052f1bfb46df553cb65d46403747c94e781151d6be965342c0723257b4a7f0
+skill	execution/skills/depreciar	skills/depreciar	bb1714e753ca796bb8e0b9037b3a201c455932dcebebc34820d896dac71cc74c
 skill	execution/skills/design-system-proposal	skills/design-system-proposal	93a5852f67977b61607c7dd6c3cbf4839ef516880c256d0d73d92f0313124009
-skill	execution/skills/forge	skills/forge	491e0123d42c20f51d7846672ff1532b643ffd52c9f27264f86455e77ef9b451
+skill	execution/skills/forge	skills/forge	34ed31b2096993416a317a7cf4008d0152422104f953c12f7211d580f23962a8
 skill	execution/skills/graphify	skills/graphify	4e2ba651342dbb5a3dcb3b440f2ea64db1c3ecd5e4636840987d09a4b2344bf3
 skill	execution/skills/grill-me	skills/grill-me	6ac5c0ed3d81170cade87b9c6ac74bb1d0dd1940c03f8ea19eb64b18c2b7540c
 skill	execution/skills/prd-to-issues	skills/prd-to-issues	a95c3ed2a50c7e686e4ce471f9c41753b1c60f0f3830a8101cd7abcbe8d04a3c
@@ -49,4 +50,3 @@ doctool	execution/document-tools/make_hostile_fixture.py	tollens/document-tools/
 doctool	execution/document-tools/probe_sheet.py	tollens/document-tools/probe_sheet.py	acc8fdf6ef0a7f878f7f3a1076d663f4b6c4e5cf66c09b15169a1c8c6ea00fa7
 doctool	execution/document-tools/profile_sheet.py	tollens/document-tools/profile_sheet.py	3cf2012f9ec22fa6be5cbebfaeb88cf760e15b35da53e8e06abdef476a69128f
 doctool	execution/document-tools/query_sheet.py	tollens/document-tools/query_sheet.py	47df0d5d93ecef50b929348422ac83845349d173039958d876c01b58bdd2e3cf
-config	execution/config/CLAUDE.md	CLAUDE.md	a5e6416fe8ca9a21c43d0959ff5f43a1d1935b637a62a31f664b356fc1808b99

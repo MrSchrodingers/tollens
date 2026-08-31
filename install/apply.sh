@@ -160,4 +160,46 @@ else
 fi
 
 echo; echo "=== conformidade pos-instalacao ==="
-bash install/verify.sh
+bash install/verify.sh; _VRC=$?
+
+# ONDA 22c. O INSTALADOR NAO REPROVA POR ESCOPO QUE NAO INSTALA. Ate aqui a chamada acima era o
+# ULTIMO comando do arquivo, entao o exit do verificador virava o exit deste instalador. Quando o
+# verificador passou a auditar tambem o escopo managed, `apply.sh` - que instala EXCLUSIVAMENTE a
+# projecao de usuario - passou a sair 1 em toda maquina sem a fase managed implantada, com os 48
+# componentes corretamente instalados.
+#
+# ATRIBUICAO CORRIGIDA (F8 do refutador). A versao anterior deste comentario citava, entre aspas,
+# "componentes instalados: 48 seguido de exit 1" como MEDIDO NA CI. Falso: `scripts/status.sh`
+# engole a saida das suites, e `grep -c 'componentes instalados'` no log do run 33007230205 devolve
+# 0. O que a CI mostra e a suite vermelha; a saida citada foi observada por MIM, num contentor.
+# Reconstrucao apresentada como observacao e o defeito que a regra de fonte primaria existe para
+# impedir, cometido dentro do comentario que explica uma correcao da mesma familia.
+#   CI (33007234824 / 33007230205, d4fd41b): `SUITE VERMELHA ... contrato-de-instalador.sh (exit=1)`
+#   contentor ubuntu:24.04:                  `componentes instalados: 48` e, em seguida, exit 1
+#
+# Implantar managed exige root e uma arvore de origem root-owned (ADR 0026); esta chamada roda como
+# o ator. Reprovar aqui e reprovar por algo que este script nao pode consertar - e o operador que
+# segue o caminho documentado ve o instalador falhar sem ter feito nada errado.
+#
+# O que este script responde e "a projecao de usuario ficou como o manifesto declara". Os demais
+# estados sao REPORTADOS com o passo acionavel, nunca silenciados, e nunca convertidos em falha
+# deste instalador.
+case "$_VRC" in
+  0) exit 0 ;;
+  1) exit 1 ;;   # projecao de USUARIO divergente: e deste script, propaga
+  3) printf '\nA projecao de usuario esta instalada. A fase managed NAO esta implantada nesta\n'
+     printf 'maquina - enquanto isso, a politica em vigor e gravavel pelo ator governado.\n'
+     printf 'Para implantar (exige root e arvore de origem root:root, ver docs/adr/0026):\n'
+     printf '  sudo bash %s/install/apply-managed.sh --enforce\n' "$REPO"
+     exit 0 ;;
+  4) printf '\nATENCAO: a fase managed esta implantada mas GRAVAVEL pelo ator. A imposicao nao se\n'
+     printf 'sustenta: quem e governado pode reescrever a politica que o governa. Isto NAO e\n'
+     printf 'consertavel por este instalador, e nao deve ser lido como conformidade.\n'
+     printf '  sudo bash %s/install/apply-managed.sh --verify\n' "$REPO"
+     exit 0 ;;
+  5) printf '\nATENCAO: o escopo managed em vigor NAO e o que o repositorio declara - o conteudo\n'
+     printf 'difere da fonte canonica. Isto nao e consertavel por este instalador, e nao deve ser\n'
+     printf 'lido como conformidade.\n'
+     exit 0 ;;
+  *) exit "$_VRC" ;;
+esac

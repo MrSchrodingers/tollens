@@ -87,10 +87,30 @@ esac
 # adaptadores de documento eram especificacao versionada que nenhum executor consumia - o
 # defeito que o ADR 0022 declarou e que a Fase D1 fecha. Havendo adaptador para a extensao,
 # a receita passa a ser o executor, que devolve evidence pack ancorado em vez de texto solto.
-DOCTOOL="${DOCTOOL_BIN:-$HOME/.claude/tollens/document-tools/doctool.sh}"
-[ -x "$DOCTOOL" ] || DOCTOOL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../document-tools" 2>/dev/null && pwd)/doctool.sh"
-DOCREG="${DOC_ADAPTERS_DIR:-$HOME/.claude/tollens/adapters/documents}"
-[ -d "$DOCREG" ] || DOCREG="$(cd "$(dirname "${BASH_SOURCE[0]}")/../adapters/documents" 2>/dev/null && pwd)"
+#
+# G25 - TRUST ROOT TRANSITIVA. Em user-scope, os auxiliares continuam vindo de `~/.claude`
+# (ou dos overrides explicitos) e sao capacidade do usuario. Em managed-scope, o MESMO hook e
+# instalado sob `<prefix>/opt/tollens/hooks`; nesse caso a sua propria localizacao e a ancora de
+# confianca e overrides do ator sao ignorados. Assim um hook root-owned nao volta a executar
+# `~/.claude/tollens/document-tools/doctool.sh`, que o ator consegue reescrever.
+#
+# O match aceita prefixos de ensaio porque termina em `/opt/tollens/hooks`; isso permite provar
+# a propriedade sem sudo. A decisao e pelo caminho fisico do hook, nao por HOME, cwd ou variavel
+# fornecida pelo ator.
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
+case "$HOOK_DIR" in
+  */opt/tollens/hooks)
+    TRUST_ROOT="${HOOK_DIR%/hooks}"
+    DOCTOOL="$TRUST_ROOT/document-tools/doctool.sh"
+    DOCREG="$TRUST_ROOT/adapters/documents"
+    ;;
+  *)
+    DOCTOOL="${DOCTOOL_BIN:-$HOME/.claude/tollens/document-tools/doctool.sh}"
+    [ -x "$DOCTOOL" ] || DOCTOOL="$HOOK_DIR/../document-tools/doctool.sh"
+    DOCREG="${DOC_ADAPTERS_DIR:-$HOME/.claude/tollens/adapters/documents}"
+    [ -d "$DOCREG" ] || DOCREG="$HOOK_DIR/../adapters/documents"
+    ;;
+esac
 if [ -x "$DOCTOOL" ] && [ -d "$DOCREG" ] && has jq; then
   for _a in "$DOCREG"/*.json; do
     [ -f "$_a" ] || continue

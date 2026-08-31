@@ -269,6 +269,34 @@ chk "OB2c e o resultado cabe no orcamento declarado" \
   "$(printf '%s' "$OB_R2" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout | length | if . <= 14000 then "cabe" else "estourou" end')" cabe
 chk "OB3 nem no caminho de corte ele bloqueia" "$OB_RC2" 0
 
+# --------------------------------------------------------------------------------------------
+echo "== AL. control/hooks/activation-log.sh: o registrador de ativacao =="
+# E_M deste instrumento. Ele existe porque os tres registros que alimentam o log de ativacao
+# viviam como programas `jq` escritos a mao em /etc/claude-code/managed-settings.json - fora de
+# `install/hooks-spec.sh`, fora do manifesto, fora de todo backup. Um `--enforce` os apagou:
+# 2 antes, 0 depois, log parado sem uma linha de erro. Sem estes casos, o registrador volta a ser
+# um componente que roda e ninguem exercita.
+AL="control/hooks/activation-log.sh"
+ALOG="$(mktemp "${TMPDIR:-/tmp}/al.XXXXXX")"
+al(){ printf '%s' "$1" | TOLLENS_ACTIVATION_LOG="$ALOG" bash "$AL"; }
+: > "$ALOG"
+AL_SO="$(al '{"hook_event_name":"InstructionsLoaded","file_path":"/etc/claude-code/CLAUDE.md","memory_type":"Managed","session_id":"s1"}')"
+chk "AL1 InstructionsLoaded grava arquivo e tipo de memoria" \
+    "$(jq -r 'select(.ev=="InstructionsLoaded") | "\(.t)|\(.f)"' "$ALOG")" "Managed|/etc/claude-code/CLAUDE.md"
+chk "AL2 e NADA vai para stdout (em PreToolUse, stdout vira contexto)" "$AL_SO" ""
+: > "$ALOG"; al '{"hook_event_name":"SubagentStart","agent_type":"refutador","session_id":"s1"}'
+chk "AL3 SubagentStart grava o agente" "$(jq -r '.a' "$ALOG")" "refutador"
+: > "$ALOG"; al '{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"forge"},"session_id":"s1"}'
+chk "AL4 PreToolUse grava a skill invocada" "$(jq -r '.k' "$ALOG")" "forge"
+# CONTROLE NEGATIVO: um registrador que grava com entrada vazia inventaria evento.
+: > "$ALOG"; printf '' | TOLLENS_ACTIVATION_LOG="$ALOG" bash "$AL"
+chk "AL5 entrada vazia NAO produz registro" "$(wc -l < "$ALOG" | tr -d ' ')" "0"
+# E ele nunca barra a cadeia, nem com log inacessivel: instrumento que bloqueia a ferramenta que
+# so deveria observar e pior que a ausencia dele.
+TOLLENS_ACTIVATION_LOG=/proc/nao/existe/al.jsonl bash "$AL" <<< '{"hook_event_name":"PreToolUse","session_id":"s1"}' >/dev/null 2>&1
+chk "AL6 log inacessivel nao quebra a cadeia (exit 0)" "$?" 0
+rm -f "$ALOG"
+
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"
 [ "$F" -eq 0 ]

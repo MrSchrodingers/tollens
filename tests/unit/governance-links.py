@@ -343,8 +343,21 @@ for _f in corpus["findings"]:
         _m2 = _ref_valida(_f.get("resolution_ref", ""))
         if _m2:
             _sem_resolucao.append(f"{_id}: resolution_ref {_f.get('resolution_ref')!r} {_m2}")
+
     if _f.get("state") == "open" and not _f.get("open_note"):
         _sem_nota.append(_id)
+# ONDA 22b (A4, `revisor-codigo`). O portao so conferia a direcao "open exige open_note". A
+# inversa ficava aberta, e `G6b` foi o unico dos 83 a exibi-la: marcado `resolved` carregando um
+# `open_note` residual que afirmava o OPOSTO do `measured` novo - "E_A declarada como dimensao
+# candidata, nao implementada", ao lado de um `measured` dizendo que a sonda tem eventos medidos.
+# Campo que sobrevive a mudanca de estado publica a versao anterior do achado.
+_residuo = [f"{_f.get('finding_id')}: state={_f.get('state')} com open_note residual"
+            for _f in corpus["findings"]
+            if _f.get("state") != "open" and _f.get("open_note")]
+if _residuo:
+    raise SystemExit(f"FAIL corpus: `open_note` sobrevivendo a mudanca de estado - o campo publica "
+                     f"a versao anterior do achado: {_residuo}")
+
 if _ruins:
     raise SystemExit(f"FAIL corpus: source_ref que nao resolve ou escapa do repositorio: {_ruins}")
 if _estado_ruim:

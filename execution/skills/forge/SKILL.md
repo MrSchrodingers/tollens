@@ -1,7 +1,7 @@
 ---
 name: forge
 description: Cria skill de dominio ou agente novo, com gatilho estreito e BENCHMARK obrigatorio antes de virar permanente. Acionar com /forge quando o usuario pedir uma skill ou um agente novo, ou quando um padrao especifico do projeto (Temporal, Django, Pipedrive, Grafana) se repetir a ponto de justificar conhecimento dedicado.
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # /forge - criar skill ou agente sem piorar o sistema
@@ -16,7 +16,14 @@ arXiv:2603.15401): **39 nao produziram ganho algum**, o ganho medio foi **+1.2%*
 DEGRADARAM** o desempenho. Ganho relevante (ate +30%) apareceu so em skills de dominio
 especifico com bom encaixe.
 
-Consequencia: skill nova comeca com **expectativa negativa**. O onus e de quem cria.
+Consequencia: skill nova comeca com **prior BAIXO de utilidade marginal material**. O onus e de
+quem cria.
+
+A formulacao anterior dizia "expectativa negativa", e isso e mais forte do que a medicao sustenta.
+O que `arXiv:2603.15401` mede, no ledger deste repositorio: 39 de 49 skills sem mudanca de pass
+rate, media +1,2pp, tres degradando, ate +30% em sete. A distribuicao e massa em ZERO com cauda
+positiva pequena e cauda negativa pequena - nao media negativa. Dizer "expectativa negativa" e
+o mesmo tipo de amplitude que esta skill existe para impedir.
 
 Antes de escrever qualquer arquivo, responda por escrito:
 1. **Ja existe?** Liste as skills e agentes atuais. Dominio ja coberto -> NAO crie; aponte o
@@ -52,7 +59,9 @@ biblioteca, use `context7`. Instrucao imperativa e curta; sem narrativa de por q
 
 ## Portao: medir antes de tornar permanente
 
-Skill sem medicao e aposta com expectativa negativa. Use o `skill-creator` oficial:
+Skill sem medicao e aposta com prior baixo. Use o `skill-creator` oficial, e note o limite
+metodologico dele: quem gera os testes tambem otimiza a skill neles, o que e superficie de
+overfit. Ele PROPOE; a promocao decide-se contra tarefas held-out.
 
 ```
 /plugin install skill-creator@claude-plugins-official      # se ainda nao instalado

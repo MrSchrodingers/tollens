@@ -723,8 +723,15 @@ else:
                if l and not l.startswith("#") and len(l.split("\t")) >= 3]
     _fontes_manifesto = {l.split("\t")[1] for l in _linhas
                          if l.split("\t")[0] in {"skill", "agent", "hook", "config"}}
+    # ONDA 22b. A BIJECAO E POR PROJECAO, NAO GLOBAL. Ate aqui `installed` era lido como
+    # "existe no sistema", e o manifesto so modela UMA projecao - a de usuario, `~/.claude`.
+    # Quando o kernel passou a ser projetado para o escopo managed, a comparacao global acusou
+    # divergencia sobre um componente que esta CORRETAMENTE instalado, so que noutro escopo.
+    # O defeito era do modelo: capability e canonica, projecao e derivada, e o manifesto governa
+    # uma projecao. `projection` declara qual.
     _fontes_registry = {cap["source"] for cap in caps.values()
-                        if cap.get("installed") and cap.get("kind") in _TIPO_MANIFESTO}
+                        if cap.get("installed") and cap.get("kind") in _TIPO_MANIFESTO
+                        and cap.get("projection", "user") == "user"}
     check(_fontes_manifesto == _fontes_registry,
           f"skill/agente/hook do manifesto == instalados no registry, por FONTE "
           f"(manifesto={len(_fontes_manifesto)} registry={len(_fontes_registry)})"
@@ -740,6 +747,7 @@ else:
         f"{cap['source']}: registry={cap['kind']} manifesto={_tipo_manifesto.get(cap['source'])}"
         for cap in caps.values()
         if cap.get("installed") and cap.get("kind") in _TIPO_MANIFESTO
+        and cap.get("projection", "user") == "user"
         and _tipo_manifesto.get(cap["source"]) != _TIPO_MANIFESTO[cap["kind"]])
     check(not _tipo_divergente, "o `kind` do registry casa com o tipo do manifesto"
           + ("" if not _tipo_divergente else f" - divergentes: {_tipo_divergente}"))

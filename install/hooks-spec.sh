@@ -10,6 +10,15 @@
 # `tests/unit/managed.sh` exige que os dois consumidores produzam a MESMA estrutura, diferindo
 # somente no caminho.
 #
+# ONDA 22d. O REGISTRADOR DE ATIVACAO ENTROU AQUI PORQUE ESTAVA FORA DAQUI. Ate 2026-08-26 os tres
+# registros que alimentam /var/log/tollens-activation.jsonl eram programas `jq` escritos A MAO
+# direto em /etc/claude-code/managed-settings.json, ausentes desta especificacao e de todos os
+# backups da politica. Um `install/apply-managed.sh --enforce` - operacao normal, publicada no
+# README - regenerou a politica a partir DESTA fonte e os apagou: 2 registradores antes, 0 depois,
+# log parado as 17:32 contra enforce as 17:34, sem uma linha de erro. E `install/verify.sh:114`
+# publica `ATIVACAO: INDICIO N evento(s)` lendo esse log, entao a afirmacao de governanca do
+# repositorio dependia de um instrumento que aplicar o repositorio destruia.
+#
 # Uso: bash install/hooks-spec.sh <base>
 #   <base> e string LITERAL embutida no JSON. Para o escopo de usuario e '$HOME/.claude/hooks',
 #   com o `$HOME` deliberadamente NAO expandido aqui: quem expande e o runtime, no momento da
@@ -43,7 +52,9 @@ cat <<'JSON' | jq --arg b "$BASE" \
     {"matcher":"Agent|Task|Bash|Workflow","hooks":[
       {"type":"command","command":"bash @BASE@/fable-guard.sh","timeout":5}]},
     {"matcher":"Read","hooks":[
-      {"type":"command","command":"bash @BASE@/read-budget.sh","timeout":10}]}
+      {"type":"command","command":"bash @BASE@/read-budget.sh","timeout":10}]},
+    {"matcher":"Skill","hooks":[
+      {"type":"command","command":"bash @BASE@/activation-log.sh","timeout":5}]}
   ],
   "UserPromptSubmit": [{"hooks":[
       {"type":"command","command":"bash @BASE@/lentes.sh","timeout":5},
@@ -65,7 +76,10 @@ cat <<'JSON' | jq --arg b "$BASE" \
      "hooks":[{"type":"command","command":"bash @BASE@/subagent-contract.sh"}]},
     {"hooks":[{"type":"command","command":"bash @BASE@/ds4-notify.sh","timeout":5}]}
   ],
-  "SubagentStart": [{"hooks":[{"type":"command","command":"bash @BASE@/subagent-probe.sh"}]}],
+  "SubagentStart": [{"hooks":[
+      {"type":"command","command":"bash @BASE@/subagent-probe.sh"},
+      {"type":"command","command":"bash @BASE@/activation-log.sh","timeout":5}]}],
+  "InstructionsLoaded": [{"hooks":[{"type":"command","command":"bash @BASE@/activation-log.sh","timeout":5}]}],
   "Notification": [{"hooks":[{"type":"command","command":"bash @BASE@/ds4-notify.sh","timeout":5}]}]
 }
 JSON

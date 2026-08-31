@@ -15,7 +15,7 @@ LEIA PRIMEIRO, NESTA ORDEM, E NAO COMECE ANTES:
 
 ESTADO DE PARTIDA (confirme antes de tocar em qualquer coisa):
   bash scripts/status.sh --check           # exit 0
-  bash install/verify.sh                   # exit 0, sem orfaos
+  bash install/verify.sh                   # 0 (tudo conforme) ou 3 (managed nao implantado)
   python3 evidence/validate-claims.py      # exit 0
   gh run list --limit 1                    # success
 Se algum falhar, o primeiro trabalho e entender por que - nao contorne.
