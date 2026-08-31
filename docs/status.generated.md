@@ -50,6 +50,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
 | managed-transitive-trust (auto) | 2 | NAO executado no CI |
+| skill-invocation-policy (auto) | 2 | NAO executado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 
