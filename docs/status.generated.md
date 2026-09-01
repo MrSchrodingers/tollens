@@ -15,15 +15,15 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/claims.sh` | 54 | 0 |
 | `tests/unit/propriedades.sh` | 31 | 0 |
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
-| `tests/unit/managed.sh` | 66 | 0 |
+| `tests/unit/managed.sh` | 65 | 1 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
-| `tests/unit/arnes-de-mutacao.sh` | 7 | 0 |
+| `tests/unit/arnes-de-mutacao.sh` | ? | 2 |
 | `tests/unit/schedule.sh` | 34 | 0 |
 | `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
-| `tests/unit/contrato-de-instalador.sh` | 45 | 0 |
+| `tests/unit/contrato-de-instalador.sh` | 47 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | variavel (base) | 0 |
 | `tests/unit/capability-conformance.py` | variavel (base) | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
@@ -67,6 +67,7 @@ assercao).
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
 | `evidence/corpus/render.py` | 93.6% | 93.6% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
+| `evidence/lint-delta.py` | 99.2% | 99.2% | OK |
 
 ## Componentes
 
@@ -76,8 +77,9 @@ assercao).
 | agent | 10 |
 | doctool | 5 |
 | hook | 15 |
+| lib | 1 |
 | skill | 8 |
-| **total** | **49** |
+| **total** | **50** |
 
 ## Limites declarados
 

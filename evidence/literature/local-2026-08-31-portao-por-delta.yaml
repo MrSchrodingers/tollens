@@ -1,0 +1,76 @@
+literature_id: local-2026-08-31-portao-por-delta
+citation: 'Medicao local do Stop-gate deste repositorio: log de vereditos em ~/.claude/evidence/*.jsonl
+  (5054 registros acumulados ate 2026-08-31) e execucao de `ruff check --isolated --select F,E9` sobre
+  /var/www/amaral-intern-hub, /var/www/adb_tools e /home/ti/evidence-gate na mesma sessao.'
+identifier: local_experiment/2026-08-31/tollens-verify-gate
+url: evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md
+cited_in:
+- docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md
+- execution/adapters/code/python.json
+- evidence/lint-delta.py
+provenance: local_experiment
+study_quality:
+  benchmark: 'Censo do log de vereditos do proprio Stop-gate mais execucao do analisador sobre tres repositorios
+    (fonte: medicao desta sessao, 2026-08-31).'
+  n: '5054 registros de veredito; 173 diagnosticos em /var/www/amaral-intern-hub; tres repositorios medidos
+    (fonte: medicao desta sessao, 2026-08-31).'
+  models: 'Nao se aplica: o objeto medido e o harness e os repositorios, nao um modelo.'
+  design: 'Observacional, uma unica maquina, sem grupo de controle e sem cegamento. Os numeros sao CENSO
+    e nao amostra - 2942/2110/2 sao TODOS os registros do log (fonte: medicao desta sessao, 2026-08-31).'
+  threats: 'Uma maquina, um operador, um analisador (ruff 0.16.2, verificado por `ruff --version` nesta
+    sessao). A atribuicao de causa vem de agregacao do campo `detail`, que e escrito pelo PROPRIO portao:
+    mede o que ele reporta como causa (fonte: medicao desta sessao, 2026-08-31).'
+  scaffold: 'O harness em uso: Stop-gate `evidence/hooks/verify-gate.sh` com o adaptador `python-analyzer`,
+    sob Claude Code 2.1.241 lido do transcrito da sessao, escopo managed imposto (fonte: medicao desta
+    sessao, 2026-08-31).'
+  oracle: 'Deterministico e executavel: codigo de saida do analisador e contagem de diagnosticos por regra
+    e por caminho. Sem julgamento humano ou de modelo no laco.'
+  baseline: 'AUSENTE, e esta ausencia e o limite central. Nao houve condicao de controle: nao se mediu
+    o mesmo trabalho SEM o portao. Mediu-se a causa das reprovacoes ja ocorridas, nao o efeito de remove-las
+    sobre a qualidade do trabalho.'
+  trials_repeated: 'Nao. Censo unico por artefato: o log e lido inteiro uma vez e o analisador roda uma
+    vez por arvore. Repeticao nao se aplica a conjunto fechado, mas variacao entre execucoes tambem nao
+    foi observada.'
+  uncertainty_reported: 'Nao ha intervalo porque nao ha amostragem: os valores sao populacao, nao estimativa.
+    A incerteza restante e de atribuicao, nao estatistica.'
+  code_data_available: 'Sim, no proprio repositorio: `evidence/lint-delta.py`, `tests/unit/lint-delta.sh`
+    e o adaptador. O log de vereditos vive em ~/.claude/evidence/ e NAO e versionado - e gravavel pelo
+    ator governado, como o log de ativacao.'
+  replicated: Nao. Nenhuma replicacao independente, em nenhuma outra maquina.
+applicability:
+  domain_similarity: 'Direta: o objeto medido e o proprio harness em uso, no proprio ambiente.'
+  scaffold_similarity: Identica por construcao - a medicao roda dentro do scaffold que ela descreve.
+  oracle_similarity: 'Identica: o oraculo medido e o mesmo que o portao usa para decidir bloqueio.'
+  transfer_risk: 'Alto para outros repositorios. Dois dos tres medidos devolvem codigo zero no mesmo comando,
+    entao a divida que causa o bloqueio e propriedade do repositorio medido, nao do harness (fonte: medicao
+    desta sessao, 2026-08-31).'
+inference_strength: DIRECT
+inference_rationale: A conclusao afirma exatamente o que foi contado, no mesmo sistema em que foi contado,
+  sem passo de generalizacao. "O portao reprova 58% das vezes por uma causa" e leitura direta do censo
+  do log; "essa causa e divida alheia ao turno" e verificado executando o analisador e classificando os
+  173 diagnosticos por localizacao e por regra.
+findings:
+- metric: taxa_de_aprovacao_do_stop_gate
+  value: 2110/5054 = 42%
+  source: agregacao de ~/.claude/evidence/*.jsonl por campo `verdict`
+  note: 2942 fail, 2110 pass, 2 gap.
+- metric: motivos_distintos_entre_as_reprovacoes
+  value: '1'
+  source: agregacao do campo `detail` restrita a verdict=fail
+  note: todas as 2942 reprovacoes tem a mesma linha, nomeando o analisador de Python.
+- metric: diagnosticos_alheios_ao_turno
+  value: 167/173
+  source: ruff --output-format json, classificado por prefixo de caminho e por codigo de regra
+  note: 87 em 4 checkouts aninhados + 80 de higiene fora das linhas tocadas; restam 6 de quebra real.
+- metric: bloqueios_apos_o_desenho_delta
+  value: 0 (6 tolerados, 80 ignorados, 87 alheios)
+  source: execucao ponta a ponta de evidence/lint-delta.py sobre a saida real do analisador
+  note: e quebra introduzida pelo turno volta a bloquear - verificado em sequencia de 3 turnos.
+limitations:
+- 'Uma maquina, um operador, tres repositorios, um analisador (fonte: medicao desta sessao, 2026-08-31).'
+- Nao mede se o desbloqueio melhora o RESULTADO do trabalho - so que a causa do bloqueio era alheia ao
+  turno.
+- A pergunta de utilidade exige experimento pareado com condicao de controle, e ele continua nao executado.
+- 'O baseline da catraca e gravavel pelo ator governado, como o log de ativacao (achado G39 do corpus,
+  verificado em evidence/corpus/agente-x-defeito.json): indicio, nao prova.'
+- O campo `detail`, do qual sai a atribuicao de causa unica, e escrito pelo componente sob medicao.

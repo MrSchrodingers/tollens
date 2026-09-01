@@ -71,7 +71,10 @@ echo "== MG3. deploy instala a POLITICA inteira, nao so os hooks =="
 rc=$(MANAGED_PREFIX="$FK" bash "$AM" >/dev/null 2>&1; echo $?)
 chk "deploy executa (exit 0)" "$rc" 0
 N=$(find "$FK/opt/tollens" -type f 2>/dev/null | wc -l | tr -d ' ')
-ESPERADO=$(awk -F'\t' '!/^#/ && ($1=="hook"||$1=="adapter"||$1=="doctool")' install/manifest.lock | wc -l | tr -d ' ')
+# `lib` entrou na onda 25 e a lista aqui tem de casar com `tipos_politica` do worker: a POLITICA
+# carrega as bibliotecas que seus hooks chamam. Sem `lib` nesta linha o esperado ficava em 31 e o
+# caso reprovava com got=32 - e o defeito seria do TESTE, nao do deploy.
+ESPERADO=$(awk -F'\t' '!/^#/ && ($1=="hook"||$1=="adapter"||$1=="doctool"||$1=="lib")' install/manifest.lock | wc -l | tr -d ' ')
 chk "  todos os $ESPERADO componentes de politica no disco" "$N" "$ESPERADO"
 chk "  ha hook, adaptador E doctool (nao so hook)" \
     "$([ -d "$FK/opt/tollens/hooks" ] && [ -d "$FK/opt/tollens/adapters" ] && [ -d "$FK/opt/tollens/document-tools" ] && echo sim || echo nao)" "sim"

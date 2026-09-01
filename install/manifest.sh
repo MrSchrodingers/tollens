@@ -81,6 +81,22 @@ emit(){ # $1=tipo $2=origem $3=destino
   for f in control/hooks/*.sh execution/hooks/*.sh evidence/hooks/*.sh; do
     [ -f "$f" ] || continue; emit hook "$f" "hooks/$(basename "$f")"
   done
+  # ONDA 25. BIBLIOTECA DE HOOK E COMPONENTE DE POLITICA, e a ausencia disto foi medida no
+  # runtime. O ramo `scope: delta` do `verify-gate.sh` chama `$HERE/../lint-delta.py`, e esse
+  # arquivo nao estava em manifesto nenhum - logo nao chegava a NENHUMA das duas projecoes. O
+  # hook implantado passou a declarar, a cada parada, `nucleo de delta ausente`: nao reprovava,
+  # mas tambem nao verificava nada. O proprio Stop-gate reportou a lacuna ao operador.
+  #
+  # POR QUE PASSOU NOS TESTES: os casos ponta a ponta rodam o hook a partir do REPOSITORIO, onde
+  # `evidence/hooks/../lint-delta.py` resolve. A copia INSTALADA nunca foi exercitada. Mesma
+  # classe do G46 - verificacao num ambiente em que a condicao de falha nao ocorre.
+  #
+  # O destino e a RAIZ da projecao (`lint-delta.py`, sem prefixo) porque `$HERE/..` a partir de
+  # `hooks/` cai ali nas DUAS: `~/.claude` no escopo de usuario e `/opt/tollens` no managed.
+  for f in evidence/lint-delta.py; do
+    [ -f "$f" ] || { echo "ERRO: $f ausente - o ramo delta do verify-gate depende dele" >&2; exit 1; }
+    emit lib "$f" "$(basename "$f")"
+  done
   for f in execution/agents/*.md; do
     [ -f "$f" ] || continue; emit agent "$f" "agents/$(basename "$f")"
   done

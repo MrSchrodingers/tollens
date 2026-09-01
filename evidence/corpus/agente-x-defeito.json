@@ -1359,10 +1359,50 @@
       "mode": "aplicacao-de-instrumento",
       "class": "portao-que-reprova-por-divida-alheia-ao-turno",
       "defect": "o Stop-gate reprova 58% das vezes, e a causa de TODAS as reprovacoes e a mesma: `python-analyzer` roda `ruff` sobre a ARVORE INTEIRA e reprova por divida preexistente que nao e do turno",
-      "measured": "Log do portao em ~/.claude/evidence/*.jsonl: 2942 `fail`, 2110 `pass`, 2 `gap` em 5054 registros - 42% de aprovacao. Agregando o campo `detail` dos 2942: UM unico motivo, `falharam: python-analyzer`, o mais recente hoje. Em /var/www/amaral-intern-hub - onde o widget mostra a maior parte da atividade - `ruff check --isolated --select F,E9 .` devolve rc=1 com 175 achados: F401 147, F841 14, F822 10, F811 2. O ultimo commit tocou 4 arquivos .py. Em adb_tools e evidence-gate o mesmo comando da rc=0. E a armadilha do `bug preexistente` que a onda 22 tirou das REGRAS e que seguiu viva na CONFIGURACAO do portao. Um portao que reprova por motivo alheio ao trabalho ensina o operador a ignora-lo. TENTATIVA REVERTIDA, e o motivo importa: mudar o adaptador para `per_file` (como node, shell e java ja sao) troca um falso bloqueio por outro - `tests/unit/regressao-gate.sh` G21 mede que apagar um .py com outro .py limpo na arvore passa a devolver LACUNA e exit 2 em vez de passar, porque CHANGED so contem o arquivo apagado. Medido: got=2 want=0.",
-      "state": "open",
+      "measured": "Log do portao em ~/.claude/evidence/*.jsonl: 2942 `fail`, 2110 `pass`, 2 `gap` em 5054 registros - 42% de aprovacao. Agregando o campo `detail` dos 2942: UM unico motivo, `falharam: python-analyzer`, o mais recente hoje. Em /var/www/amaral-intern-hub - onde o widget mostra a maior parte da atividade - `ruff check --isolated --select F,E9 .` devolve rc=1 com 175 achados: F401 147, F841 14, F822 10, F811 2. O ultimo commit tocou 4 arquivos .py. Em adb_tools e evidence-gate o mesmo comando da rc=0. E a armadilha do `bug preexistente` que a onda 22 tirou das REGRAS e que seguiu viva na CONFIGURACAO do portao. Um portao que reprova por motivo alheio ao trabalho ensina o operador a ignora-lo. TENTATIVA REVERTIDA, e o motivo importa: mudar o adaptador para `per_file` (como node, shell e java ja sao) troca um falso bloqueio por outro - `tests/unit/regressao-gate.sh` G21 mede que apagar um .py com outro .py limpo na arvore passa a devolver LACUNA e exit 2 em vez de passar, porque CHANGED so contem o arquivo apagado. Medido: got=2 want=0. RESOLVIDO na onda 25 pelo caminho (c) - catraca contra baseline - depois que (a) e (b) foram medidos e recusados. Verificado ponta a ponta em repositorio com divida real: T1 cria a catraca e bloqueia UMA vez (a tolerancia recem-concedida nao foi revisada por ninguem); T2 na mesma arvore passa; T3 com quebra introduzida pelo turno bloqueia. Sobre /var/www/amaral-intern-hub: bloqueiam 0, tolerados 6, ignorados 80, alheios 87.",
+      "state": "resolved",
       "source_ref": "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md",
-      "open_note": "TRES CAMINHOS COM CUSTOS MEDIDOS, e a escolha e do operador porque todas mudam o que bloqueia o turno DELE. (a) `per_file`: elimina os 2942 e cria falso bloqueio ao apagar arquivo - exigiria tambem mudar o executor para distinguir `nada meu a analisar` de `nao verifiquei`. (b) estreitar `--select` de `F,E9` para as regras de QUEBRA (E9, F821, F811, F822) e tirar as de higiene: remove 161 dos 175 achados medidos, mas 12 preexistentes seguem bloqueando. (c) catraca contra baseline: so reprova o que PIOROU no turno - e o unico que fecha a classe, e o mais caro, porque exige guardar e versionar o baseline por repositorio. Nenhuma se escolhe sem o operador: (a) e (b) mudam o que passa a nao ser mais barrado."
+      "resolution_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G58",
+      "wave": 25,
+      "review_round": "onda 25 - portao por delta e depreciacao de plugin",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "catraca-semeada-do-estado-errado",
+      "defect": "a primeira versao da catraca era semeada da arvore ATUAL, anistiando a quebra que o proprio turno acabava de introduzir",
+      "measured": "Pego por `tests/unit/regressao-gate.sh` G1 - `falha em cache NAO vira sucesso na segunda parada` - com got=0 want=2. E o portao de regressao deste repositorio pegando um defeito de DESENHO antes de qualquer humano. Segundo defeito na mesma cadeia: apos semear, o codigo forcava `RC=0` sem REJULGAR, entao a primeira parada passava sempre; pego por G2 (anti-loop), que exige `NOT_VERIFIED` no `additionalContext`. Corrigidos: baseline vem de `git archive HEAD` (leitura pura, sem registrar worktree nem tocar o indice) e o turno e rejulgado contra o baseline novo. Nenhum dos 65 casos do portao foi reespecificado.",
+      "state": "resolved",
+      "resolution_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G59",
+      "wave": 25,
+      "review_round": "onda 25 - portao por delta e depreciacao de plugin",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "medicao-de-plugin-por-canal-que-nao-o-cobre",
+      "defect": "o log de ativacao nao ve plugin - ele cobre `PreToolUse(Skill)`, `SubagentStart` e `InstructionsLoaded`, e ferramenta de MCP ou LSP nao passa por nenhum dos tres",
+      "measured": "Medido em 1077 transcripts: `LSP` com ZERO chamadas, `mcp__plugin_context7` com 744 em 144 sessoes, `mcp__plugin_playwright` com ~354 em 13+, `security-guidance` e `skill-creator` com zero. E a primeira leitura ERROU por regex: agrupando `mcp__plugin_([a-z0-9_]+)_[^\"]+` pelo grupo 2, o context7 apareceu com 5 chamadas - o grupo cortava o nome e espalhava a contagem. A sonda dizia `quase nao usado` sobre o plugin MAIS usado da maquina. Seis plugins desligados com evidencia (4 LSP + security-guidance + skill-creator); mantidos os quatro com uso medido.",
+      "state": "resolved",
+      "resolution_ref": "execution/skills/depreciar/SKILL.md",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G60",
+      "wave": 25,
+      "review_round": "relato do operador com medicao propria, reproduzido aqui",
+      "found_by": "execucao-em-ambiente-alheio",
+      "mode": "execucao-em-ambiente-alheio",
+      "class": "guarda-anti-laco-que-depende-da-leitura-que-falhou",
+      "defect": "`INPUT=\"$(</dev/stdin)\"` depende do CAMINHO /dev/stdin existir; onde ele nao existe a atribuicao falha em silencio (sem `set -e`) e o INPUT fica vazio - e o guarda anti-laco decide por `stop_hook_active` LIDO desse INPUT, entao nunca casa e o hook nunca curto-circuita",
+      "measured": "Relatado pelo operador com medicao: todo `claude -p` lancado FORA de uma sessao - processo de desktop, companion, cron - entra em laco. 9 re-prompts, 43 mil tokens, resposta VAZIA, 43 segundos. Reproduzido aqui em repositorio com codigo roto: com stdin normal e `stop_hook_active=true` o gate sai 0; com `0<&-` sai 2 e bloqueia, imprimindo `/dev/stdin: No such file or directory`; e o INPUT chega com comprimento 0. CORRIGIDO em duas camadas, porque uma so nao basta: (1) ler o DESCRITOR 0 com `cat` em vez do caminho /dev/stdin; (2) evento ilegivel NAO PODE BLOQUEAR - sem o evento nao ha como saber se a parada ja e continuacao de um bloqueio, e bloquear ali e o laco. Terceira medicao durante a correcao: `cat` com descritor fechado NAO RETORNA, entao a leitura e limitada por `timeout` - sem isso a correcao trocaria laco de re-prompt por processo pendurado. Sete casos em `tests/unit/run.sh` (EI0-EI6), com controle positivo: com stdin legivel o portao AINDA barra codigo roto.",
+      "state": "resolved",
+      "resolution_ref": "evidence/hooks/verify-gate.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md",
+      "note": "A escolha de desenho e assimetrica e esta escrita no hook: 'portao contornavel fechando stdin' contra 'portao que gasta a cota do operador em laco e devolve vazio'. O segundo e pior e nao para sozinho."
     }
   ],
   "reading": [
@@ -1376,13 +1416,13 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 102,
+    "n_findings": 105,
     "wave_min": 11,
-    "wave_max": 24,
+    "wave_max": 25,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 8,
+      "aplicacao-de-instrumento": 10,
       "auditoria-externa": 29,
-      "execucao-em-ambiente-alheio": 2,
+      "execucao-em-ambiente-alheio": 3,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
       "remedicao": 22,
@@ -1397,6 +1437,7 @@
       "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
+      "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md",
       "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
       "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md"
     ],
@@ -1422,12 +1463,11 @@
       "G53",
       "G54",
       "G56",
-      "G57",
       "G7"
     ],
     "by_state": {
-      "open": 23,
-      "resolved": 79
+      "open": 22,
+      "resolved": 83
     }
   },
   "historical_states": [

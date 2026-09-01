@@ -156,6 +156,7 @@ evidence/runtime-probes/declared-capabilities.py:92.6
 orchestration/schedule.py:89.3
 evidence/corpus/render.py:93.6
 evidence/validate-adapters.py:69.3
+evidence/lint-delta.py:99.2
 EOF
 )}"
 
@@ -167,6 +168,7 @@ tests/unit/capabilities.sh
 tests/unit/schedule.sh
 tests/unit/runtime-ports.sh
 tests/unit/document-tools.sh
+tests/unit/lint-delta.sh
 EOF
 )}"
 
@@ -259,6 +261,7 @@ orchestration/schedule.py|ramo|406->408|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->409|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->410|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|436->-1|heranca-piso-absoluto-2026-08-11
+evidence/lint-delta.py|ramo|224->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.
 EOF
 )}"
 

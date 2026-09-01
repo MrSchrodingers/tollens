@@ -36,7 +36,43 @@
 #      "nao verifiquei isto" e verdade, "reprovou" mentiria, "passou" seria o verde vazio.
 set -uo pipefail
 
-INPUT="$(</dev/stdin)"   # builtin: `cat` seria mais uma dependencia externa no caminho critico
+# LEITURA DO EVENTO. `$(</dev/stdin)` depende do CAMINHO `/dev/stdin` existir e ser abrivel, e
+# ha processos em que ele nao e: `claude -p` lancado fora de uma sessao - um processo de desktop,
+# um companion, um cron - falha com `/dev/stdin: No such device or address`. Sem `set -e`, a
+# atribuicao falha em silencio e `INPUT` fica VAZIO.
+#
+# E ai vem o dano, que e maior que o erro: o guarda anti-loop deste hook decide por
+# `stop_hook_active` LIDO DE `$INPUT`. Com `$INPUT` vazio ele nunca casa, o gate nunca
+# curto-circuita, roda o verificador, reprova, re-prompta - e repete. MEDIDO PELO OPERADOR:
+# 9 re-prompts, 43 mil tokens, resposta VAZIA, 43 segundos. Reproduzido aqui com `0<&-`:
+# `stop_hook_active=true` com stdin normal sai 0; com stdin fechado sai 2 e bloqueia.
+#
+# `cat` le o DESCRITOR 0, nao um caminho, e por isso funciona onde `/dev/stdin` nao existe. O
+# `[ ! -t 0 ]` evita travar quando alguem roda o hook a mao num terminal - ali nao ha evento para
+# ler e esperar seria pendurar o processo.
+INPUT=""
+# `timeout` E OBRIGATORIO, nao zelo: medido aqui, `cat` com o descritor 0 FECHADO nao retorna -
+# o hook fica pendurado no caminho critico de toda parada, que e uma forma pior do mesmo dano que
+# esta correcao existe para remover. Em operacao normal o runtime fecha o cano e `cat` volta na
+# hora; o limite so age no caso degenerado.
+if [ ! -t 0 ]; then INPUT="$(timeout 5 cat 2>/dev/null || true)"; fi
+
+# EVENTO ILEGIVEL NAO PODE BLOQUEAR. Se nao da para ler o evento, nao da para saber se esta parada
+# JA e a continuacao de um bloqueio anterior - e bloquear sem poder ver isso e exatamente o laco
+# sem fim acima. A escolha entre "portao que pode ser contornado fechando stdin" e "portao que
+# gasta a cota do operador em laco e devolve vazio" nao e simetrica: o segundo e pior, e nao tem
+# como parar sozinho. Declara a lacuna e libera a parada.
+if [ -z "$INPUT" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    jq -cn --arg c "GATE - EVENTO ILEGIVEL. O hook nao conseguiu ler o evento de Stop na entrada
+padrao (processo sem /dev/stdin abrivel, ou stdin fechado). Sem o evento nao da para saber se esta
+parada ja e continuacao de um bloqueio, entao bloquear aqui seria laco sem fim. NADA foi
+verificado neste turno - nao diga verde nem vermelho." \
+      '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:$c}}'
+  fi
+  echo "GATE - evento ilegivel na entrada padrao; nada foi verificado. Parada liberada para nao entrar em laco." >&2
+  exit 0
+fi
 # G9: DEPENDENCIA ESTRUTURAL ausente e LACUNA, nao sucesso. Ferramenta de adaptador ausente ja
 # virava lacuna (G6); ferramenta do proprio gate saia 0 em silencio - a mesma inercia que G7
 # combate, no lugar mais critico. Fora de repositorio git, inerte e legitimo: nao ha o que verificar.
@@ -285,7 +321,129 @@ for a in "${APLICAVEIS[@]}"; do
   - $ID: '$CMD' nao esta no PATH (ecossistema $ECO)"; continue
   fi
   mapfile -t ARGS < <(jq -r '.exec.args[]? // empty' "$a" 2>/dev/null)
-  if [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
+  # ===================== ESCOPO DELTA (onda 25) =====================
+  # A PERGUNTA QUE O PORTAO FAZ MUDA. Ate aqui ele perguntava "esta arvore esta limpa?", cuja
+  # resposta nao depende do trabalho do turno. Medido no log deste proprio portao
+  # (~/.claude/evidence/*.jsonl): 2942 `fail` contra 2110 `pass` em 5054 registros, e a causa de
+  # TODAS as 2942 e a mesma linha - `falharam: python-analyzer`. Um portao que reprova 58% das
+  # vezes por divida alheia ensina o operador a ignora-lo, e ai deixa de ser portao.
+  #
+  # `delta` nao e um meio-termo entre `per_file` e arvore inteira - a onda 24 tentou escolher um
+  # lado e falhou nos dois. Sao DUAS CLASSES com escopos diferentes, e a decisao mora em
+  # `evidence/lint-delta.py`, fora deste executor, para poder ser exercitada sem repo e sem hook.
+  if [ "$(jq -r '.scope // ""' "$a")" = "delta" ]; then
+    LD="$HERE/../lint-delta.py"
+    if [ ! -f "$LD" ] || ! command -v python3 >/dev/null 2>&1; then
+      LACUNAS="$LACUNAS
+  - $ID: nucleo de delta ausente ($LD) ou python3 fora do PATH"; continue
+    fi
+    # RAIZES DERIVADAS, nunca lista de nomes: checkout aninhado e diretorio com `.git` proprio.
+    # `.worktrees` e convencao de quem criou, nao contrato - medir por convencao erraria em todo
+    # repositorio que use outro nome.
+    NESTED="$(cd "$ROOT" && find . -mindepth 2 -maxdepth 4 -name .git -printf '%h\n' 2>/dev/null \
+              | sed 's|^\./||' | jq -R . | jq -sc . || echo '[]')"
+    HUNKS="$(cd "$ROOT" && git diff -U0 HEAD 2>/dev/null | python3 -c '
+import sys,re,json,collections
+h=collections.defaultdict(list); f=None
+for l in sys.stdin:
+    if l.startswith("+++ b/"): f=l[6:].strip()
+    elif l.startswith("@@") and f:
+        m=re.search(r"\+(\d+)(?:,(\d+))?", l)
+        if m:
+            i=int(m.group(1)); n=int(m.group(2) or 1)
+            if n: h[f].append([i,i+n-1])
+print(json.dumps(dict(h)))' 2>/dev/null || echo '{}')"
+    # G_VAZIO NO ESCOPO DELTA. A mesma armadilha das outras duas formas, e ela e PIOR aqui:
+    # um analisador sobre arvore sem nenhum arquivo do ecossistema devolve LISTA VAZIA, e lista
+    # vazia atravessa o nucleo inteiro como "nada a bloquear" - aprovacao sobre nada, com todos os
+    # contadores em zero e nenhum sinal. Zero diagnosticos NAO e observacao de limpeza quando nao
+    # havia o que observar. `tests/unit/regressao-gate.sh` G20 mede exatamente isto, e reprovou
+    # este ramo enquanto a guarda faltava.
+    NEXT="$(jq -r '.extensions // [] | length' "$a" 2>/dev/null || echo 0)"
+    if [ "${NEXT:-0}" -gt 0 ]; then
+      PRESENTES=0
+      while IFS= read -r ext; do
+        [ -z "$ext" ] && continue
+        n="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- "*${ext}" 2>/dev/null | wc -l)"
+        PRESENTES=$((PRESENTES + n))
+      done < <(jq -r '.extensions[]? // empty' "$a")
+      if [ "$PRESENTES" -eq 0 ]; then
+        LACUNAS="$LACUNAS
+  - $ID: nenhum arquivo do ecossistema $ECO existe mais na arvore - nada para '$CMD' examinar"
+        continue
+      fi
+    fi
+    RAW="$(cd "$ROOT" && timeout "$TMO" "$CMD" "${ARGS[@]}" 2>/dev/null)"; RCTOOL=$?
+    if [ "$RCTOOL" -eq 127 ]; then
+      LACUNAS="$LACUNAS
+  - $ID: binario interno ausente (exit 127)"; continue
+    fi
+    [ -n "$RAW" ] || RAW='[]'
+    BLPATH="${TOLLENS_BASELINE_DIR:-$HOME/.claude/tollens/baselines}/$(printf '%s' "$ROOT" | sha256sum | cut -c1-16).$ID.json"
+    BL=""; [ -f "$BLPATH" ] && BL="$(cat "$BLPATH")"
+    MAPA="$(jq -c '.diagnostics.map' "$a")"
+    BRK="$(jq -r '.breakage_codes // [] | join(",")' "$a")"
+    TMPERR="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR=/dev/null
+    VER="$(python3 "$LD" --raw "$RAW" --map "$MAPA" --strip-prefix "$ROOT/" \
+             --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
+             --breakage-codes "$BRK" 2>"$TMPERR")"; RC=$?
+    OUT="$VER
+$(cat "$TMPERR" 2>/dev/null)"
+    [ "$TMPERR" != /dev/null ] && rm -f "$TMPERR"
+    # SEMEADURA DO BASELINE, e ela e explicita e visivel. Sem baseline o portao reprovaria por
+    # quebra preexistente para sempre; semear em silencio seria anistia. Semeia UMA vez, avisa, e
+    # a partir dai a catraca so aceita o que ja estava la.
+    if [ "$RC" -eq 1 ] && [ ! -f "$BLPATH" ] && [ "${TOLLENS_BASELINE_SEED:-1}" = "1" ]; then
+      mkdir -p "$(dirname "$BLPATH")" 2>/dev/null
+      # ESCRITA ATOMICA, e ela e obrigatoria aqui. `> "$BLPATH"` cria o arquivo ANTES de o
+      # programa rodar: uma emissao que falha deixa um baseline VAZIO que (a) bloqueia a
+      # re-semeadura pelo `[ ! -f ]` seguinte e (b) se lido, tolera NADA - o portao volta a
+      # reprovar por quebra preexistente para sempre, agora com um arquivo no disco sugerindo que
+      # ha catraca. Medido: foi exatamente o que aconteceu na primeira execucao ponta a ponta.
+      # O BASELINE VEM DO ESTADO ANTERIOR AO TURNO, NUNCA DO ATUAL. Semear a partir da arvore
+      # como ela esta agora ANISTIA a quebra que o proprio turno acabou de introduzir: a primeira
+      # parada gravaria a digital do defeito recem-criado e o toleraria para sempre. Isso nao e
+      # hipotese - `tests/unit/regressao-gate.sh` G1 mede exatamente essa garantia ("falha em cache
+      # NAO vira sucesso na segunda parada") e reprovou com got=0 want=2 na primeira versao deste
+      # ramo. O portao de regressao pegou o defeito de desenho antes de qualquer humano.
+      #
+      # `git archive HEAD` e LEITURA PURA: extrai o commit sem registrar worktree, sem escrever no
+      # `.git` do repositorio analisado e sem tocar no indice. `git worktree add` faria as tres.
+      SEEDDIR="$(mktemp -d "${TMPDIR:-/tmp}/tollens-seed.XXXXXX")" || SEEDDIR=""
+      RAWBASE=""
+      if [ -n "$SEEDDIR" ] && git -C "$ROOT" archive HEAD 2>/dev/null | tar -x -C "$SEEDDIR" 2>/dev/null; then
+        RAWBASE="$(cd "$SEEDDIR" && timeout "$TMO" "$CMD" "${ARGS[@]}" 2>/dev/null)"
+        [ -n "$RAWBASE" ] || RAWBASE='[]'
+      fi
+      BLTMP="$(mktemp "${BLPATH}.XXXXXX")" || BLTMP=""
+      if [ -n "$BLTMP" ] && [ -n "$RAWBASE" ] && python3 "$LD" --raw "$RAWBASE" --map "$MAPA" \
+           --strip-prefix "$SEEDDIR/" \
+           --nested-roots "$NESTED" --breakage-codes "$BRK" --emit-baseline > "$BLTMP" 2>/dev/null \
+         && [ -s "$BLTMP" ] && jq -e 'type == "array"' "$BLTMP" >/dev/null 2>&1 \
+         && mv -f "$BLTMP" "$BLPATH"; then
+        LACUNAS="$LACUNAS
+  - $ID: catraca CRIADA agora ($(jq -r 'length' "$BLPATH" 2>/dev/null) defeito(s) preexistente(s) de HEAD passam a ser TOLERADOS, e sao reportados a cada execucao). Este turno FOI julgado contra ela. A lacuna declarada nao e o julgamento: e a TOLERANCIA recem-concedida, que nenhum humano revisou. Revise $BLPATH, ou apague-o para recriar."
+        # REJULGA CONTRA O BASELINE RECEM-CRIADO, nunca `RC=0` por decreto. Forcar zero aqui
+        # fazia a PRIMEIRA parada passar sempre - inclusive quando a quebra era do proprio turno,
+        # que e o oposto do que a catraca existe para fazer. O baseline vem do estado ANTERIOR;
+        # se o defeito nao esta nele, ele e novo e continua bloqueando.
+        BL="$(cat "$BLPATH" 2>/dev/null)"
+        TMPERR2="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR2=/dev/null
+        VER="$(python3 "$LD" --raw "$RAW" --map "$MAPA" --strip-prefix "$ROOT/" \
+                 --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
+                 --breakage-codes "$BRK" 2>"$TMPERR2")"; RC=$?
+        OUT="$VER
+$(cat "$TMPERR2" 2>/dev/null)"
+        [ "$TMPERR2" != /dev/null ] && rm -f "$TMPERR2"
+        [ -n "${SEEDDIR:-}" ] && rm -rf "$SEEDDIR"
+      else
+        [ -n "${BLTMP:-}" ] && rm -f "$BLTMP"
+        [ -n "${SEEDDIR:-}" ] && rm -rf "$SEEDDIR"
+        LACUNAS="$LACUNAS
+  - $ID: NAO foi possivel semear o baseline de quebra - o turno segue julgado SEM catraca, e quebra preexistente continua bloqueando. Nada foi gravado."
+      fi
+    fi
+  elif [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
     # G_VAZIO (per_file): um adaptador per_file so examina os arquivos de CHANGED que ainda
     # existem no disco (`[ -f "$ROOT/$f" ] || continue`). Se apagar, renomear-com-conteudo-
     # divergente ou deixar um symlink quebrado faz TODOS os arquivos casados desaparecerem, o

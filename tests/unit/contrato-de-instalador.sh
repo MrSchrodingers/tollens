@@ -317,11 +317,50 @@ chk "o hook casa a etiqueta que o verificador emite HOJE" \
 chk "e o casador do hook cobre as duas etiquetas" \
     "$(grep -c "grep -E '\^(PROJECAO USUARIO|conformidade):'" control/hooks/session-integrity.sh)" 2
 
+# ---------------------------------------------------------------------------------------------
+echo "== CI10. todo arquivo que um hook CHAMA esta no manifesto =="
+# DEFEITO MEDIDO NO RUNTIME, onda 25. O ramo `scope: delta` do `verify-gate.sh` chama
+# `$HERE/../lint-delta.py`, e esse arquivo nao estava em manifesto nenhum - logo nao chegava a
+# NENHUMA das duas projecoes. O hook implantado passou a declarar `nucleo de delta ausente` a cada
+# parada: nao reprovava, mas tambem NAO VERIFICAVA NADA. Quem reportou foi o proprio Stop-gate, na
+# tela do operador.
+#
+# POR QUE NENHUM TESTE VIA: os casos ponta a ponta rodam o hook a partir do REPOSITORIO, onde
+# `evidence/hooks/../lint-delta.py` resolve. A copia INSTALADA nunca era exercitada - a mesma
+# classe do G46, verificar num ambiente em que a condicao de falha nao ocorre.
+#
+# A guarda e DERIVADA, nao lista: varre os hooks do manifesto procurando referencia a
+# `$HERE/../<arquivo>` e exige que o alvo esteja declarado. Uma lista escrita a mao envelheceria
+# no primeiro hook novo, que e o defeito que ela existe para impedir.
+_FALTANDO=""
+while IFS=$'\t' read -r _t _origem _destino _sha; do
+  [ "$_t" = "hook" ] || continue
+  [ -f "$_origem" ] || continue
+  while IFS= read -r _ref; do
+    [ -n "$_ref" ] || continue
+    awk -F'\t' -v r="$_ref" '!/^#/ && $3==r {found=1} END{exit !found}' install/manifest.lock \
+      || _FALTANDO="$_FALTANDO $(basename "$_origem")->$_ref"
+  done < <(grep -oE '\$HERE/\.\./[A-Za-z0-9._-]+' "$_origem" 2>/dev/null | sed 's|.*/||' \
+             | grep -vx '\.\.' | sort -u)   # `.` esta na classe: `$HERE/../../x` casaria e daria `..`
+done < install/manifest.lock
+chk "nenhum hook chama arquivo fora do manifesto" "${_FALTANDO:-nenhum}" "nenhum"
+
+# ANTIVACUIDADE: a varredura so significa algo se de fato encontrar referencias. Zero referencias
+# encontradas faria a assercao acima passar por nao ter olhado nada.
+_REFS=0
+while IFS=$'\t' read -r _t _origem _resto; do
+  [ "$_t" = "hook" ] && [ -f "$_origem" ] || continue
+  _n="$(grep -cE '\$HERE/\.\./[A-Za-z0-9._-]+' "$_origem" 2>/dev/null || true)"
+  _REFS=$((_REFS + ${_n:-0}))   # `|| echo 0` emitiria DUAS linhas no caso zero (grep -c imprime 0 e sai 1)
+done < install/manifest.lock
+chk "  e a varredura ACHOU referencias (nao passou por vacuidade)" \
+    "$([ "$_REFS" -ge 1 ] && echo sim || echo nao)" sim
+
 # ONDA 21c. PINO DE CONTAGEM, exigido pelo oraculo novo em `tests/unit/regressao-gate.sh`: suite
 # que NAO fixa a propria contagem nao pode ter o numero publicado em `docs/status.generated.md`,
 # porque um caso pulado em silencio mudaria o artefato sem deixar a suite vermelha - que e o G22.
-# Esta suite tem contagem estavel medida (45); o pino a torna verificavel em vez de presumida.
-EXPECTED=45
+# Esta suite tem contagem estavel medida (47); o pino a torna verificavel em vez de presumida.
+EXPECTED=47
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
