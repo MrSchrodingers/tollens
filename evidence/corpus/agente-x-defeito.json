@@ -38,6 +38,10 @@
     "execucao-em-ambiente-alheio": {
       "agent": null,
       "desc": "O MESMO codigo executado onde as precondicoes da bancada local NAO valem - a CI, ou um contentor montado para nao ter o que esta maquina tem. Sem agente: nao e adversario construido para atacar (isso e `execucao-hostil`, que tem agente proprio), e sim o ambiente comum de outra pessoa. Atribui-lo a `execucao-hostil` daria ao `auditor-seguranca` credito por achado que ele nao produziu, e a distincao importa porque a classe que este modo revela - verde local sobre precondicao que so a bancada satisfaz - nao e alcancavel por leitura nenhuma."
+    },
+    "sonda-de-sessao-viva": {
+      "agent": "investigador",
+      "desc": "Um agente reporta o proprio ambiente de execucao - que ferramentas lhe foram concedidas, que instrucao recebeu, que hook agiu sobre a saida dele. E a unica procedencia que alcanca `ObservedCapabilities`: nenhuma leitura estatica ve o que o runtime concedeu, porque o esquema de funcoes so existe dentro da sessao. Distinta de `execucao-hostil`, que ataca um alvo construido, e de `aplicacao-de-instrumento`, que le o que um instrumento acusa sobre o inventario."
     }
   },
   "findings": [
@@ -1307,6 +1311,58 @@
       "state": "open",
       "source_ref": "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
       "open_note": "Tres caminhos com custos diferentes, e a escolha e do operador: (a) medir a carga real por projeto com instrumento proprio; (b) portao de tamanho no hook de sessao, que incomoda quem trabalha nos repos e exige limiar que hoje seria arbitrario; (c) trazer os 31 arquivos para o manifesto, o que muda o dono deles. Sem numero de referencia, (b) repetiria a classe que o `/depreciar` acabou de corrigir - limiar publicado sem medicao que o sustente."
+    },
+    {
+      "finding_id": "G54",
+      "wave": 24,
+      "review_round": "sonda de validacao em sessao viva, a pedido do operador",
+      "found_by": "investigador",
+      "mode": "sonda-de-sessao-viva",
+      "class": "declarado-nao-prediz-concedido",
+      "defect": "o `tools:` do frontmatter nao prediz o conjunto que o runtime concede, e a divergencia ocorre nas DUAS direcoes - o C-019 registrou grant aditivo, esta observacao e subtrativa",
+      "measured": "Dois subagentes desta sessao reportaram, de dentro, esquema efetivo {Read, Bash} contra `Read, Grep, Glob, Bash` declarados. Uso medido no transcrito: {Bash: 15, Read: 1}. A PRIMEIRA LEITURA FOI FALSA E ESTA REGISTRADA DE PROPOSITO: concluí que `Grep` e `Glob` NAO EXISTEM no runtime e construí sobre isso um inventario publicado e um portao de CI. O `refutador` derrubou com fonte primaria na mesma maquina - `sdk-tools.d.ts` declara `GrepInput` e `GlobInput`, e o historico tem 507 chamadas `Grep` e 220 `Glob` com tool_result e zero is_error, a mais recente sob a MESMA versao 2.1.241, em subagente de outro projeto. Elas existem; o que varia e a configuracao. O INSTRUMENTO NAO PODIA TER FALSIFICADO A HIPOTESE: `ToolSearch select:Grep,Glob` fala sobre ferramenta DIFERIDA, e uma DIRETA devolve a mesma resposta - ha resposta positiva possivel para diferida (`select:Monitor`) e nenhuma para direta. E o inventario etiquetava `2.1.252`, versao do DISCO, medindo um processo `2.1.241`. As duas falhas sao a secao 2 do kernel, cometidas na onda que a invoca.",
+      "state": "open",
+      "source_ref": "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md",
+      "open_note": "Nao ha mecanismo, e a onda 24 tentou um e teve de ser revertida. O que existe hoje e observacao arquivada. Encolher `tools:` para casar com UMA observacao seria regressao: se a concessao depende da configuracao, remover o nome tira a capacidade onde ela e concedida. O que fecharia isto e um canal que publique `ObservedCapabilities` por sessao - hoje inexistente: nem o transcrito de subagente nem o payload de `SubagentStart` registram o conjunto concedido."
+    },
+    {
+      "finding_id": "G55",
+      "wave": 24,
+      "review_round": "medicao de runtime a pedido do operador",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "hipotese-de-custo-fechada-por-medicao",
+      "defect": "a camada de hooks era suspeita permanente da lentidao percebida e nunca havia sido medida; o widget publica `Hook timings: not measured by Tollens`",
+      "measured": "Medido em 2026-08-31 contra a arvore em vigor, com o payload de cada evento: SessionStart/session-integrity 837 ms (UMA vez por sessao); PreToolUse 10-41 ms; PostToolUse 21 ms; UserPromptSubmit 6 ms. Agregado: 40 ms por chamada Bash, 2,8 s numa sessao de 50 chamadas, 20,8 s numa de 500. RESULTADO NEGATIVO E E O VALOR: a camada de hooks NAO e a origem da latencia. Isso nao absolve o harness - move a suspeita para o pipeline de subagentes, em que cada revisor e uma execucao completa de modelo, e essa parte segue sem medida. LIMITE: numero por payload, nao por sessao real; `verify-gate` mediu 39 ms saindo cedo e esse nao e o custo dele quando ha o que verificar.",
+      "state": "resolved",
+      "source_ref": "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md",
+      "resolution_ref": "evidence/runtime/hook-cost.json"
+    },
+    {
+      "finding_id": "G56",
+      "wave": 24,
+      "review_round": "medicao de runtime a pedido do operador",
+      "found_by": "investigador",
+      "mode": "sonda-de-sessao-viva",
+      "class": "precedencia-entre-escopos-inferida-nao-lida",
+      "defect": "havia duas definicoes do mesmo agente, diferentes, e qual delas o runtime entrega nao e observavel de fora",
+      "measured": "A sonda reportou esquema efetivo {Read, Bash}, que casa com o escopo de USUARIO e refuta o managed. LIMITE QUE ELA PROPRIA DECLAROU: o frontmatter nao lhe e exposto, entao a conclusao e por capacidade efetiva, nao por leitura, e a hipotese alternativa - managed vencer e uma camada posterior remover os nomes - produz efeito identico e nao e refutavel de dentro. Os corpos dos dois arquivos eram byte-identicos, entao o corpo nao discrimina. Registrado tambem: instrucoes do MCP `context7` entregues SEM as ferramentas correspondentes - texto injetado sem a capacidade que pressupoe, o mesmo modo de falha.",
+      "state": "open",
+      "source_ref": "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md",
+      "open_note": "Tornar decidivel exige marcador distinto por escopo no CORPO de cada arquivo, mais um canal que publique o conjunto concedido. Nenhum dos dois existe hoje."
+    },
+    {
+      "finding_id": "G57",
+      "wave": 24,
+      "review_round": "leitura do widget de uso, a pedido do operador",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "portao-que-reprova-por-divida-alheia-ao-turno",
+      "defect": "o Stop-gate reprova 58% das vezes, e a causa de TODAS as reprovacoes e a mesma: `python-analyzer` roda `ruff` sobre a ARVORE INTEIRA e reprova por divida preexistente que nao e do turno",
+      "measured": "Log do portao em ~/.claude/evidence/*.jsonl: 2942 `fail`, 2110 `pass`, 2 `gap` em 5054 registros - 42% de aprovacao. Agregando o campo `detail` dos 2942: UM unico motivo, `falharam: python-analyzer`, o mais recente hoje. Em /var/www/amaral-intern-hub - onde o widget mostra a maior parte da atividade - `ruff check --isolated --select F,E9 .` devolve rc=1 com 175 achados: F401 147, F841 14, F822 10, F811 2. O ultimo commit tocou 4 arquivos .py. Em adb_tools e evidence-gate o mesmo comando da rc=0. E a armadilha do `bug preexistente` que a onda 22 tirou das REGRAS e que seguiu viva na CONFIGURACAO do portao. Um portao que reprova por motivo alheio ao trabalho ensina o operador a ignora-lo. TENTATIVA REVERTIDA, e o motivo importa: mudar o adaptador para `per_file` (como node, shell e java ja sao) troca um falso bloqueio por outro - `tests/unit/regressao-gate.sh` G21 mede que apagar um .py com outro .py limpo na arvore passa a devolver LACUNA e exit 2 em vez de passar, porque CHANGED so contem o arquivo apagado. Medido: got=2 want=0.",
+      "state": "open",
+      "source_ref": "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md",
+      "open_note": "TRES CAMINHOS COM CUSTOS MEDIDOS, e a escolha e do operador porque todas mudam o que bloqueia o turno DELE. (a) `per_file`: elimina os 2942 e cria falso bloqueio ao apagar arquivo - exigiria tambem mudar o executor para distinguir `nada meu a analisar` de `nao verifiquei`. (b) estreitar `--select` de `F,E9` para as regras de QUEBRA (E9, F821, F811, F822) e tirar as de higiene: remove 161 dos 175 achados medidos, mas 12 preexistentes seguem bloqueando. (c) catraca contra baseline: so reprova o que PIOROU no turno - e o unico que fecha a classe, e o mais caro, porque exige guardar e versionar o baseline por repositorio. Nenhuma se escolhe sem o operador: (a) e (b) mudam o que passa a nao ser mais barrado."
     }
   ],
   "reading": [
@@ -1320,16 +1376,17 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 98,
+    "n_findings": 102,
     "wave_min": 11,
-    "wave_max": 23,
+    "wave_max": 24,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 6,
+      "aplicacao-de-instrumento": 8,
       "auditoria-externa": 29,
       "execucao-em-ambiente-alheio": 2,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
       "remedicao": 22,
+      "sonda-de-sessao-viva": 2,
       "verificacao-de-fonte": 14
     },
     "sources": [
@@ -1340,7 +1397,8 @@
       "docs/adr/0039-o-denominador-e-a-procedencia.md",
       "docs/adr/0040-o-artefato-nao-pode-depender-de-onde-foi-gerado.md",
       "docs/adr/0041-o-kernel-guardava-a-classe-errada-de-erro.md",
-      "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md"
+      "evidence/observations/2026-08-18-tres-ondas-e-o-que-cada-revisao-achou.md",
+      "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md"
     ],
     "open_findings": [
       "G18",
@@ -1362,11 +1420,14 @@
       "G5",
       "G50",
       "G53",
+      "G54",
+      "G56",
+      "G57",
       "G7"
     ],
     "by_state": {
-      "open": 20,
-      "resolved": 78
+      "open": 23,
+      "resolved": 79
     }
   },
   "historical_states": [
