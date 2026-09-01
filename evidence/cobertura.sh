@@ -169,6 +169,7 @@ tests/unit/schedule.sh
 tests/unit/runtime-ports.sh
 tests/unit/document-tools.sh
 tests/unit/lint-delta.sh
+tests/unit/delta-e2e.sh
 EOF
 )}"
 

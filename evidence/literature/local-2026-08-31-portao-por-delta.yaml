@@ -61,7 +61,7 @@ findings:
 - metric: diagnosticos_alheios_ao_turno
   value: 167/173
   source: ruff --output-format json, classificado por prefixo de caminho e por codigo de regra
-  note: 87 em 4 checkouts aninhados + 80 de higiene fora das linhas tocadas; restam 6 de quebra real.
+  note: 87 em UM checkout aninhado (ha 5 raizes; as outras 4 sem diagnostico, verificado) + 80 de higiene fora das linhas tocadas; restam 6 de quebra real.
 - metric: bloqueios_apos_o_desenho_delta
   value: 0 (6 tolerados, 80 ignorados, 87 alheios)
   source: execucao ponta a ponta de evidence/lint-delta.py sobre a saida real do analisador

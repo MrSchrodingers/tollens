@@ -14,7 +14,8 @@ nao e o do turno. Em `/var/www/amaral-intern-hub`, onde a telemetria mostra a ma
 atividade:
 
     173 diagnosticos na arvore
-     87 dentro de 4 checkouts ANINHADOS   codigo de outras branches, fora do HEAD do turno
+     87 dentro de checkout ANINHADO      codigo de outra branch, fora do HEAD do turno
+                                          (todos de UM checkout; ha 5 raizes, 4 sem diagnostico)
      86 no codigo do repositorio
         80 higiene    F401 73, F841 7
          6 quebra     F822 5, F811 1      defeitos REAIS, preexistentes
@@ -61,8 +62,8 @@ arquivo (bloqueia).
 Em `evidence/lint-delta.py`, FORA do executor. A logica que decide bloqueio nao pode viver dentro
 de um script de 400 linhas de shell que ninguem consegue exercitar isoladamente. O nucleo nao
 executa analisador nem le repositorio: recebe diagnosticos, hunks e baseline, devolve veredito.
-35 casos, e tres mutantes sobre as decisoes centrais - classificacao, catraca e escopo por hunk -
-morrem.
+35 casos em `tests/unit/lint-delta.sh`, e `tests/mutation/lint-delta.sh` mata mutantes sobre as
+decisoes centrais - classificacao, catraca, escopo por hunk e exclusao de checkout aninhado.
 
 O adaptador declara `scope: "delta"`, o mapa de campos da saida nativa e os `breakage_codes`.
 Embutir os nomes de campo no nucleo faria cada ferramenta nova exigir edicao dele - e e assim que

@@ -1359,7 +1359,7 @@
       "mode": "aplicacao-de-instrumento",
       "class": "portao-que-reprova-por-divida-alheia-ao-turno",
       "defect": "o Stop-gate reprova 58% das vezes, e a causa de TODAS as reprovacoes e a mesma: `python-analyzer` roda `ruff` sobre a ARVORE INTEIRA e reprova por divida preexistente que nao e do turno",
-      "measured": "Log do portao em ~/.claude/evidence/*.jsonl: 2942 `fail`, 2110 `pass`, 2 `gap` em 5054 registros - 42% de aprovacao. Agregando o campo `detail` dos 2942: UM unico motivo, `falharam: python-analyzer`, o mais recente hoje. Em /var/www/amaral-intern-hub - onde o widget mostra a maior parte da atividade - `ruff check --isolated --select F,E9 .` devolve rc=1 com 175 achados: F401 147, F841 14, F822 10, F811 2. O ultimo commit tocou 4 arquivos .py. Em adb_tools e evidence-gate o mesmo comando da rc=0. E a armadilha do `bug preexistente` que a onda 22 tirou das REGRAS e que seguiu viva na CONFIGURACAO do portao. Um portao que reprova por motivo alheio ao trabalho ensina o operador a ignora-lo. TENTATIVA REVERTIDA, e o motivo importa: mudar o adaptador para `per_file` (como node, shell e java ja sao) troca um falso bloqueio por outro - `tests/unit/regressao-gate.sh` G21 mede que apagar um .py com outro .py limpo na arvore passa a devolver LACUNA e exit 2 em vez de passar, porque CHANGED so contem o arquivo apagado. Medido: got=2 want=0. RESOLVIDO na onda 25 pelo caminho (c) - catraca contra baseline - depois que (a) e (b) foram medidos e recusados. Verificado ponta a ponta em repositorio com divida real: T1 cria a catraca e bloqueia UMA vez (a tolerancia recem-concedida nao foi revisada por ninguem); T2 na mesma arvore passa; T3 com quebra introduzida pelo turno bloqueia. Sobre /var/www/amaral-intern-hub: bloqueiam 0, tolerados 6, ignorados 80, alheios 87.",
+      "measured": "Log do portao em ~/.claude/evidence/*.jsonl: 2942 `fail`, 2110 `pass`, 2 `gap` em 5054 registros - 42% de aprovacao. Agregando o campo `detail` dos 2942: UM unico motivo, `falharam: python-analyzer`, o mais recente hoje. Em /var/www/amaral-intern-hub - onde o widget mostra a maior parte da atividade - `ruff check --isolated --select F,E9 .` devolve rc=1 com 173 achados (F401 147, F841 14, F822 10, F811 2 - a soma fecha em 173; a versao anterior deste campo dizia 175, numero que nao vinha de medicao nenhuma). O ultimo commit tocou 4 arquivos .py. Em adb_tools e evidence-gate o mesmo comando da rc=0. E a armadilha do `bug preexistente` que a onda 22 tirou das REGRAS e que seguiu viva na CONFIGURACAO do portao. Um portao que reprova por motivo alheio ao trabalho ensina o operador a ignora-lo. TENTATIVA REVERTIDA, e o motivo importa: mudar o adaptador para `per_file` (como node, shell e java ja sao) troca um falso bloqueio por outro - `tests/unit/regressao-gate.sh` G21 mede que apagar um .py com outro .py limpo na arvore passa a devolver LACUNA e exit 2 em vez de passar, porque CHANGED so contem o arquivo apagado. Medido: got=2 want=0. RESOLVIDO na onda 25 pelo caminho (c) - catraca contra baseline - depois que (a) e (b) foram medidos e recusados. Verificado ponta a ponta em repositorio com divida real: T1 cria a catraca e bloqueia UMA vez (a tolerancia recem-concedida nao foi revisada por ninguem); T2 na mesma arvore passa; T3 com quebra introduzida pelo turno bloqueia. Sobre /var/www/amaral-intern-hub: bloqueiam 0, tolerados 6, ignorados 80, alheios 87.",
       "state": "resolved",
       "source_ref": "evidence/observations/2026-08-31-tools-declarado-nao-prediz-concedido.md",
       "resolution_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
@@ -1403,6 +1403,32 @@
       "resolution_ref": "evidence/hooks/verify-gate.sh",
       "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md",
       "note": "A escolha de desenho e assimetrica e esta escrita no hook: 'portao contornavel fechando stdin' contra 'portao que gasta a cota do operador em laco e devolve vazio'. O segundo e pior e nao para sozinho."
+    },
+    {
+      "finding_id": "G61",
+      "wave": 25,
+      "review_round": "refutacao da onda 25 (portao final)",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "nucleo-testado-executor-nao",
+      "defect": "o nucleo puro tinha 35 casos e 99,2% de cobertura de decisao, e o EXECUTOR que o alimenta nao tinha NENHUM - quatro caminhos em que o portao APROVAVA EM SILENCIO sobreviveram a seis suites verdes e a CI completa",
+      "measured": "Todos os quatro moravam no shell entre o analisador e o nucleo, e cada um foi reproduzido: (A1) semear de `HEAD` anistiava turno que COMMITOU a propria quebra - com upstream, 2a parada saia 0; corrigido para `DIFFBASE`, a mesma base que o hook ja usa para `CHANGED` - usar base diferente para julgar e para perdoar era incoerencia interna. (A2) `[ -n \"$RAW\" ] || RAW='[]'` transformava analisador MORTO em zero diagnosticos, isto e, em aprovacao com ledger `verdict: pass` - regressao direta do G16 dentro do ramo novo; corrigido exigindo ARRAY JSON, criterio que nao envelhece com codigo de saida por ferramenta. (B1) `git diff HEAD` nao ve arquivo nao rastreado, e `Write`/`Edit` nao indexam - o caso PADRAO de arquivo novo tinha toda a higiene ignorada; untracked passa a entrar com faixa total. (C1) `find -name .git` casava ARQUIVO vazio: `: > sub/.git` escondia codigo rastreado e modificado, um comando disponivel ao ator; passa a exigir `rev-parse --git-dir`. Mais: (A4) analisador falho na semeadura gravava catraca VAZIA que nao se recriava; (A5) `|| echo '{}'` emitia duas saidas e o portao rotulava LACUNA como FALHA; (B2) caminho nao-ASCII atribuia hunk ao arquivo ERRADO; (C2) `maxdepth 4` deixava checkout fundo bloqueando para sempre; e a invariante 'o baseline nunca cala' era FALSA atraves do hook, que descartava o stderr do nucleo justamente na parada em que a tolerancia agia. CONTRAMORTEM: a pergunta 'se isto estivesse errado do jeito mais plausivel, o que pegaria?' tinha resposta NADA. Fechado com `tests/unit/delta-e2e.sh` (14 casos, cada defeito com controle) e `tests/mutation/lint-delta.sh` (9 mutantes). Os tres defeitos reintroduzidos como mutantes NO EXECUTOR morrem.",
+      "state": "resolved",
+      "resolution_ref": "tests/unit/delta-e2e.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G62",
+      "wave": 25,
+      "review_round": "refutacao da onda 25 (portao final)",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "numero-em-documento-duravel-sem-medicao",
+      "defect": "tres afirmacoes numericas falsas foram publicadas em ADR, adaptador, corpus e camada de literatura",
+      "measured": "(1) `87 em 4 checkouts aninhados`: os 87 vem de UM checkout; ha 5 raizes, e as outras 4 nao produzem diagnostico nenhum - verificado listando as raizes e agregando por prefixo. (2) `rc=1 com 175 achados: 147+14+10+2`: o total e 173, e a propria soma da 173 - o 175 nao vinha de medicao nenhuma. (3) o ADR afirmava `tres mutantes sobre as decisoes centrais morrem`, e NAO EXISTIA `tests/mutation/lint-delta*`: os mutantes foram rodados a mao no shell e nunca versionados. Citacao nao conferida dentro do documento que explica uma correcao - a classe do ADR 0011. Corrigidos os tres textos, e a afirmacao (3) foi tornada VERDADEIRA em vez de removida: a suite existe agora, com 9 mutantes.",
+      "state": "resolved",
+      "resolution_ref": "tests/mutation/lint-delta.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
     }
   ],
   "reading": [
@@ -1416,7 +1442,7 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 105,
+    "n_findings": 107,
     "wave_min": 11,
     "wave_max": 25,
     "counts_by_mode": {
@@ -1425,7 +1451,7 @@
       "execucao-em-ambiente-alheio": 3,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
-      "remedicao": 22,
+      "remedicao": 24,
       "sonda-de-sessao-viva": 2,
       "verificacao-de-fonte": 14
     },
@@ -1467,7 +1493,7 @@
     ],
     "by_state": {
       "open": 22,
-      "resolved": 83
+      "resolved": 85
     }
   },
   "historical_states": [
