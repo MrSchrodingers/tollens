@@ -36,7 +36,43 @@
 #      "nao verifiquei isto" e verdade, "reprovou" mentiria, "passou" seria o verde vazio.
 set -uo pipefail
 
-INPUT="$(</dev/stdin)"   # builtin: `cat` seria mais uma dependencia externa no caminho critico
+# LEITURA DO EVENTO. `$(</dev/stdin)` depende do CAMINHO `/dev/stdin` existir e ser abrivel, e
+# ha processos em que ele nao e: `claude -p` lancado fora de uma sessao - um processo de desktop,
+# um companion, um cron - falha com `/dev/stdin: No such device or address`. Sem `set -e`, a
+# atribuicao falha em silencio e `INPUT` fica VAZIO.
+#
+# E ai vem o dano, que e maior que o erro: o guarda anti-loop deste hook decide por
+# `stop_hook_active` LIDO DE `$INPUT`. Com `$INPUT` vazio ele nunca casa, o gate nunca
+# curto-circuita, roda o verificador, reprova, re-prompta - e repete. MEDIDO PELO OPERADOR:
+# 9 re-prompts, 43 mil tokens, resposta VAZIA, 43 segundos. Reproduzido aqui com `0<&-`:
+# `stop_hook_active=true` com stdin normal sai 0; com stdin fechado sai 2 e bloqueia.
+#
+# `cat` le o DESCRITOR 0, nao um caminho, e por isso funciona onde `/dev/stdin` nao existe. O
+# `[ ! -t 0 ]` evita travar quando alguem roda o hook a mao num terminal - ali nao ha evento para
+# ler e esperar seria pendurar o processo.
+INPUT=""
+# `timeout` E OBRIGATORIO, nao zelo: medido aqui, `cat` com o descritor 0 FECHADO nao retorna -
+# o hook fica pendurado no caminho critico de toda parada, que e uma forma pior do mesmo dano que
+# esta correcao existe para remover. Em operacao normal o runtime fecha o cano e `cat` volta na
+# hora; o limite so age no caso degenerado.
+if [ ! -t 0 ]; then INPUT="$(timeout 5 cat 2>/dev/null || true)"; fi
+
+# EVENTO ILEGIVEL NAO PODE BLOQUEAR. Se nao da para ler o evento, nao da para saber se esta parada
+# JA e a continuacao de um bloqueio anterior - e bloquear sem poder ver isso e exatamente o laco
+# sem fim acima. A escolha entre "portao que pode ser contornado fechando stdin" e "portao que
+# gasta a cota do operador em laco e devolve vazio" nao e simetrica: o segundo e pior, e nao tem
+# como parar sozinho. Declara a lacuna e libera a parada.
+if [ -z "$INPUT" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    jq -cn --arg c "GATE - EVENTO ILEGIVEL. O hook nao conseguiu ler o evento de Stop na entrada
+padrao (processo sem /dev/stdin abrivel, ou stdin fechado). Sem o evento nao da para saber se esta
+parada ja e continuacao de um bloqueio, entao bloquear aqui seria laco sem fim. NADA foi
+verificado neste turno - nao diga verde nem vermelho." \
+      '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:$c}}'
+  fi
+  echo "GATE - evento ilegivel na entrada padrao; nada foi verificado. Parada liberada para nao entrar em laco." >&2
+  exit 0
+fi
 # G9: DEPENDENCIA ESTRUTURAL ausente e LACUNA, nao sucesso. Ferramenta de adaptador ausente ja
 # virava lacuna (G6); ferramenta do proprio gate saia 0 em silencio - a mesma inercia que G7
 # combate, no lugar mais critico. Fora de repositorio git, inerte e legitimo: nao ha o que verificar.
@@ -103,13 +139,37 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 #      legitimo, pela mesma razao que "fora de repositorio git" e inerte: e AUSENCIA DE
 #      FRONTEIRA, nao lacuna de verificacao. Declarar NOT_VERIFIED aqui seria ruido em todo
 #      repositorio local, e ruido e o que faz o operador desligar o gate.
+# `git rev-parse --abbrev-ref --symbolic-full-name '@{u}'` ECOA A PROPRIA ENTRADA quando nao ha
+# upstream: imprime `@{u}` em stdout, manda o erro para stderr e sai nao-zero - e o `|| true`
+# engolia o codigo. Medido em /var/www/amaral-intern-hub: `BASE='@{u}'`, `DIFFBASE='@{u}'`,
+# `SEEDREF='@{u}'`, `git archive '@{u}'` falha, e a catraca nunca era semeada. Pior, `CHANGED`
+# tambem usava essa string.
+#
+# E a familia da sonda que devolve lixo por nao casar - aqui na forma mais traicoeira: o comando
+# nao devolve vazio, devolve O ARGUMENTO DE VOLTA, e isso passa por resposta. So `rev-parse
+# --verify` sobre o objeto resolve.
+_NL=$'\n'
 UPSTREAM="$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+if [ -z "$UPSTREAM" ] || ! git -C "$ROOT" rev-parse --verify -q "${UPSTREAM}^{commit}" >/dev/null 2>&1; then
+  UPSTREAM=""
+fi
 BASE=""
 if [ -n "$UPSTREAM" ]; then
   BASE="$UPSTREAM"
 elif [ -n "$(git -C "$ROOT" remote 2>/dev/null)" ]; then
-  for _c in refs/remotes/origin/HEAD refs/remotes/origin/main refs/remotes/origin/master; do
-    if git -C "$ROOT" rev-parse --verify -q "$_c" >/dev/null 2>&1; then BASE="$_c"; break; fi
+  # A LISTA DE CANDIDATOS E DERIVADA DOS REMOTOS QUE EXISTEM, nao fixada em `origin`. Medido em
+  # /var/www/amaral-intern-hub - o repositorio de onde vem a maior parte dos registros que abrem a
+  # onda 25: os remotos chamam-se `debt-hub` e `debthub`, nenhum candidato `origin/*` casava, e
+  # `BASE` caia na ARVORE VAZIA. Com a catraca recusando semear sem base (F1), isso passaria a
+  # bloquear o repositorio principal do operador por 6 defeitos preexistentes - trocando anistia
+  # por travamento. `origin` e convencao, nao contrato: o mesmo erro de medir por nome que
+  # `.worktrees` ja custou nesta onda.
+  for _r in $(git -C "$ROOT" remote 2>/dev/null); do
+    for _s in HEAD main master; do
+      if git -C "$ROOT" rev-parse --verify -q "refs/remotes/$_r/$_s" >/dev/null 2>&1; then
+        BASE="refs/remotes/$_r/$_s"; break 2
+      fi
+    done
   done
   [ -n "$BASE" ] || BASE="$(git -C "$ROOT" hash-object -t tree /dev/null 2>/dev/null || true)"
 fi
@@ -121,9 +181,14 @@ if [ -n "$BASE" ]; then
   DIFFBASE="$(git -C "$ROOT" merge-base "$BASE" HEAD 2>/dev/null || true)"
   [ -n "$DIFFBASE" ] || DIFFBASE="$BASE"
 fi
-CHANGED="$( { git -C "$ROOT" diff --name-only HEAD 2>/dev/null
-              git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null
-              [ -n "$DIFFBASE" ] && git -C "$ROOT" diff --name-only "$DIFFBASE" HEAD 2>/dev/null
+# R3 DO REFUTADOR, mesma raiz que a de HUNKS: sem `core.quotePath=false` o git devolve caminho
+# nao-ASCII como `"acentua\303\247.py"` - com aspas e escapes. Aqui o dano e outro e maior: o
+# casamento de extensao logo abaixo compara o fim da string, e `"...\303\247.py"` nao casa
+# `.py` do jeito que o arquivo real casaria, entao o ADAPTADOR INTEIRO pode nao ser selecionado.
+# Nao e um diagnostico perdido: e nenhum diagnostico produzido.
+CHANGED="$( { git -C "$ROOT" -c core.quotePath=false diff --name-only HEAD 2>/dev/null
+              git -C "$ROOT" -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null
+              [ -n "$DIFFBASE" ] && git -C "$ROOT" -c core.quotePath=false diff --name-only "$DIFFBASE" HEAD 2>/dev/null
             } | sed '/^$/d' | sort -u )"
 [ -n "$CHANGED" ] || exit 0
 
@@ -140,7 +205,22 @@ for a in "$ADAPTERS"/*.json; do
   [ -f "$a" ] || continue
   while IFS= read -r ext; do
     [ -z "$ext" ] && continue
-    if printf '%s\n' "$CHANGED" | grep -q -- "${ext}\$"; then
+    # F4 DO REFUTADOR. `printf | grep -q` sob `pipefail` devolve 141 quando o `grep` casa CEDO e
+    # sai antes de o `printf` terminar de escrever: o `printf` toma SIGPIPE e o `pipefail` propaga.
+    # O `if` fica falso e o adaptador e DESCARTADO EM SILENCIO - portao inerte, exit 0, `verdict:
+    # pass`. Depende do dado: casamento no fim devolve 0, no inicio devolve 141. Medido em bash:
+    # 220 KB de CHANGED com `a.py` na primeira linha -> exit=141; com CHANGED pequeno -> 0.
+    #
+    # Em /var/www/amaral-intern-hub o CHANGED tem 161 KB, e e o repositorio de onde vem a maior
+    # parte dos 5054 registros que abrem esta onda: nao se sabe quantos dos `pass` sao 141 mudo.
+    # Defeito de 2026-08-03, anterior a esta onda, corrigido aqui porque a PREMISSA dela depende.
+    #
+    # `case` nao usa pipe e nao tem essa classe de falha. `$'\n'` delimita para nao casar
+    # `x.python` quando a extensao e `.py`.
+    # `$'\n'` DENTRO DE ASPAS DUPLAS nao e citacao ANSI-C: vira a string literal `$'\n'`, o
+    # `case` nunca casa e o adaptador para de rodar - medido, a suite ponta a ponta caiu de 14
+    # para 4. A nova linha precisa vir de uma variavel expandida fora das aspas.
+    if case "$_NL$CHANGED$_NL" in *"${ext}${_NL}"*) true ;; *) false ;; esac; then
       # G10: adaptador que DECLARA executar codigo do repositorio nunca roda automaticamente.
       # Pago com um defeito proprio: o adaptador .NET declarava executes_repository_code=false
       # sobre `dotnet format`, e a documentacao da Microsoft adverte que ele "may restore,
@@ -285,7 +365,270 @@ for a in "${APLICAVEIS[@]}"; do
   - $ID: '$CMD' nao esta no PATH (ecossistema $ECO)"; continue
   fi
   mapfile -t ARGS < <(jq -r '.exec.args[]? // empty' "$a" 2>/dev/null)
-  if [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
+  # ===================== ESCOPO DELTA (onda 25) =====================
+  # A PERGUNTA QUE O PORTAO FAZ MUDA. Ate aqui ele perguntava "esta arvore esta limpa?", cuja
+  # resposta nao depende do trabalho do turno. Medido no log deste proprio portao
+  # (~/.claude/evidence/*.jsonl): 2942 `fail` contra 2110 `pass` em 5054 registros, e a causa de
+  # TODAS as 2942 e a mesma linha - `falharam: python-analyzer`. Um portao que reprova 58% das
+  # vezes por divida alheia ensina o operador a ignora-lo, e ai deixa de ser portao.
+  #
+  # `delta` nao e um meio-termo entre `per_file` e arvore inteira - a onda 24 tentou escolher um
+  # lado e falhou nos dois. Sao DUAS CLASSES com escopos diferentes, e a decisao mora em
+  # `evidence/lint-delta.py`, fora deste executor, para poder ser exercitada sem repo e sem hook.
+  if [ "$(jq -r '.scope // ""' "$a")" = "delta" ]; then
+    LD="$HERE/../lint-delta.py"
+    if [ ! -f "$LD" ] || ! command -v python3 >/dev/null 2>&1; then
+      LACUNAS="$LACUNAS
+  - $ID: nucleo de delta ausente ($LD) ou python3 fora do PATH"; continue
+    fi
+    # RAIZES DERIVADAS, nunca lista de nomes: checkout aninhado e diretorio com `.git` proprio.
+    # `.worktrees` e convencao de quem criou, nao contrato - medir por convencao erraria em todo
+    # repositorio que use outro nome.
+    # C1/C2 DO REFUTADOR. `find -name .git` casa ARQUIVO VAZIO: `: > sub/.git` escondia codigo
+    # RASTREADO E MODIFICADO do analisador, com um comando disponivel ao ator governado (medido:
+    # exit 2 sem o arquivo, exit 0 com ele). A derivacao DECLARADA era "diretorio com repositorio
+    # proprio"; o que era verificado era "existe entrada chamada .git". `rev-parse --git-dir`
+    # discrimina. E `maxdepth 4` errava para o outro lado: checkout real em `a/b/c/d/wt` nao era
+    # detectado e bloqueava nas duas paradas, porque `git archive` nunca contem untracked e a
+    # digital jamais entrava na catraca.
+    NESTED="$(cd "$ROOT" && find . -mindepth 2 -maxdepth 8 -name .git -printf '%h\n' 2>/dev/null \
+              | sed 's|^\./||' | while IFS= read -r _d; do
+                  # F2 DO REFUTADOR, e a correcao anterior estava errada pelo predicado.
+                  # `git -C <d> rev-parse --git-dir` SOBE para o repositorio pai quando o `.git`
+                  # local e invalido: com `mkdir sub/.git` ele devolvia o `.git` do PAI e a
+                  # resposta era sucesso. Medido: exit 2 sem o diretorio falso, exit 0 com ele, e
+                  # `git status` IDENTICO nos dois - git nao ve diretorio vazio, entao o bypass era
+                  # invisivel. `--resolve-git-dir <caminho>` pergunta o que realmente importa:
+                  # ESTE caminho e um diretorio de repositorio? Falso -> 128.
+                  # R1 DO REFUTADOR: `--resolve-git-dir` fechou `mkdir sub/.git` e deixou aberta
+                  # a porta MAIS BARATA - `git init sub` cria um diretorio de repositorio VALIDO,
+                  # e a partir dai tudo debaixo de `sub/` some do julgamento. Medido: `antes
+                  # EXIT=2, depois EXIT=0`, com `src/mal.py` staged no repo externo e F821 vivo.
+                  # Portao que o ator governado desliga com UM comando nao e portao.
+                  #
+                  # O discriminante e HISTORIA. Um checkout de verdade tem commits; `git init`
+                  # tem zero. Medido nas 5 raizes reais de /var/www/amaral-intern-hub - a origem
+                  # desta exclusao: 204, 75, 197, 57 e 310 commits. `git init` recem-criado: 0.
+                  # Isto NAO fecha a classe: `git commit` a mais e o bypass volta. Quem fecha e
+                  # a declaracao da exclusao (LACUNA logo abaixo) - silencio e que era o defeito.
+                  git rev-parse --resolve-git-dir "$_d/.git" >/dev/null 2>&1 \
+                    && git -C "$_d" rev-parse --verify -q HEAD >/dev/null 2>&1 \
+                    && printf '%s\n' "$_d"
+                done | jq -R . | jq -sc .)"
+    printf '%s' "$NESTED" | jq -e 'type == "array"' >/dev/null 2>&1 || NESTED='[]'
+    # A5/B1/B2 DO REFUTADOR, tres defeitos na mesma extracao.
+    #   A5: `... || echo '{}'` sob `pipefail` emitia DUAS saidas quando `git diff` falhava (repo
+    #       sem commit): `{}\n{}` chegava ao nucleo, que saia 2, e o hook rotulava como FALHA -
+    #       com a mesma linha `falharam: python-analyzer` cujo excesso justifica esta onda.
+    #   B1: `git diff HEAD` NAO ve arquivo nao rastreado, mas o analisador o examina. Como `Write`
+    #       e `Edit` nao indexam, esse e o caso PADRAO de arquivo novo: toda a higiene introduzida
+    #       pelo turno passava em silencio. Medido: untracked exit 0, staged exit 2.
+    #   B2: com `core.quotePath` padrao, caminho nao-ASCII sai como `+++ "b/zzz\303\251.py"`, o
+    #       parser ignora a linha e mantem o arquivo ANTERIOR - hunk atribuido ao arquivo ERRADO,
+    #       falso negativo e falso positivo na mesma execucao.
+    #   R2 DO REFUTADOR: o parser decidia o arquivo corrente por `+++ b/`, e sob `-U0` uma LINHA
+    #       DE CONTEUDO `++ b/outro.py` sai do diff como `+++ b/outro.py` - indistinguivel do
+    #       cabecalho. Medido: `HUNKS = {"alvo.py":[[1,3]], "outro.py":[[104,104]]}` e `EXIT=0`
+    #       com F401 vivo. O conteudo do arquivo redirecionava o julgamento do proprio arquivo.
+    #       `--output-indicator-new` e a resposta EXATA do git: troca o marcador das linhas de
+    #       CONTEUDO sem tocar no cabecalho, entao `+++ b/` volta a ser inforjavel. Medido com
+    #       git 2.55.0: conteudo vira `\001++ b/outro.py`, cabecalho segue `+++ b/alvo.py`.
+    #   R3 DO REFUTADOR: `core.quotePath=false` estava so no `git diff`. O `ls-files` da MESMA
+    #       pipeline (ramo B1, desta onda) nao tinha, entao arquivo novo com nome nao-ASCII
+    #       entrava como `"acentua\303\247.py"` e a chave do hunk nunca casava o diagnostico.
+    #       Medido: nome acentuado EXIT=0, o mesmo arquivo em ASCII EXIT=2.
+    HUNKS="$(cd "$ROOT" && { git -c core.quotePath=false diff -U0 \
+               --output-indicator-new="$(printf '\001')" \
+               --output-indicator-old="$(printf '\002')" \
+               --output-indicator-context="$(printf '\003')" HEAD 2>/dev/null; \
+             git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; } | python3 -c '
+import sys,re,json,collections
+h=collections.defaultdict(list); f=None
+for l in sys.stdin:
+    if l.startswith("UNTRACKED "):
+        # arquivo NOVO nao rastreado: todas as linhas sao do turno, entao a faixa e total
+        h[l[10:].strip()].append([1, 10**9])
+    elif l.startswith("+++ b/"): f=l[6:].strip()
+    elif l.startswith("+++ "): f=None   # forma citada nao reconhecida: melhor nenhum arquivo que o ANTERIOR
+    elif l.startswith("@@") and f:
+        m=re.search(r"\+(\d+)(?:,(\d+))?", l)
+        if m:
+            i=int(m.group(1)); n=int(m.group(2) or 1)
+            if n: h[f].append([i,i+n-1])
+print(json.dumps(dict(h)))' 2>/dev/null)"
+    printf '%s' "$HUNKS" | jq -e 'type == "object"' >/dev/null 2>&1 || HUNKS='{}'
+    # G_VAZIO NO ESCOPO DELTA. A mesma armadilha das outras duas formas, e ela e PIOR aqui:
+    # um analisador sobre arvore sem nenhum arquivo do ecossistema devolve LISTA VAZIA, e lista
+    # vazia atravessa o nucleo inteiro como "nada a bloquear" - aprovacao sobre nada, com todos os
+    # contadores em zero e nenhum sinal. Zero diagnosticos NAO e observacao de limpeza quando nao
+    # havia o que observar. `tests/unit/regressao-gate.sh` G20 mede exatamente isto, e reprovou
+    # este ramo enquanto a guarda faltava.
+    NEXT="$(jq -r '.extensions // [] | length' "$a" 2>/dev/null || echo 0)"
+    if [ "${NEXT:-0}" -gt 0 ]; then
+      PRESENTES=0
+      while IFS= read -r ext; do
+        [ -z "$ext" ] && continue
+        n="$(git -C "$ROOT" ls-files --cached --others --exclude-standard -- "*${ext}" 2>/dev/null | wc -l)"
+        PRESENTES=$((PRESENTES + n))
+      done < <(jq -r '.extensions[]? // empty' "$a")
+      if [ "$PRESENTES" -eq 0 ]; then
+        LACUNAS="$LACUNAS
+  - $ID: nenhum arquivo do ecossistema $ECO existe mais na arvore - nada para '$CMD' examinar"
+        continue
+      fi
+    fi
+    RAW="$(cd "$ROOT" && timeout "$TMO" "$CMD" "${ARGS[@]}" 2>/dev/null)"; RCTOOL=$?
+    if [ "$RCTOOL" -eq 127 ]; then
+      LACUNAS="$LACUNAS
+  - $ID: binario interno ausente (exit 127)"; continue
+    fi
+    # A2 DO REFUTADOR, e e regressao direta do G16 ("zero unidades examinadas NAO e aprovacao")
+    # dentro do ramo novo. `RCTOOL` so era comparado com 127, e `[ -n "$RAW" ] || RAW='[]'`
+    # transformava ferramenta QUE FALHOU em "nenhum diagnostico" - isto e, em APROVACAO. Medido
+    # com um shim que sai 2 e nao escreve nada: `GATE exit=0`, saida vazia, ledger `verdict: pass`.
+    # O ramo antigo propagava `RC=$?` e reprovava.
+    #
+    # O criterio e TOLERANTE A FERRAMENTA e nao a codigo de saida: exigir que a saida seja um
+    # ARRAY JSON. Arvore limpa devolve `[]`, que passa; ferramenta que morre devolve vazio ou
+    # texto de erro, que nao passa. Nao ha lista de codigos por ferramenta para envelhecer.
+    if ! printf '%s' "$RAW" | jq -e 'type == "array"' >/dev/null 2>&1; then
+      LACUNAS="$LACUNAS
+  - $ID: '$CMD' saiu $RCTOOL e NAO produziu array JSON - nada foi analisado. Saida vazia ou ilegivel nao e arvore limpa."
+      continue
+    fi
+    BLPATH="${TOLLENS_BASELINE_DIR:-$HOME/.claude/tollens/baselines}/$(printf '%s' "$ROOT" | sha256sum | cut -c1-16).$ID.json"
+    BL=""; [ -f "$BLPATH" ] && BL="$(cat "$BLPATH")"
+    MAPA="$(jq -c '.diagnostics.map' "$a")"
+    BRK="$(jq -r '.breakage_codes // [] | join(",")' "$a")"
+    TMPERR="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR=/dev/null
+    # F3 DO REFUTADOR, defeito INTRODUZIDO por esta onda. O Linux limita UM argv a
+    # MAX_ARG_STRLEN = 131.072 B; a saida do ruff em /var/www/amaral-intern-hub tem 147.920 B e JA
+    # estourava. O hook morria com `Argument list too long` (exit 126) e, como a semeadura exige
+    # RC==1, o repositorio ficava bloqueado PARA SEMPRE - gravando no ledger a mesma linha
+    # `falharam: python-analyzer` cujo excesso justifica a onda. Arquivo nao tem esse limite.
+    RAWF="$(mktemp "${TMPDIR:-/tmp}/tollens-raw.XXXXXX")" || RAWF=""
+    printf '%s' "$RAW" > "$RAWF" 2>/dev/null
+    VER="$(python3 "$LD" --raw-file "$RAWF" --map "$MAPA" --strip-prefix "$ROOT/" \
+             --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
+             --breakage-codes "$BRK" 2>"$TMPERR")"; RC=$?
+    OUT="$VER
+$(cat "$TMPERR" 2>/dev/null)"
+    # "O BASELINE NUNCA CALA" era falso ATRAVES DO HOOK: o `OUT` so e impresso quando `RC != 0`,
+    # entao na parada em que a tolerancia de fato agia - a que passa - a lista de quebras
+    # toleradas ia para lugar nenhum. O nucleo cumpria a invariante; o executor a anulava. O
+    # operador precisa ver a divida TODA vez, senao a catraca vira anistia silenciosa.
+    # R1: era `grep -q 'QUEBRA PREEXISTENTE TOLERADA'` - uma lista de marcadores conhecidos, que
+    # calava tudo que o nucleo passasse a reportar depois. A exclusao por checkout aninhado nasceu
+    # muda exatamente por isso. O predicado passou a ser "o nucleo escreveu alguma coisa": quem
+    # decide o que o operador precisa ver e o nucleo, nao um grep no executor.
+    if [ "$RC" -eq 0 ] && [ -s "$TMPERR" ]; then
+      cat "$TMPERR" >&2
+    fi
+    [ "$TMPERR" != /dev/null ] && rm -f "$TMPERR"
+    # `$RAWF` NAO E APAGADO AQUI. Ele era, e o defeito ficou invisivel porque o teste media so o
+    # CODIGO DE SAIDA: a semeadura logo abaixo REJULGA com `--raw-file "$RAWF"`, e o arquivo ja
+    # nao existia. O nucleo respondia `NAO VERIFICADO: entrada ilegivel ([Errno 2] ...)` e o RC
+    # virava 2 - a PRIMEIRA parada de TODO repositorio que semeia catraca terminava em LACUNA em
+    # vez de julgamento, com a causa errada na mensagem. Fail-closed, entao nao e falso negativo;
+    # e o ramo de delta INERTE exatamente na parada que ele existe para julgar. A limpeza foi para
+    # depois do bloco de semeadura, que e o ultimo leitor.
+    # SEMEADURA DO BASELINE, e ela e explicita e visivel. Sem baseline o portao reprovaria por
+    # quebra preexistente para sempre; semear em silencio seria anistia. Semeia UMA vez, avisa, e
+    # a partir dai a catraca so aceita o que ja estava la.
+    if [ "$RC" -eq 1 ] && [ ! -f "$BLPATH" ] && [ "${TOLLENS_BASELINE_SEED:-1}" = "1" ]; then
+      mkdir -p "$(dirname "$BLPATH")" 2>/dev/null
+      # ESCRITA ATOMICA, e ela e obrigatoria aqui. `> "$BLPATH"` cria o arquivo ANTES de o
+      # programa rodar: uma emissao que falha deixa um baseline VAZIO que (a) bloqueia a
+      # re-semeadura pelo `[ ! -f ]` seguinte e (b) se lido, tolera NADA - o portao volta a
+      # reprovar por quebra preexistente para sempre, agora com um arquivo no disco sugerindo que
+      # ha catraca. Medido: foi exatamente o que aconteceu na primeira execucao ponta a ponta.
+      # O BASELINE VEM DO ESTADO ANTERIOR AO TURNO, NUNCA DO ATUAL. Semear a partir da arvore
+      # como ela esta agora ANISTIA a quebra que o proprio turno acabou de introduzir: a primeira
+      # parada gravaria a digital do defeito recem-criado e o toleraria para sempre. Isso nao e
+      # hipotese - `tests/unit/regressao-gate.sh` G1 mede exatamente essa garantia ("falha em cache
+      # NAO vira sucesso na segunda parada") e reprovou com got=0 want=2 na primeira versao deste
+      # ramo. O portao de regressao pegou o defeito de desenho antes de qualquer humano.
+      #
+      # `git archive HEAD` e LEITURA PURA: extrai o commit sem registrar worktree, sem escrever no
+      # `.git` do repositorio analisado e sem tocar no indice. `git worktree add` faria as tres.
+      # A1 DO REFUTADOR. Semear de `HEAD` fecha so a variante ARVORE SUJA: se o turno COMMITOU a
+      # propria quebra - padrao neste repositorio - HEAD E o estado do turno, e a catraca gravava
+      # a digital do defeito recem-criado. Medido: baseline com a digital da quebra do proprio
+      # turno, 2a e 3a paradas exit 0. Isso refutava, literalmente, o comentario abaixo.
+      #
+      # `DIFFBASE` ja e calculado na linha 157 como merge-base com o upstream, e e a base que o
+      # proprio hook usa para decidir `CHANGED`. Usar outra base para a catraca era incoerencia
+      # interna: o turno era medido contra uma base e perdoado contra outra.
+      # F1 DO REFUTADOR, e a correcao anterior fechou o REPRO e nao a CLASSE. `${DIFFBASE:-HEAD}`
+      # devolvia HEAD sempre que nao ha upstream NEM remoto - o estado normal de qualquer projeto
+      # antes do primeiro `git remote add`. Ali HEAD E o estado do turno, e a catraca voltava a
+      # gravar a digital da quebra recem-criada: medido, mesma digital que o mutante `SEEDREF=HEAD`
+      # produz. Fallback silencioso para uma base que se sabe errada e pior que recusar.
+      # ARVORE VAZIA NAO E UMA BASE, e sim a AUSENCIA de uma. `BASE` cai no hash da arvore vazia
+      # quando nenhum candidato de remoto resolve (linha ~150), e isso e legitimo para `CHANGED` -
+      # `git diff <arvore-vazia> HEAD` lista tudo. Para a CATRACA seria destrutivo: semear dali
+      # grava um baseline que tolera NADA e, pelo `[ ! -f "$BLPATH" ]`, IMPEDE a re-semeadura
+      # quando uma base real aparecer. E a armadilha A4 por outra porta - catraca inutil que nao
+      # se recria. Sem base real, recusar e a unica resposta honesta.
+      _VAZIA="$(git -C "$ROOT" hash-object -t tree /dev/null 2>/dev/null || true)"
+      SEEDREF="$DIFFBASE"
+      [ -n "$_VAZIA" ] && [ "$SEEDREF" = "$_VAZIA" ] && SEEDREF=""
+      SEEDDIR=""; RAWBASE=""
+      if [ -z "$SEEDREF" ]; then
+        # F8 DO REFUTADOR: esta mensagem so ia para `LACUNAS`, e `LACUNAS` e reportado DEPOIS de
+        # `FALHAS` - com `reporta` saindo antes. Como a semeadura so e tentada quando o julgamento
+        # BLOQUEOU, havia sempre falha, e a lacuna era codigo morto: o operador via "VERIFICACAO
+        # FALHOU" e nenhuma pista de que o bloqueio nao passaria sozinho. A razao da recusa vai
+        # tambem para a SAIDA da falha, porque e ela que explica por que o portao nao destrava.
+        _MSG="sem base anterior ao turno (upstream ausente ou apontando para ref inexistente, e nenhum candidato de remoto resolve). A catraca NAO foi semeada: semear da arvore vazia toleraria NADA e impediria a re-semeadura. Configure o upstream, ou semeie a mao com \`--emit-baseline\`."
+        SAIDA="$SAIDA
+--- $ID: $_MSG ---"
+        LACUNAS="$LACUNAS
+  - $ID: $_MSG"
+      else
+        SEEDDIR="$(mktemp -d "${TMPDIR:-/tmp}/tollens-seed.XXXXXX")" || SEEDDIR=""
+      fi
+      if [ -n "$SEEDDIR" ] && git -C "$ROOT" archive "$SEEDREF" 2>/dev/null | tar -x -C "$SEEDDIR" 2>/dev/null; then
+        RAWBASE="$(cd "$SEEDDIR" && timeout "$TMO" "$CMD" "${ARGS[@]}" 2>/dev/null)"
+        # A4 DO REFUTADOR: `|| RAWBASE='[]'` fazia analisador que MORRE na semeadura gravar catraca
+        # VAZIA - e o `[ ! -f "$BLPATH" ]` seguinte impedia recriar, entao a quebra preexistente
+        # bloqueava PARA SEMPRE. Saida ilegivel deixa `RAWBASE` vazio e a semeadura nao acontece.
+        printf '%s' "$RAWBASE" | jq -e 'type == "array"' >/dev/null 2>&1 || RAWBASE=""
+      fi
+      BLTMP="$(mktemp "${BLPATH}.XXXXXX")" || BLTMP=""
+      RAWBF="$(mktemp "${TMPDIR:-/tmp}/tollens-rawb.XXXXXX")" || RAWBF=""
+      [ -n "$RAWBASE" ] && printf '%s' "$RAWBASE" > "$RAWBF" 2>/dev/null
+      if [ -n "$BLTMP" ] && [ -n "$RAWBASE" ] && python3 "$LD" --raw-file "$RAWBF" --map "$MAPA" \
+           --strip-prefix "$SEEDDIR/" \
+           --nested-roots "$NESTED" --breakage-codes "$BRK" --emit-baseline > "$BLTMP" 2>/dev/null \
+         && [ -s "$BLTMP" ] && jq -e 'type == "array"' "$BLTMP" >/dev/null 2>&1 \
+         && mv -f "$BLTMP" "$BLPATH"; then
+        LACUNAS="$LACUNAS
+  - $ID: catraca CRIADA agora ($(jq -r 'length' "$BLPATH" 2>/dev/null) defeito(s) preexistente(s) da base anterior ao turno passam a ser TOLERADOS, e sao reportados a cada execucao). Este turno FOI julgado contra ela. A lacuna declarada nao e o julgamento: e a TOLERANCIA recem-concedida, que nenhum humano revisou. Revise $BLPATH, ou apague-o para recriar."
+        # REJULGA CONTRA O BASELINE RECEM-CRIADO, nunca `RC=0` por decreto. Forcar zero aqui
+        # fazia a PRIMEIRA parada passar sempre - inclusive quando a quebra era do proprio turno,
+        # que e o oposto do que a catraca existe para fazer. O baseline vem do estado ANTERIOR;
+        # se o defeito nao esta nele, ele e novo e continua bloqueando.
+        BL="$(cat "$BLPATH" 2>/dev/null)"
+        TMPERR2="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR2=/dev/null
+        VER="$(python3 "$LD" --raw-file "$RAWF" --map "$MAPA" --strip-prefix "$ROOT/" \
+                 --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
+                 --breakage-codes "$BRK" 2>"$TMPERR2")"; RC=$?
+        OUT="$VER
+$(cat "$TMPERR2" 2>/dev/null)"
+        [ "$TMPERR2" != /dev/null ] && rm -f "$TMPERR2"
+        [ -n "${SEEDDIR:-}" ] && rm -rf "$SEEDDIR"
+      else
+        [ -n "${BLTMP:-}" ] && rm -f "$BLTMP"
+        [ -n "${SEEDDIR:-}" ] && rm -rf "$SEEDDIR"
+        LACUNAS="$LACUNAS
+  - $ID: NAO foi possivel semear o baseline de quebra - o turno segue julgado SEM catraca, e quebra preexistente continua bloqueando. Nada foi gravado."
+      fi
+    fi
+    # ultimo leitor de $RAWF ja passou (o rejulgamento pos-semeadura).
+    [ -n "${RAWF:-}" ] && rm -f "$RAWF"
+    [ -n "${RAWBF:-}" ] && rm -f "$RAWBF"
+  elif [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
     # G_VAZIO (per_file): um adaptador per_file so examina os arquivos de CHANGED que ainda
     # existem no disco (`[ -f "$ROOT/$f" ] || continue`). Se apagar, renomear-com-conteudo-
     # divergente ou deixar um symlink quebrado faz TODOS os arquivos casados desaparecerem, o

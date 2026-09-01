@@ -83,7 +83,10 @@ fi
 destino_managed(){ printf '%s\n' "${1#tollens/}"; }
 
 # tipos que compoem a POLITICA. agent e skill ficam de fora por decisao declarada no cabecalho.
-tipos_politica(){ awk -F'\t' '!/^#/ && ($1=="hook" || $1=="adapter" || $1=="doctool")' "$MAN"; }
+# `lib` entrou na onda 25: a POLITICA precisa das bibliotecas que seus hooks chamam. Sem isso o
+# `verify-gate.sh` chegava a /opt/tollens sem o `lint-delta.py` que o ramo `delta` invoca, e
+# declarava lacuna a cada parada - portao instalado que nao verifica nada.
+tipos_politica(){ awk -F'\t' '!/^#/ && ($1=="hook" || $1=="adapter" || $1=="doctool" || $1=="lib")' "$MAN"; }
 
 # ===================== CONFINAMENTO DE CAMINHO (auditoria de 2026-08-04) =====================
 # DEFEITO CRITICO CORRIGIDO, com PoC executada. O manifesto e um ARQUIVO DO REPOSITORIO, isto e,

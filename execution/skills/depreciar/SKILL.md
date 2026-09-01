@@ -96,6 +96,33 @@ jq -r 'select(.hook_event_name=="SubagentStop" and (.agent_type//"")!="") | .age
   ~/.claude/logs/subagent-probe.jsonl | sort | uniq -c | sort -rn
 ```
 
+## O mesmo vale para PLUGIN, e o canal e OUTRO
+
+Plugin nao aparece no log de ativacao: o registrador cobre `PreToolUse(Skill)`, `SubagentStart` e
+`InstructionsLoaded`, e a ferramenta de um plugin MCP ou LSP nao passa por nenhum dos tres. Medir
+plugin pelo log de ativacao devolve zero para todos, e zero ali nao significa nada.
+
+O canal certo sao os TRANSCRIPTS em `~/.claude/projects/**/*.jsonl`, onde o nome da ferramenta
+aparece como `"name":"..."`. Conte por SUBSTRING INTEIRA do nome do plugin
+(`mcp__plugin_context7`, `mcp__plugin_playwright`, `"name":"LSP"`), e para skill conte
+`"skill":"<nome>"`.
+
+CUIDADO COM O GRUPO DA REGEX - a armadilha ja ocorreu. Medindo em 2026-09-01 com
+`mcp__plugin_([a-z0-9_]+)_[^"]+` e agrupando pelo grupo 2, o `context7` apareceu com 5 chamadas:
+o grupo cortava o nome e espalhava a contagem por variantes. Com a substring inteira sao
+**744 chamadas em 144 sessoes**. A sonda dizia "quase nao usado" sobre o plugin MAIS usado da
+maquina. Confira a soma contra uma contagem por substring simples ANTES de propor desligamento.
+
+O ESTADO MORA EM `~/.claude/settings.json`, chave `enabledPlugins`. Desligar e por o valor em
+`false`, nao remover a entrada - remover perde o registro de que a decisao foi tomada. Faca backup
+antes: o arquivo carrega permissoes e hooks.
+
+A TERCEIRA RESSALVA MUDA DE PESO AQUI. Para skill, zero uso costuma ser oportunidade que nao
+ocorreu. Para um LSP de linguagem que o operador usa TODO DIA, oportunidade houve as centenas -
+medido: `LSP` com ZERO chamadas em 1077 transcripts, numa maquina com trabalho diario em Python e
+TypeScript. Ali zero e evidencia, nao ausencia dela. Diga QUAL das duas voce esta afirmando, e
+mostre o denominador.
+
 ## O que NAO fazer
 
 - Nao deprecie por "parece redundante". Meca.

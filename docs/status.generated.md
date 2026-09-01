@@ -23,7 +23,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/literatura.sh` | 38 | 0 |
 | `tests/unit/capabilities.sh` | 60 | 0 |
 | `tests/unit/cobertura.sh` | 28 | 0 |
-| `tests/unit/contrato-de-instalador.sh` | 45 | 0 |
+| `tests/unit/contrato-de-instalador.sh` | 47 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | variavel (base) | 0 |
 | `tests/unit/capability-conformance.py` | variavel (base) | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
@@ -49,8 +49,10 @@ O README referencia este arquivo em vez de duplicar numeros.
 | corpus-completude (auto) | 22 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
+| lint-delta (auto) | ? | NAO executado no CI |
 | managed-transitive-trust (auto) | 2 | NAO executado no CI |
 | skill-invocation-policy (auto) | 2 | NAO executado no CI |
+| verify-gate-delta (auto) | ? | NAO executado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 
@@ -67,6 +69,7 @@ assercao).
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
 | `evidence/corpus/render.py` | 93.6% | 93.6% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
+| `evidence/lint-delta.py` | 98.9% | 98.9% | OK |
 
 ## Componentes
 
@@ -76,8 +79,9 @@ assercao).
 | agent | 10 |
 | doctool | 5 |
 | hook | 15 |
+| lib | 1 |
 | skill | 8 |
-| **total** | **49** |
+| **total** | **50** |
 
 ## Limites declarados
 

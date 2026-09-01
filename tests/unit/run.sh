@@ -393,7 +393,44 @@ echo "================ PASS=$P  FAIL=$F ================"
 # expirado) so rodam quando `unshare --map-root-user --user` esta disponivel (UNSHARE_OK, ==
 # 8). Sem isso a contagem fixa quebraria em qualquer ambiente sem namespace de usuario sem
 # privilegio - variancia AMBIENTAL declarada, distinta de caso removido em silencio.
-EXPECTED=$((63 + UNSHARE_OK * 3))
+echo "== EI. evento ilegivel na entrada padrao NAO pode virar laco =="
+# DEFEITO REPORTADO E REPRODUZIDO. `INPUT="$(</dev/stdin)"` depende do CAMINHO /dev/stdin existir.
+# Todo `claude -p` lancado fora de uma sessao - processo de desktop, companion, cron - falha com
+# `No such device or address`, e sem `set -e` o INPUT fica VAZIO. O guarda anti-loop decide por
+# `stop_hook_active` LIDO DESSE INPUT: vazio nunca casa, o gate nunca curto-circuita, reprova e
+# re-prompta. Medido pelo operador: 9 re-prompts, 43 mil tokens, resposta VAZIA, 43 segundos.
+#
+# A escolha nao e simetrica e esta declarada no proprio hook: "portao contornavel fechando stdin"
+# contra "portao que gasta a cota em laco e devolve vazio". O segundo e pior e nao para sozinho.
+EIR="$TMP/ei"; rm -rf "$EIR"; mkdir -p "$EIR"
+( cd "$EIR" && git init -q . && git config user.email t@t && git config user.name t \
+  && echo "x = 1" > a.py && git add -A && git commit -qm base ) >/dev/null 2>&1
+printf 'def f():\n    return quebrado\n' > "$EIR/b.py"; ( cd "$EIR" && git add -A ) >/dev/null 2>&1
+
+# CONTROLE POSITIVO PRIMEIRO: com stdin legivel o portao AINDA barra codigo roto. Sem isto,
+# "nao bloqueou com stdin fechado" nao distingue a correcao de um portao desligado.
+rc=$( cd "$EIR" && printf '{}' | bash "$EVID/verify-gate.sh" >/dev/null 2>&1; echo $? )
+chk "EI0 CONTROLE: com stdin legivel, codigo roto AINDA barra" "$rc" 2
+rc=$( cd "$EIR" && printf '{"stop_hook_active":true}' | bash "$EVID/verify-gate.sh" >/dev/null 2>&1; echo $? )
+chk "EI1 anti-loop oficial continua curto-circuitando" "$rc" 0
+
+rc=$( cd "$EIR" && timeout 30 bash "$EVID/verify-gate.sh" 0<&- >/dev/null 2>&1; echo $? )
+chk "EI2 stdin FECHADO nao bloqueia (era o laco)" "$rc" 0
+rc=$( cd "$EIR" && timeout 30 bash "$EVID/verify-gate.sh" < /dev/null >/dev/null 2>&1; echo $? )
+chk "EI3 stdin vazio nao bloqueia" "$rc" 0
+
+# E a lacuna e DECLARADA, nao silenciosa: exit 0 sem dizer nada seria verde vazio.
+OUT_EI="$( cd "$EIR" && timeout 30 bash "$EVID/verify-gate.sh" < /dev/null 2>&1 )"
+chk "EI4 declara EVENTO ILEGIVEL em vez de calar" \
+    "$(printf '%s' "$OUT_EI" | grep -c 'EVENTO ILEGIVEL' | head -1)" 1
+chk "EI5 e entrega additionalContext (canal que chega ao modelo)" \
+    "$(printf '%s' "$OUT_EI" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null | grep -c 'NADA foi' | head -1)" 1
+# LIMITE NO TEMPO: `cat` com descritor fechado nao retorna - medido. Sem `timeout` a correcao
+# trocaria laco de re-prompt por processo pendurado, que e pior.
+seg0=$(date +%s); ( cd "$EIR" && timeout 30 bash "$EVID/verify-gate.sh" 0<&- >/dev/null 2>&1 ); seg1=$(date +%s)
+chk "EI6 e a leitura e LIMITADA no tempo (nao pendura)" "$([ $((seg1-seg0)) -le 15 ] && echo sim || echo nao)" sim
+
+EXPECTED=$((70 + UNSHARE_OK * 3))
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
