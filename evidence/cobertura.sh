@@ -262,7 +262,7 @@ orchestration/schedule.py|ramo|406->408|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->409|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->410|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|436->-1|heranca-piso-absoluto-2026-08-11
-evidence/lint-delta.py|ramo|224->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.
+evidence/lint-delta.py|ramo|246->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.
 EOF
 )}"
 
