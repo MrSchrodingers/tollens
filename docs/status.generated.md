@@ -12,8 +12,8 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
 | `tests/unit/concorrencia.sh` | 8 | 0 |
-| `tests/unit/claims.sh` | 14 | 1 |
-| `tests/unit/propriedades.sh` | 30 | 1 |
+| `tests/unit/claims.sh` | 54 | 0 |
+| `tests/unit/propriedades.sh` | 31 | 0 |
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
 | `tests/unit/managed.sh` | 66 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
@@ -62,6 +62,14 @@ assercao).
 
 | Arquivo | Medido | Piso | Status |
 |---|---:|---:|---|
+| `evidence/probes/github-ruleset.py` | 86.0% | 86.0% | OK |
+| `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
+| `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
+| `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
+| `orchestration/schedule.py` | 89.3% | 89.3% | OK |
+| `evidence/corpus/render.py` | 93.6% | 93.6% | OK |
+| `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
+| `evidence/lint-delta.py` | 97.3% | 99.2% | ABAIXO DO PISO |
 
 ## Componentes
 

@@ -156,7 +156,7 @@ evidence/runtime-probes/declared-capabilities.py:92.6
 orchestration/schedule.py:89.3
 evidence/corpus/render.py:93.6
 evidence/validate-adapters.py:69.3
-evidence/lint-delta.py:99.2
+evidence/lint-delta.py:99.3
 EOF
 )}"
 

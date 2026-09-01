@@ -14,6 +14,7 @@ rodar(){ python3 "$LD" --diagnostics "$1" --hunks "$2" --baseline "$3" --breakag
 rc_de(){ python3 "$LD" --diagnostics "$1" --hunks "$2" --baseline "$3" --breakage-codes "$4" >/dev/null 2>&1; echo $?; }
 
 QUEBRA="F821,F811,F822,E999"
+T_LD="$(mktemp -d "${TMPDIR:-/tmp}/ld.XXXXXX")"; trap 'rm -rf "$T_LD"' EXIT
 HIG='[{"path":"a.py","line":8,"code":"F401","message":"`uuid` imported but unused"}]'
 QBR='[{"path":"b.py","line":3,"code":"F821","message":"Undefined name `foo`"}]'
 
@@ -125,7 +126,30 @@ chk "  e emite a digital mesmo assim" \
 chk "  julgar SEM --hunks trata como zero linhas tocadas (higiene nao bloqueia)" \
     "$(python3 "$LD" --diagnostics "$HIG" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 0
 
-EXPECTED=35
+echo "== LD13. --raw-file: entrada por ARQUIVO, sem limite de argv =="
+# O Linux limita UM argv a MAX_ARG_STRLEN = 131.072 B, e a saida do analisador num repositorio
+# real ja passa disso (medido: 147.920 B). Passar por argv fazia o hook morrer com `Argument list
+# too long` e, como a semeadura exige RC==1, o repositorio ficava bloqueado PARA SEMPRE.
+RF="$T_LD/raw.json"; mkdir -p "$T_LD" 2>/dev/null
+MAPA_LD='{"path":"filename","line":"location.row","code":"code","message":"message"}'
+printf '[{"filename":"/abs/x/a.py","location":{"row":8},"code":"F401","message":"`os` imported but unused"}]' > "$RF"
+chk "LD13 le a saida nativa de um ARQUIVO" \
+    "$(python3 "$LD" --raw-file "$RF" --map "$MAPA_LD" --strip-prefix '/abs/x/' --hunks '{"a.py":[[8,8]]}' --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 1
+chk "  e o mesmo conteudo FORA do hunk nao bloqueia" \
+    "$(python3 "$LD" --raw-file "$RF" --map "$MAPA_LD" --strip-prefix '/abs/x/' --hunks '{}' --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 0
+# ARQUIVO VAZIO NAO E ARVORE LIMPA. Cair no `--diagnostics` default (`[]`) transformaria leitura
+# que nao produziu nada em "nenhum diagnostico", que e aprovacao - a mesma classe que esta onda
+# corrigiu no executor, aqui dentro do nucleo.
+: > "$T_LD/vazio.json"
+chk "  arquivo VAZIO e NAO VERIFICADO, nao aprovacao" \
+    "$(python3 "$LD" --raw-file "$T_LD/vazio.json" --map "$MAPA_LD" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 2
+printf '[]' > "$T_LD/lista-vazia.json"
+chk "  CONTROLE: `[]` legitimo do analisador passa" \
+    "$(python3 "$LD" --raw-file "$T_LD/lista-vazia.json" --map "$MAPA_LD" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 0
+chk "  arquivo INEXISTENTE e NAO VERIFICADO" \
+    "$(python3 "$LD" --raw-file "$T_LD/nao-existe.json" --map "$MAPA_LD" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 2
+
+EXPECTED=40
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
