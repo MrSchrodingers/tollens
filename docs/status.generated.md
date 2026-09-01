@@ -69,7 +69,7 @@ assercao).
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
 | `evidence/corpus/render.py` | 93.6% | 93.6% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |
-| `evidence/lint-delta.py` | 97.3% | 99.2% | ABAIXO DO PISO |
+| `evidence/lint-delta.py` | 98.9% | 98.9% | OK |
 
 ## Componentes
 

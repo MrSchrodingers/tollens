@@ -7,7 +7,20 @@ cd "$(dirname "$0")/.." || exit 1
 export LC_ALL=C
 OUT="docs/status.generated.md"
 CHECK=0
-[ "${1:-}" = "--check" ] && CHECK=1 || OUT="${1:-$OUT}"
+# ARGUMENTO DESCONHECIDO VIRAVA NOME DE ARQUIVO, e o resultado era sucesso falso. `--check` era a
+# unica forma reconhecida; qualquer outra coisa caia no `else` e virava $OUT. Medido nesta sessao:
+# `bash scripts/status.sh --regenerate` (flag que nunca existiu) gerava o relatorio, tentava
+# `mv "$TMP" -- --regenerate`, o mv recusava o hifen duplo, e o script imprimia `gerado:
+# --regenerate` com rc=0. O artefato NAO era regerado e nada dizia isso - o portao seguinte
+# reprovava por "DESATUALIZADO" e a causa ficava a duas camadas de distancia. Custou tres ciclos
+# completos de suite ate a saida ser lida em vez de mandada para /dev/null.
+case "${1:-}" in
+  --check) CHECK=1 ;;
+  --*)     echo "uso: $0 [--check | <caminho-de-saida>]" >&2
+           echo "argumento desconhecido: $1 - recusado para nao virar nome de arquivo." >&2
+           exit 2 ;;
+  *)       OUT="${1:-$OUT}" ;;
+esac
 
 # INTERPRETADOR PELO SUFIXO. Achado da revisao da onda 13: a lista abaixo era invocada com
 # `bash "$t"` e ganhou um `.py`. Bash sobre Python devolve exit 2 com stdout vazio - a coluna de
