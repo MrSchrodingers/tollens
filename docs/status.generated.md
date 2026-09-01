@@ -7,7 +7,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Suite | Assercoes | Exit |
 |---|---:|---:|
-| `tests/unit/regressao-gate.sh` | 65 | 0 |
+| `tests/unit/regressao-gate.sh` | 63 | 1 |
 | `tests/unit/document-tools.sh` | 57 | 0 |
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
@@ -17,7 +17,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
 | `tests/unit/managed.sh` | 66 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
-| `tests/unit/arnes-de-mutacao.sh` | 7 | 0 |
+| `tests/unit/arnes-de-mutacao.sh` | ? | 2 |
 | `tests/unit/schedule.sh` | 34 | 0 |
 | `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
@@ -63,7 +63,7 @@ assercao).
 | `evidence/probes/github-ruleset.py` | 86.0% | 86.0% | OK |
 | `evidence/validate-claims.py` | 81.4% | 81.4% | OK |
 | `evidence/validate-literature.py` | 92.3% | 92.3% | OK |
-| `evidence/runtime-probes/declared-capabilities.py` | 83.0% | 92.6% | ABAIXO DO PISO |
+| `evidence/runtime-probes/declared-capabilities.py` | 92.6% | 92.6% | OK |
 | `orchestration/schedule.py` | 89.3% | 89.3% | OK |
 | `evidence/corpus/render.py` | 93.6% | 93.6% | OK |
 | `evidence/validate-adapters.py` | 69.3% | 69.3% | OK |

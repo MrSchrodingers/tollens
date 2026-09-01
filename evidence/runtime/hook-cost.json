@@ -1,0 +1,27 @@
+{
+  "_comment": "CUSTO DOS HOOKS, MEDIDO. O widget de uso publica `Hook timings: not measured by Tollens` (claude-usage-widget/scripts/tollens-probe.py:218-220), e a queixa operacional que abriu esta serie de ondas foi `demora muito para tudo`. As duas coisas juntas tornavam a camada de hooks uma suspeita permanente e nunca medida. Este arquivo fecha essa hipotese - com um resultado NEGATIVO, que e o valor dele.",
+  "_metodo": "cada hook executado 5 vezes (3 para o SessionStart, que e caro) com o payload JSON do evento que ele de fato recebe, contra a arvore em vigor /opt/tollens/hooks. Tempo de parede dividido pelo numero de execucoes.",
+  "_limite": "Numero por PAYLOAD, nao por sessao real. Hook que ramifica por evento ou por ferramenta faz trabalho diferente com outro payload: `verify-gate.sh` mediu 39 ms saindo cedo, e NAO e esse o custo dele quando ha o que verificar. Trate como piso, nao como teto.",
+  "measured_at": "2026-08-31",
+  "runtime_do_processo": "2.1.241",
+  "por_evento_ms": {
+    "SessionStart.session-integrity": 837,
+    "PreToolUse.read-budget": 41,
+    "PreToolUse.artifact-discipline": 26,
+    "PreToolUse.fable-guard": 19,
+    "PreToolUse.self-mod-audit": 10,
+    "PostToolUse.output-budget": 21,
+    "UserPromptSubmit.lentes": 6,
+    "Stop.verify-gate_saida_curta": 39
+  },
+  "agregado": {
+    "por_chamada_Bash_ms": 40,
+    "por_chamada_Write_ms": 36,
+    "por_chamada_Read_ms": 41,
+    "uma_vez_por_sessao_ms": 837,
+    "sessao_50_chamadas_s": 2.8,
+    "sessao_200_chamadas_s": 8.8,
+    "sessao_500_chamadas_s": 20.8
+  },
+  "conclusao": "A CAMADA DE HOOKS NAO E A ORIGEM DA LATENCIA PERCEBIDA. Vinte segundos ao longo de uma sessao de 500 chamadas de ferramenta e ruido diante da latencia do modelo. O dominante e o `session-integrity` com 837 ms, e ele roda UMA vez por sessao. Isto NAO absolve o harness da queixa de lentidao - move a suspeita para onde ela ainda nao foi medida: o pipeline de subagentes, em que cada revisor e uma execucao completa de modelo."
+}

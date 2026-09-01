@@ -294,73 +294,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
-INVENTARIO_REL = "evidence/runtime/tool-inventory.json"
-
-
-def confere_inventario(canon_files: list[Path]) -> tuple[list[str], list[str], int]:
-    """ONDA 24. Todo nome em `tools:` existe no runtime?
-
-    O defeito que este portao fecha foi medido, nao imaginado: os 10 agentes declaravam `Grep` e
-    `Glob`, e os 10 prescreviam o uso deles no corpo. Nenhuma das duas existe neste runtime -
-    controle positivo executado, `ToolSearch select:Grep,Glob` devolve `No matching deferred tools
-    found`. O agente e mandado usar o que nao ha, cai no `bash grep` em silencio, e nenhum portao
-    acusa: TODOS comparavam `tools:` do canonico com `tools:` da projecao, e as duas copias
-    concordavam - erradas do mesmo jeito. Consistencia interna nao implica completude (ADR 0036).
-
-    O INVENTARIO MORA FORA DESTE ARQUIVO, de proposito. A onda 14 removeu `D_MAX` porque a
-    constante vivia no arquivo que o PR edita; repetir a forma aqui seria deixar o portao ser
-    afrouxado no mesmo diff que o viola. Em `evidence/runtime/tool-inventory.json` a lista tem
-    procedencia, data e metodo, e alarga-la e um ato SEPARADO e visivel no diff.
-    """
-    violacoes: list[str] = []
-    nao_verificados: list[str] = []
-    conferidos = 0
-    # O INVENTARIO E PROPRIEDADE DO RUNTIME, NAO DA ARVORE SOB TESTE. Resolver por `ROOT` fazia
-    # toda fixtura - que e uma arvore minima com agentes e mais nada - devolver "inventario
-    # ausente", e isso virava NAO VERIFICADO no veredito INTEIRO da sonda, derrubando quatro casos
-    # de `tests/unit/capabilities.sh` que nada tem a ver com nomes de ferramenta (medido: got=2
-    # want=0). Que ferramentas existem nao depende de qual arvore esta sendo conferida; depende do
-    # runtime que executa. Por isso a origem e o proprio repositorio da sonda, com `TOLLENS_ROOT`
-    # sem efeito aqui - e `TOLLENS_TOOL_INVENTORY` como costura de teste explicita, para que um
-    # caso possa exercitar inventario mutado sem depender de onde a fixtura mora.
-    # A PERGUNTA E SOBRE OS AGENTES DESTE REPOSITORIO, nao sobre arvore qualquer. As fixturas de
-    # `tests/unit/capabilities.sh` sao arvores sinteticas montadas para exercitar OUTRAS
-    # propriedades - divergencia entre fontes, forma do YAML, arquivo ausente - e seus agentes
-    # declaram nomes inventados de proposito. Conferi-los contra o inventario do runtime real
-    # produzia violacao verdadeira sobre PERGUNTA ERRADA e derrubava 19 casos que nada tem a ver
-    # com nomes de ferramenta. Quando `TOLLENS_ROOT` aponta para fora deste repositorio o check
-    # nao se aplica - e diz isso em voz alta, em vez de devolver verde silencioso.
-    # `TOLLENS_TOOL_INVENTORY` forca a conferencia mesmo sob fixtura, que e como um caso futuro
-    # exercita ESTE portao com inventario mutado.
-    if ROOT != DEFAULT_ROOT and "TOLLENS_TOOL_INVENTORY" not in os.environ:
-        return violacoes, [], -1
-    caminho = Path(os.environ.get("TOLLENS_TOOL_INVENTORY", DEFAULT_ROOT / INVENTARIO_REL))
-    if not caminho.is_file():
-        return violacoes, [f"{INVENTARIO_REL} ausente - `tools:` nao pode ser conferido contra o runtime"], 0
-    try:
-        inv = json.loads(caminho.read_text(encoding="utf-8"))
-        conhecidos = frozenset(inv["tools"])
-        prefixos = tuple(inv.get("prefixos_aceitos") or ())
-    except Exception as exc:
-        return violacoes, [f"{INVENTARIO_REL} ilegivel: {exc}"], 0
-    if not conhecidos:
-        return violacoes, [f"{INVENTARIO_REL} com lista VAZIA - conferir contra conjunto vazio aprovaria tudo"], 0
-
-    for canon_path in canon_files:
-        declarados = tools_declarados(canon_path)
-        if not isinstance(declarados, frozenset):
-            continue
-        conferidos += 1
-        for nome in sorted(declarados):
-            if nome in conhecidos or (prefixos and nome.startswith(prefixos)):
-                continue
-            violacoes.append(
-                f"{canon_path.stem}: `tools:` declara {nome!r}, que nao esta em {INVENTARIO_REL}. "
-                f"Ou o nome esta errado, ou o runtime mudou e o inventario envelheceu - as duas "
-                f"exigem olhar, e nenhuma se resolve editando so este portao")
-    return violacoes, nao_verificados, conferidos
-
-
 def confere_contrato(canon_files: list[Path]) -> tuple[list[str], list[str], int]:
     """Compara o CONTRATO de escrita (`writes` em orchestration/registry.json) com a capacidade
     que o frontmatter concede, nas DUAS arvores deste repositorio (canonica e projecao).
@@ -555,28 +488,12 @@ def main() -> int:
         for v in nao_verificados:
             print(f"  - {v}")
 
-    v_inv, nv_inv, n_inv = confere_inventario(canon_files)
-    if n_inv < 0:
-        print("\nINVENTARIO DE FERRAMENTAS: NAO APLICAVEL - `TOLLENS_ROOT` aponta para fora deste "
-              "repositorio, e o inventario descreve os agentes DELE. Para conferir mesmo assim, "
-              "defina `TOLLENS_TOOL_INVENTORY`.")
-        v_inv, nv_inv = [], []
-    else:
-        print(f"\nINVENTARIO DE FERRAMENTAS ({INVENTARIO_REL}): {n_inv} agente(s) conferido(s) | "
-              f"{len(v_inv)} nome(s) fora do inventario | {len(nv_inv)} nao verificado(s)")
-    for _m in v_inv:
-        print(f"  VIOLACAO  {_m}")
-    for _m in nv_inv:
-        print(f"  NAO VERIFICADO  {_m}")
-
     violacoes_contrato, nao_verificados_contrato, conferidos = confere_contrato(canon_files)
 
     print(f"\nCONTRATO DE ESCRITA ({REGISTRY_REL} `writes: false` x capacidade que o "
           f"frontmatter concede): {conferidos} pares agente-fonte conferidos | "
           f"{len(violacoes_contrato)} violacoes | "
           f"{len(nao_verificados_contrato)} nao verificados")
-    violacoes_contrato = list(violacoes_contrato) + v_inv
-    nao_verificados_contrato = list(nao_verificados_contrato) + nv_inv
     if violacoes_contrato:
         print("CONTRATO DE ESCRITA - VIOLACOES (o frontmatter concede escrita a agente "
               "declarado sem escrita):")

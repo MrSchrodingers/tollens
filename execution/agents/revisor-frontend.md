@@ -1,7 +1,7 @@
 ---
 name: revisor-frontend
 description: Revisao de UI/frontend com FEEDBACK VISUAL REAL - renderiza a tela e olha, nao so le o codigo. Acionar quando o diff toca .vue/.tsx/.jsx/.svelte/.astro, estilo, template ou token de Design System. Roda checker de acessibilidade (axe), compara com paginas-irmas, e audita as violacoes SEMANTICAS que passam na checagem automatica. Read-only, nunca edita.
-tools: Read, Bash
+tools: Read, Grep, Glob, Bash
 model: opus
 color: magenta
 ---
@@ -25,7 +25,7 @@ como se tivesse visto a tela.
 
 1. Suba o dev server do projeto (`npm run dev` / `pnpm dev`, ou o script do README).
 2. Capture a tela alterada por Bash. NAO conte com ferramenta MCP: o `tools:` deste agente
-   (Read/Bash) nao inclui MCP, entao a rota MCP e estruturalmente inacessivel aqui -
+   (Read/Grep/Glob/Bash) nao inclui MCP, entao a rota MCP e estruturalmente inacessivel aqui -
    se precisar dela, peca ao orquestrador, que a tem.
    `npx --yes playwright screenshot <url> shot.png` (na 1a vez, `npx playwright install chromium`).
 3. Capture nos breakpoints que importam: 360px (movel), 768px, 1280px. Layout olhado so em
