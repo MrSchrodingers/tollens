@@ -44,7 +44,13 @@ mutante(){  # $1=id  $2=decisao atacada  $3=sed
 }
 
 echo "== mutacao: cada decisao do desenho, atacada =="
-mutante MLD1 "classificacao quebra-vs-higiene" 's/^        quebra = d\["code"\] in codigos_de_quebra$/        quebra = False/'
+# MLD1 ORFAO (R5 do refutador). O patch de G65 extraiu a decisao para `eh_quebra()` e o padrao
+# antigo (`quebra = d["code"] in codigos_de_quebra`) deixou de casar - `grep -c` devolvia 0. O
+# arnes `tests/unit/arnes-de-mutacao.sh` reprovou por isso (exit 2), que e o comportamento certo:
+# mutante NAO APLICADO nao e mutante sobrevivente, e teste invalido. Reancorado no predicado.
+mutante MLD1 "classificacao quebra-vs-higiene" 's/^    return codigo in codigos_de_quebra or codigo is None or codigo == ""$/    return False/'
+mutante MLD10 "codigo SEM NOME conta como quebra" 's/^    return codigo in codigos_de_quebra or codigo is None or codigo == ""$/    return codigo in codigos_de_quebra/'
+mutante MLD11 "valor nulo em code e dado, nao leitura falhada" 's/^            if v is None:$/            if False:/'
 mutante MLD2 "a catraca tolera o que esta no baseline" 's/(tolerados if fp in baseline else bloqueiam)/(bloqueiam)/'
 mutante MLD3 "a catraca NAO tolera o que esta fora" 's/(tolerados if fp in baseline else bloqueiam)/(tolerados)/'
 mutante MLD4 "escopo por hunk: a linha tem de cair na faixa" 's/return any(ini <= linha <= fim for ini, fim in faixas)/return True/'

@@ -181,9 +181,14 @@ if [ -n "$BASE" ]; then
   DIFFBASE="$(git -C "$ROOT" merge-base "$BASE" HEAD 2>/dev/null || true)"
   [ -n "$DIFFBASE" ] || DIFFBASE="$BASE"
 fi
-CHANGED="$( { git -C "$ROOT" diff --name-only HEAD 2>/dev/null
-              git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null
-              [ -n "$DIFFBASE" ] && git -C "$ROOT" diff --name-only "$DIFFBASE" HEAD 2>/dev/null
+# R3 DO REFUTADOR, mesma raiz que a de HUNKS: sem `core.quotePath=false` o git devolve caminho
+# nao-ASCII como `"acentua\303\247.py"` - com aspas e escapes. Aqui o dano e outro e maior: o
+# casamento de extensao logo abaixo compara o fim da string, e `"...\303\247.py"` nao casa
+# `.py` do jeito que o arquivo real casaria, entao o ADAPTADOR INTEIRO pode nao ser selecionado.
+# Nao e um diagnostico perdido: e nenhum diagnostico produzido.
+CHANGED="$( { git -C "$ROOT" -c core.quotePath=false diff --name-only HEAD 2>/dev/null
+              git -C "$ROOT" -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null
+              [ -n "$DIFFBASE" ] && git -C "$ROOT" -c core.quotePath=false diff --name-only "$DIFFBASE" HEAD 2>/dev/null
             } | sed '/^$/d' | sort -u )"
 [ -n "$CHANGED" ] || exit 0
 
@@ -395,7 +400,20 @@ for a in "${APLICAVEIS[@]}"; do
                   # `git status` IDENTICO nos dois - git nao ve diretorio vazio, entao o bypass era
                   # invisivel. `--resolve-git-dir <caminho>` pergunta o que realmente importa:
                   # ESTE caminho e um diretorio de repositorio? Falso -> 128.
-                  git rev-parse --resolve-git-dir "$_d/.git" >/dev/null 2>&1 && printf '%s\n' "$_d"
+                  # R1 DO REFUTADOR: `--resolve-git-dir` fechou `mkdir sub/.git` e deixou aberta
+                  # a porta MAIS BARATA - `git init sub` cria um diretorio de repositorio VALIDO,
+                  # e a partir dai tudo debaixo de `sub/` some do julgamento. Medido: `antes
+                  # EXIT=2, depois EXIT=0`, com `src/mal.py` staged no repo externo e F821 vivo.
+                  # Portao que o ator governado desliga com UM comando nao e portao.
+                  #
+                  # O discriminante e HISTORIA. Um checkout de verdade tem commits; `git init`
+                  # tem zero. Medido nas 5 raizes reais de /var/www/amaral-intern-hub - a origem
+                  # desta exclusao: 204, 75, 197, 57 e 310 commits. `git init` recem-criado: 0.
+                  # Isto NAO fecha a classe: `git commit` a mais e o bypass volta. Quem fecha e
+                  # a declaracao da exclusao (LACUNA logo abaixo) - silencio e que era o defeito.
+                  git rev-parse --resolve-git-dir "$_d/.git" >/dev/null 2>&1 \
+                    && git -C "$_d" rev-parse --verify -q HEAD >/dev/null 2>&1 \
+                    && printf '%s\n' "$_d"
                 done | jq -R . | jq -sc .)"
     printf '%s' "$NESTED" | jq -e 'type == "array"' >/dev/null 2>&1 || NESTED='[]'
     # A5/B1/B2 DO REFUTADOR, tres defeitos na mesma extracao.
@@ -408,8 +426,22 @@ for a in "${APLICAVEIS[@]}"; do
     #   B2: com `core.quotePath` padrao, caminho nao-ASCII sai como `+++ "b/zzz\303\251.py"`, o
     #       parser ignora a linha e mantem o arquivo ANTERIOR - hunk atribuido ao arquivo ERRADO,
     #       falso negativo e falso positivo na mesma execucao.
-    HUNKS="$(cd "$ROOT" && { git -c core.quotePath=false diff -U0 HEAD 2>/dev/null; \
-             git ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; } | python3 -c '
+    #   R2 DO REFUTADOR: o parser decidia o arquivo corrente por `+++ b/`, e sob `-U0` uma LINHA
+    #       DE CONTEUDO `++ b/outro.py` sai do diff como `+++ b/outro.py` - indistinguivel do
+    #       cabecalho. Medido: `HUNKS = {"alvo.py":[[1,3]], "outro.py":[[104,104]]}` e `EXIT=0`
+    #       com F401 vivo. O conteudo do arquivo redirecionava o julgamento do proprio arquivo.
+    #       `--output-indicator-new` e a resposta EXATA do git: troca o marcador das linhas de
+    #       CONTEUDO sem tocar no cabecalho, entao `+++ b/` volta a ser inforjavel. Medido com
+    #       git 2.55.0: conteudo vira `\001++ b/outro.py`, cabecalho segue `+++ b/alvo.py`.
+    #   R3 DO REFUTADOR: `core.quotePath=false` estava so no `git diff`. O `ls-files` da MESMA
+    #       pipeline (ramo B1, desta onda) nao tinha, entao arquivo novo com nome nao-ASCII
+    #       entrava como `"acentua\303\247.py"` e a chave do hunk nunca casava o diagnostico.
+    #       Medido: nome acentuado EXIT=0, o mesmo arquivo em ASCII EXIT=2.
+    HUNKS="$(cd "$ROOT" && { git -c core.quotePath=false diff -U0 \
+               --output-indicator-new="$(printf '\001')" \
+               --output-indicator-old="$(printf '\002')" \
+               --output-indicator-context="$(printf '\003')" HEAD 2>/dev/null; \
+             git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; } | python3 -c '
 import sys,re,json,collections
 h=collections.defaultdict(list); f=None
 for l in sys.stdin:
@@ -485,12 +517,21 @@ $(cat "$TMPERR" 2>/dev/null)"
     # entao na parada em que a tolerancia de fato agia - a que passa - a lista de quebras
     # toleradas ia para lugar nenhum. O nucleo cumpria a invariante; o executor a anulava. O
     # operador precisa ver a divida TODA vez, senao a catraca vira anistia silenciosa.
-    if [ "$RC" -eq 0 ] && grep -q 'QUEBRA PREEXISTENTE TOLERADA' "$TMPERR" 2>/dev/null; then
+    # R1: era `grep -q 'QUEBRA PREEXISTENTE TOLERADA'` - uma lista de marcadores conhecidos, que
+    # calava tudo que o nucleo passasse a reportar depois. A exclusao por checkout aninhado nasceu
+    # muda exatamente por isso. O predicado passou a ser "o nucleo escreveu alguma coisa": quem
+    # decide o que o operador precisa ver e o nucleo, nao um grep no executor.
+    if [ "$RC" -eq 0 ] && [ -s "$TMPERR" ]; then
       cat "$TMPERR" >&2
     fi
     [ "$TMPERR" != /dev/null ] && rm -f "$TMPERR"
-    [ -n "${RAWF:-}" ] && rm -f "$RAWF"
-    [ -n "${RAWBF:-}" ] && rm -f "$RAWBF"
+    # `$RAWF` NAO E APAGADO AQUI. Ele era, e o defeito ficou invisivel porque o teste media so o
+    # CODIGO DE SAIDA: a semeadura logo abaixo REJULGA com `--raw-file "$RAWF"`, e o arquivo ja
+    # nao existia. O nucleo respondia `NAO VERIFICADO: entrada ilegivel ([Errno 2] ...)` e o RC
+    # virava 2 - a PRIMEIRA parada de TODO repositorio que semeia catraca terminava em LACUNA em
+    # vez de julgamento, com a causa errada na mensagem. Fail-closed, entao nao e falso negativo;
+    # e o ramo de delta INERTE exatamente na parada que ele existe para julgar. A limpeza foi para
+    # depois do bloco de semeadura, que e o ultimo leitor.
     # SEMEADURA DO BASELINE, e ela e explicita e visivel. Sem baseline o portao reprovaria por
     # quebra preexistente para sempre; semear em silencio seria anistia. Semeia UMA vez, avisa, e
     # a partir dai a catraca so aceita o que ja estava la.
@@ -584,6 +625,9 @@ $(cat "$TMPERR2" 2>/dev/null)"
   - $ID: NAO foi possivel semear o baseline de quebra - o turno segue julgado SEM catraca, e quebra preexistente continua bloqueando. Nada foi gravado."
       fi
     fi
+    # ultimo leitor de $RAWF ja passou (o rejulgamento pos-semeadura).
+    [ -n "${RAWF:-}" ] && rm -f "$RAWF"
+    [ -n "${RAWBF:-}" ] && rm -f "$RAWBF"
   elif [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
     # G_VAZIO (per_file): um adaptador per_file so examina os arquivos de CHANGED que ainda
     # existem no disco (`[ -f "$ROOT/$f" ] || continue`). Se apagar, renomear-com-conteudo-

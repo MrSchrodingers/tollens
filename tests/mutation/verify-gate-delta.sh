@@ -54,8 +54,14 @@ mutante MVG2 "A2: analisador morto vira zero diagnosticos, isto e, aprovacao" \
   "if ! printf '%s' \"\$RAW\" | jq -e 'type == \"array\"' >/dev/null 2>&1; then" 'if false; then'
 mutante MVG3 "C1: raiz aninhada aceita entrada chamada .git, sem repositorio" \
   'git rev-parse --resolve-git-dir "$_d/.git" >/dev/null 2>&1' 'test -e "$_d/.git"'
+# R1: sem este mutante, a exigencia de historia na raiz aninhada seria codigo sem prova de que
+# discrimina. MVG3 continua vivo porque ataca o predicado ANTERIOR (`--resolve-git-dir`), e com
+# `.git` invalido o `rev-parse --verify HEAD` SOBE para o repositorio pai e responde sucesso -
+# que e justamente a razao de os dois predicados existirem, um guardando o outro.
+mutante MVG7 "R1: raiz aninhada sem NENHUM commit conta como checkout" \
+  'git -C "$_d" rev-parse --verify -q HEAD >/dev/null 2>&1' 'true'
 mutante MVG4 "B1: arquivo nao rastreado sai dos hunks" \
-  "git ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; }" 'true; }'
+  "git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; }" 'true; }'
 mutante MVG5 "F4: deteccao de extensao volta ao pipe que toma SIGPIPE" \
   'if case "$_NL$CHANGED$_NL" in *"${ext}${_NL}"*) true ;; *) false ;; esac; then' \
   'if printf "%s\n" "$CHANGED" | grep -q -- "${ext}\$"; then'

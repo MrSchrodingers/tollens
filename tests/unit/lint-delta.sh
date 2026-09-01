@@ -144,12 +144,73 @@ chk "  e o mesmo conteudo FORA do hunk nao bloqueia" \
 chk "  arquivo VAZIO e NAO VERIFICADO, nao aprovacao" \
     "$(python3 "$LD" --raw-file "$T_LD/vazio.json" --map "$MAPA_LD" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 2
 printf '[]' > "$T_LD/lista-vazia.json"
-chk "  CONTROLE: `[]` legitimo do analisador passa" \
+chk "  CONTROLE: lista vazia legitima do analisador passa" \
     "$(python3 "$LD" --raw-file "$T_LD/lista-vazia.json" --map "$MAPA_LD" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 0
 chk "  arquivo INEXISTENTE e NAO VERIFICADO" \
     "$(python3 "$LD" --raw-file "$T_LD/nao-existe.json" --map "$MAPA_LD" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 2
 
-EXPECTED=40
+echo "== LD14. codigo SEM NOME e quebra, pelo caminho que o hook realmente usa (G65/R6) =="
+# G65 nasceu de um falso negativo MEDIDO pelo hook instalado: ruff 0.16.2 removeu `E999` e emite
+# `invalid-syntax`, que nao estava em `breakage_codes`. O erro de sintaxe virava higiene, o teste
+# de hunk o descartava (parse quebrado reporta na linha 202 um parentese aberto na linha 1) e o
+# portao saia 0. A correcao no adaptador fecha o REPRO; esta fecha a CLASSE.
+#
+# R6 DO REFUTADOR: a primeira versao destes casos usava `--diagnostics`, que NENHUM adaptador e
+# NENHUM caminho do hook exercita - o hook chama o nucleo so por `--raw-file` + `--map`. Nessa
+# via `_cava` conflacionava chave AUSENTE com valor NULO e `normaliza_diagnosticos` levantava
+# antes de `eh_quebra` ser alcancado: seis casos verdes sobre superficie morta. Agora e o caminho
+# real, e os controles separam nulo (dado) de ausente (ilegivel).
+LD_MAPA='{"path":"filename","line":"location.row","code":"code","message":"message"}'
+printf '[{"filename":"/x/z.py","location":{"row":202},"code":null,"message":"unexpected EOF while parsing"}]' > "$T_LD/nulo.json"
+rf(){ python3 "$LD" --raw-file "$1" --map "$LD_MAPA" --strip-prefix '/x/' --hunks "$2" --breakage-codes "$QUEBRA" "${@:3}"; }
+chk "code null FORA de qualquer hunk bloqueia" \
+    "$(rf "$T_LD/nulo.json" '{}' >/dev/null 2>&1; echo $?)" 1
+chk "  e e classificado como QUEBRA, nao higiene" \
+    "$(rf "$T_LD/nulo.json" '{}' 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["detalhe"][0]["classe"])')" quebra
+# CONTROLE NEGATIVO: sem ele, "bloqueou" nao distingue a regra nova de "bloqueia tudo".
+printf '[{"filename":"/x/z.py","location":{"row":202},"code":"F401","message":"`os` imported but unused"}]' > "$T_LD/hig.json"
+chk "  CONTROLE: codigo NOMEADO de higiene fora do hunk segue passando" \
+    "$(rf "$T_LD/hig.json" '{}' >/dev/null 2>&1; echo $?)" 0
+# CHAVE AUSENTE nao e a mesma coisa que VALOR NULO: uma e leitura que falhou, a outra e dado.
+printf '[{"filename":"/x/z.py","location":{"row":202},"message":"sem code"}]' > "$T_LD/ausente.json"
+chk "  chave 'code' AUSENTE continua NAO VERIFICADO (nao vira quebra)" \
+    "$(rf "$T_LD/ausente.json" '{}' >/dev/null 2>&1; echo $?)" 2
+printf '[{"filename":"/x/z.py","location":{"row":202},"code":"F821","message":null}]' > "$T_LD/msgnula.json"
+chk "  e nulo nos OUTROS campos segue ilegivel (so 'code' tem leitura util)" \
+    "$(rf "$T_LD/msgnula.json" '{}' >/dev/null 2>&1; echo $?)" 2
+# O baseline PRECISA usar o mesmo predicado: se `--emit-baseline` ignorasse code sem nome, a
+# quebra preexistente nunca entraria na catraca e bloquearia para sempre, sem semeadura possivel.
+BL_NULO="$(python3 "$LD" --raw-file "$T_LD/nulo.json" --map "$LD_MAPA" --strip-prefix '/x/' --breakage-codes "$QUEBRA" --emit-baseline)"
+chk "  --emit-baseline inclui a digital do codigo sem nome" \
+    "$(printf '%s' "$BL_NULO" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" 1
+chk "  e semeada, ela e TOLERADA (nao bloqueia) na execucao seguinte" \
+    "$(python3 "$LD" --raw-file "$T_LD/nulo.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks '{}' --baseline "$BL_NULO" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 0
+
+echo "== LD15. a exclusao por checkout aninhado e REPORTADA, por raiz (G68) =="
+# R1 DO REFUTADOR: `git init <subdir>` tirava tudo debaixo dele do julgamento e o portao saia 0
+# com stdout VAZIO. Exigir historia na raiz (feito no executor) mata a versao de um comando; o
+# que impede a exclusao de voltar a ser bypass e ela ser DITA. Duas raizes de proposito: com uma
+# so, o laco que agrupa por raiz nunca precisa avancar, e o caso nao mediria o agrupamento.
+printf '[{"filename":"/x/wt-a/z.py","location":{"row":9},"code":"F821","message":"Undefined name `a`"},{"filename":"/x/wt-b/y.py","location":{"row":3},"code":"F401","message":"`os` imported but unused"},{"filename":"/x/wt-b/w.py","location":{"row":4},"code":"F401","message":"`sys` imported but unused"}]' > "$T_LD/alheios.json"
+AL="$(python3 "$LD" --raw-file "$T_LD/alheios.json" --map "$LD_MAPA" --strip-prefix '/x/' \
+       --nested-roots '["wt-a","wt-b"]' --breakage-codes "$QUEBRA" 2>"$T_LD/al.err")"
+chk "tres diagnosticos em duas raizes: nenhum bloqueia" \
+    "$(printf '%s' "$AL" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["bloqueiam"],d["alheios"])')" "0 3"
+chk "  e a exclusao vai para stderr" \
+    "$(grep -c 'EXCLUIDO POR CHECKOUT ANINHADO: 3 diagnostico(s)' "$T_LD/al.err")" 1
+# O AGRUPAMENTO importa: 'quantos por raiz' e o que deixa o operador ver que UMA raiz concentra
+# tudo. Sem isto, o caso mediria so que alguma linha foi impressa.
+chk "  agrupada por raiz, a maior primeiro" \
+    "$(grep -E '^  wt-[ab]/' "$T_LD/al.err" | head -1 | awk '{print $1, $2}')" "wt-b/ 2"
+chk "  e a segunda raiz tambem aparece" \
+    "$(grep -c '^  wt-a/  1 diagnostico' "$T_LD/al.err")" 1
+# CONTROLE NEGATIVO: sem raiz declarada, os MESMOS diagnosticos sao julgados e o F821 bloqueia.
+chk "  CONTROLE: sem raiz aninhada, os mesmos diagnosticos bloqueiam" \
+    "$(python3 "$LD" --raw-file "$T_LD/alheios.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks '{}' --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 1
+chk "  e ai NADA e reportado como excluido" \
+    "$(python3 "$LD" --raw-file "$T_LD/alheios.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks '{}' --breakage-codes "$QUEBRA" 2>&1 >/dev/null | grep -c 'EXCLUIDO POR CHECKOUT')" 0
+
+EXPECTED=53
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

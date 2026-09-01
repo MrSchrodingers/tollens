@@ -1455,6 +1455,123 @@
       "state": "resolved",
       "resolution_ref": "evidence/validate-claims.py",
       "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G65",
+      "wave": 25,
+      "review_round": "validacao do deploy: execucao do hook INSTALADO sobre repositorio construido",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "identificador-de-regra-aposentado-degrada-quebra-a-higiene",
+      "defect": "`breakage_codes` do adaptador python listava `E999`, que ruff removeu; erro de sintaxe passou a ser emitido como `invalid-syntax`, caiu na classe HIGIENE e foi descartado pelo teste de hunk",
+      "measured": "Fonte primaria na maquina, ruff 0.16.2: `ruff rule E999` -> \"# syntax-error (E999) ... ## Removed - This rule has been removed. Syntax errors will always be shown regardless of whether this rule is selected or not.\" O codigo emitido hoje e `invalid-syntax`, ausente de `breakage_codes`. FALSO NEGATIVO REPRODUZIDO pelo hook INSTALADO em `~/.claude/hooks/verify-gate.sh`, nao pelo do repositorio: arquivo de 203 linhas, o turno edita SO a linha 1 abrindo um parentese que nao fecha; `ruff check --isolated --select F,E9` reporta 3 diagnosticos `invalid-syntax` nas linhas 202-203; o hunk e `@@ -1 +1 @@`. Resultado antes da correcao: rc=0, stdout VAZIO, stderr vazio - arvore que NAO PARSEIA aprovada em silencio. A premissa oculta era que a posicao reportada por um analisador fica perto do erro; um parser reporta onde a expectativa falha, nao onde a causa esta, e para erro de parse essa distancia e o arquivo inteiro. Corrigido em duas camadas: `invalid-syntax` em `breakage_codes` fecha o repro, e `eh_quebra()` em `evidence/lint-delta.py` fecha a CLASSE - diagnostico sem nome de regra e quebra por construcao, porque analisador que nao nomeia a regra esta dizendo que nao aplicou regra nenhuma. Regressao: `tests/unit/delta-e2e.sh` DE9 (o repro exato, pelo hook, com controle negativo de que a MESMA linha 1 editada sem quebrar o parse passa) e `tests/unit/lint-delta.sh` LD14 (code null e code vazio, com o predicado compartilhado com `--emit-baseline`).",
+      "state": "resolved",
+      "resolution_ref": "execution/adapters/code/python.json",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G66",
+      "wave": 25,
+      "review_round": "validacao do deploy: execucao do hook INSTALADO sobre repositorio construido",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "limpeza-antes-do-ultimo-leitor",
+      "defect": "`rm -f \"$RAWF\"` executava ANTES do rejulgamento pos-semeadura, que le o mesmo arquivo; a primeira parada de todo repositorio que cria catraca terminava em LACUNA em vez de julgamento",
+      "measured": "Introduzido pela propria correcao F3 desta onda (troca de `--raw` por `--raw-file`, por MAX_ARG_STRLEN): o argumento virou arquivo, mas a limpeza ficou onde estava, na linha 492, e o rejulgamento pos-semeadura na 578 le `--raw-file \"$RAWF\"`. Medido pelo hook do repositorio num repositorio com upstream real e quebra preexistente: `--- python-analyzer (python) exit=2 --- NAO VERIFICADO: entrada ilegivel ([Errno 2] No such file or directory: '/tmp/tollens-raw.XDMmO4')`. Fail-closed, entao NAO e falso negativo - e o ramo de delta INERTE exatamente na parada que ele existe para julgar, com a causa ERRADA na mensagem (manda o operador procurar defeito na leitura em vez de ver o diagnostico). SOBREVIVEU a seis suites verdes, CI completa e duas passadas de refutador porque DE1 e DE2 mediam SO O CODIGO DE SAIDA: `2` por ter julgado e `2` por nao ter conseguido ler sao o mesmo `2`. Quem pegou foi uma assercao de CONTEUDO escrita para outro defeito (DE9, 'e nomeia o arquivo que nao parseia', got=0 want=1). Corrigido movendo a limpeza para depois do ultimo leitor; regressao DE2 'e ela JULGOU: a causa nao e entrada ilegivel'. LICAO GENERALIZAVEL, e ela e sobre o INSTRUMENTO: assercao de codigo de saida nao distingue veredito de lacuna num portao que e fail-closed por projeto - todo caso que espera bloqueio precisa medir tambem a CAUSA.",
+      "state": "resolved",
+      "resolution_ref": "evidence/hooks/verify-gate.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G67",
+      "wave": 25,
+      "review_round": "operacao do proprio portao de cobertura, tres vezes na mesma sessao",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "chave-posicional-em-registro-de-excecao",
+      "defect": "a CAMADA 2 de `evidence/cobertura.sh` identifica um ramo isento por NUMERO DE LINHA, entao qualquer insercao acima dele invalida a isencao e reprova o portao",
+      "measured": "Medido tres vezes nesta sessao sobre a MESMA isencao (`if __name__ == \"__main__\"` de `evidence/lint-delta.py`): 224 -> 246 -> 265, cada deslocamento causado por codigo inserido ACIMA da guarda. Cada reprovacao custou um ciclo completo de medicao (a suite roda instrumentada) para descobrir que o defeito nao era de cobertura, e sim da chave. O portao erra para o lado de REPROVAR, entao e ruido e nao falso negativo - por isso esta ABERTO e nao foi corrigido junto com G65/G66: nao bloqueia o requisito da onda, nao compartilha causa com eles e mexer no mecanismo da CAMADA 2 exige teste e mutante proprios. Direcao registrada, nao implementada: ancorar a isencao no TEXTO da linha (ou num marcador no proprio fonte) em vez do numero, o que tornaria a chave invariante a deslocamento - a mesma propriedade que `digital()` da a diagnostico em `lint-delta.py`, e que este arquivo nao tem para si.",
+      "state": "open",
+      "open_note": "Custo conhecido e aceito por ora: toda insercao acima de um item isento reprova o portao ate a reancoragem manual. Corrigir exige mudar o formato de ISENCOES em evidence/cobertura.sh, migrar as 35+ entradas existentes de orchestration/ e escrever o mutante que prova que a nova chave discrimina. Trabalho proprio, fora do escopo da onda 25.",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G68",
+      "wave": 25,
+      "review_round": "refutador, terceira passada sobre a onda 25c",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "portao-que-o-ator-governado-desliga-com-um-comando",
+      "defect": "`git init <subdir>` cria raiz aninhada VALIDA e tira do julgamento tudo que estiver debaixo dela",
+      "measured": "Medido pelo refutador em contexto separado: `antes EXIT=2, depois EXIT=0`, com `src/mal.py` staged no repositorio externo e `F821` (codigo de QUEBRA) vivo. A correcao C1/C2 desta mesma onda fechou `: > sub/.git` com `--resolve-git-dir` e deixou aberta a porta mais barata. CORRECAO EM DUAS METADES, porque uma so nao fecha: (a) raiz aninhada passa a exigir HISTORIA (`git -C <d> rev-parse --verify HEAD`) - discriminante medido nas 5 raizes reais de /var/www/amaral-intern-hub, que tem 204, 75, 197, 57 e 310 commits, contra 0 de um `git init` recem-criado; (b) a exclusao deixa de ser MUDA - toda execucao reporta `EXCLUIDO POR CHECKOUT ANINHADO: N diagnostico(s)` por raiz. (a) sozinha nao fecha a classe (um `git commit` a mais recria a raiz valida); (b) e o que impede que a exclusao volte a ser bypass, porque exclusao que o operador VE e decisao, nao buraco. No caminho, o executor deixou de filtrar o que o nucleo reporta: era `grep -q 'QUEBRA PREEXISTENTE TOLERADA'`, lista de marcadores conhecidos que calava tudo que o nucleo passasse a dizer depois - foi por isso que a exclusao nasceu muda. CORRECAO AO RELATORIO: o refutador afirmou que `delta-e2e.sh:85` consagrava o bypass como controle; o controle existente faz `git add && git commit`, entao e checkout legitimo. O caso SEM commit nunca foi exercitado - era buraco que teste nenhum visitava, nao teste que o especificava. Regressao: DE5, 5 asserces.",
+      "state": "resolved",
+      "resolution_ref": "evidence/hooks/verify-gate.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G69",
+      "wave": 25,
+      "review_round": "refutador, terceira passada sobre a onda 25c",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "parser-de-diff-redirecionado-pelo-conteudo-do-arquivo",
+      "defect": "sob `-U0`, uma LINHA DE CONTEUDO `++ b/outro.py` sai do diff como `+++ b/outro.py` e e lida como cabecalho: o arquivo redireciona o julgamento de si mesmo",
+      "measured": "Medido pelo refutador: `HUNKS = {\"alvo.py\": [[1,3]], \"outro.py\": [[104,104]]}` e `EXIT=0` com F401 vivo em alvo.py. O parser decidia o arquivo corrente por `l.startswith('+++ b/')`, e o prefixo `+` das linhas adicionadas produz exatamente essa forma. Confirmado aqui com git 2.55.0: `git diff -U0` devolve `+++ b/outro.py` para a linha de conteudo, indistinguivel do cabecalho. CORRECAO ESTRUTURAL, nao heuristica: `--output-indicator-new/old/context` troca o marcador das linhas de CONTEUDO sem tocar no cabecalho. Medido depois: conteudo vira `\\001++ b/outro.py`, cabecalho segue `+++ b/alvo.py`. A forja deixa de ser possivel, em vez de ser detectada.",
+      "state": "resolved",
+      "resolution_ref": "evidence/hooks/verify-gate.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G70",
+      "wave": 25,
+      "review_round": "refutador, terceira passada sobre a onda 25c",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "correcao-aplicada-em-metade-da-pipeline",
+      "defect": "`core.quotePath=false` foi posto no `git diff` e nao no `git ls-files` da MESMA pipeline, nem nos comandos que montam CHANGED",
+      "measured": "Medido pelo refutador: arquivo novo com nome acentuado entra como `\"acentua\\303\\247.py\"`, a chave do hunk nunca casa o caminho do diagnostico, `GATE EXIT=0`; o mesmo arquivo renomeado para ASCII, `GATE EXIT=2`. A correcao B2 da onda 25b tratou o `git diff` e deixou o `ls-files` do ramo B1 - introduzido pela MESMA onda - sem a opcao. Corrigido nos quatro pontos (o `ls-files` do HUNKS e os tres comandos de CHANGED). Em CHANGED o dano e maior e nao e um diagnostico perdido: o casamento de extensao compara o fim da string, entao `\"...\\303\\247.py\"` pode NAO selecionar o adaptador - nenhum diagnostico produzido, em vez de um ignorado.",
+      "state": "resolved",
+      "resolution_ref": "evidence/hooks/verify-gate.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G71",
+      "wave": 25,
+      "review_round": "refutador, terceira passada sobre a onda 25c",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "proxy-de-autoria-insensato-nas-duas-direcoes",
+      "defect": "contencao por hunk e PROXY de 'introduzido pelo turno', e erra nos dois sentidos: higiene criada pelo turno fora da linha tocada passa, e delecao pura nao gera hunk nenhum",
+      "measured": "Medido pelo refutador: turno edita a linha 3 (`return v` -> `return 99`), `F841` nasce na linha 2, `EXIT=0`. Segunda instancia: delecao pura produz `@@ -5 +5 @@` com n=0, o parser cai no `if n:` e nao anexa faixa - TODA a higiene do arquivo fica fora de qualquer hunk (remover a unica linha que usa `os` -> `F401 1` -> `EXIT=0`). Terceira, achada aqui: HUNKS cobre so `git diff HEAD` e untracked, enquanto CHANGED inclui `DIFFBASE..HEAD`, entao higiene em commits nao publicados nunca e julgada. A CORRECAO OBVIA FOI MEDIDA E RECUSADA: trocar higiene de `dentro_de_hunk` para `fp in baseline` - a mesma catraca da quebra, estavel a deslocamento - fecharia as tres instancias e apagaria o mecanismo que gerou G69. Medido em /var/www/amaral-intern-hub em 2026-09-01: base (merge-base = HEAD) rende 0 digitais, arvore rende 83 (F401 70, F841 7, F822 5, F811 1), logo as 83 seriam NOVAS e o repositorio passaria a BLOQUEAR onde hoje passa - a reprovacao em massa que a onda existe para remover, com outra roupa. Causa: `spokes/jusgrok` esta rastreado no INDICE e ausente do HEAD (staged, nunca commitado) numa arvore com 2609 arquivos sujos. NAO se conclui que a catraca de higiene esta errada - conclui-se que ela nao e troca direta, e que a escolha da BASE e o problema real (relativo a HEAD, trabalho staged de meses e 'novo'). ARMADILHA DE INSTRUMENTO no caminho: a primeira medicao usou `b32e1494` como base porque `@{u}` nao existe nesse repositorio e o fallback pegou `refs/remotes/debt-hub/HEAD`, outra branch; os dois caminhos devolviam `[]` e so a contagem de arquivos extraidos (73 contra 118) separou os dois.",
+      "state": "open",
+      "open_note": "Falso negativo VIVO e conhecido no portao implantado. Nao corrigido nesta onda porque a correcao medida troca um falso negativo por bloqueio em massa no unico repositorio grande medido. O trabalho proprio e escolher a BASE da catraca de higiene (HEAD nao serve para arvore com trabalho staged antigo) e reespecificar LD1/LD2/LD4, que hoje medem o proxy.",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G72",
+      "wave": 25,
+      "review_round": "refutador, terceira passada sobre a onda 25c",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "mutante-orfao-por-refatoracao-do-alvo",
+      "defect": "o patch de G65 extraiu a classificacao para `eh_quebra()` e o padrao de MLD1 deixou de casar: mutante NAO APLICADO, suite de mutacao invalida",
+      "measured": "`grep -c 'quebra = d[\"code\"] in codigos_de_quebra' evidence/lint-delta.py` -> 0. `tests/mutation/lint-delta.sh` reportou `MLD1 NAO FOI APLICADO`, `MUTANTES=9 MORTOS=8 SOBREVIVENTES=1`, exit 1, e `tests/unit/arnes-de-mutacao.sh` reprovou com exit 2 - que e o comportamento CERTO: mutante nao aplicado nao e mutante sobrevivente, e teste invalido, e o arnes existe exatamente para nao deixar isso passar por verde. O portao local pegou antes de qualquer push (`scripts/status.sh --check` rc=1). Reancorado no predicado novo, mais MLD10 (codigo sem nome conta como quebra) e MLD11 (nulo em `code` e dado, nao leitura falhada).",
+      "state": "resolved",
+      "resolution_ref": "tests/mutation/lint-delta.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G73",
+      "wave": 25,
+      "review_round": "refutador, terceira passada sobre a onda 25c",
+      "found_by": "auditoria-externa",
+      "mode": "auditoria-externa",
+      "class": "teste-ancorado-em-superficie-que-nenhum-caminho-usa",
+      "defect": "os 6 casos de LD14 exercitavam `--diagnostics`, e o hook so chama o nucleo por `--raw-file`; nesse caminho `code:null` levantava antes de `eh_quebra` ser alcancado",
+      "measured": "`grep -n -- '--raw-file\\|--diagnostics' evidence/hooks/verify-gate.sh` nao devolve NENHUMA ocorrencia de `--diagnostics`. Medido pelo refutador: por `--raw-file`, `code:null` dava `NAO VERIFICADO: entrada ilegivel (\"diagnostico 0: chave 'code' ausente\")` e RC=2; por `--diagnostics`, `classe: quebra` e RC=1. Duas consequencias: os 6 casos mediam superficie morta, e o comentario que eu havia escrito no nucleo (\"sem esta linha, uma versao que emita code:null reabre o buraco\") era FALSO - reabriria como exit 2 fail-closed, nao como aprovacao. CAUSA: `_cava` devolvia `None` tanto para chave AUSENTE quanto para valor NULO, e `normaliza_diagnosticos` tratava as duas como saida ilegivel. Corrigido com sentinela `_AUSENTE`: ausente segue ilegivel; nulo em `code` vira string vazia e `eh_quebra` o classifica como quebra; nulo nos outros tres campos segue ilegivel, porque sem caminho, linha ou mensagem nao ha o que julgar. LD14 reescrito sobre `--raw-file` com os dois controles que separam nulo de ausente.",
+      "state": "resolved",
+      "resolution_ref": "evidence/lint-delta.py",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
     }
   ],
   "reading": [
@@ -1468,12 +1585,12 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 109,
+    "n_findings": 118,
     "wave_min": 11,
     "wave_max": 25,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 11,
-      "auditoria-externa": 29,
+      "aplicacao-de-instrumento": 14,
+      "auditoria-externa": 35,
       "execucao-em-ambiente-alheio": 3,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
@@ -1515,11 +1632,13 @@
       "G53",
       "G54",
       "G56",
-      "G7"
+      "G67",
+      "G7",
+      "G71"
     ],
     "by_state": {
-      "open": 22,
-      "resolved": 87
+      "open": 24,
+      "resolved": 94
     }
   },
   "historical_states": [

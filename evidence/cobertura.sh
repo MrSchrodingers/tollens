@@ -148,6 +148,12 @@ CHECK=0
 # sobre um subconjunto rapido e, no caso da suite unitaria, uma COPIA descartavel. NAO USAR EM
 # CI REAL - mesma doutrina de TOLLENS_LOCK_FILE em tests/lib/lock.sh: apontar a medicao
 # de producao para um subconjunto arbitrario desliga a garantia, nao a configura.
+# PISO BAIXADO A MAO de 99.3 para 98.9 na onda 25c, e o motivo fica aqui porque baixar catraca
+# sem justificativa e o defeito que esta camada existe para impedir. G68 acrescentou o relato da
+# exclusao por checkout aninhado, e o laco que agrupa por raiz tem UM ramo inalcancavel por
+# construcao (`288->287`, isento na CAMADA 2 com a razao). A CAMADA 2 o isenta de precisar de
+# teste; a CAMADA 1 continua contando no denominador, entao o percentual cai sem que exista teste
+# capaz de subi-lo. Medido depois de LD15 cobrir todo o resto do bloco: 98.90.
 ALVOS="${COBERTURA_ALVOS:-$(cat <<'EOF'
 evidence/probes/github-ruleset.py:86.0
 evidence/validate-claims.py:81.4
@@ -156,7 +162,7 @@ evidence/runtime-probes/declared-capabilities.py:92.6
 orchestration/schedule.py:89.3
 evidence/corpus/render.py:93.6
 evidence/validate-adapters.py:69.3
-evidence/lint-delta.py:99.3
+evidence/lint-delta.py:98.9
 EOF
 )}"
 
@@ -262,7 +268,8 @@ orchestration/schedule.py|ramo|406->408|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->409|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->410|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|436->-1|heranca-piso-absoluto-2026-08-11
-evidence/lint-delta.py|ramo|246->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.
+evidence/lint-delta.py|ramo|307->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.
+evidence/lint-delta.py|ramo|288->287|laco interno esgotado sem casar raiz nenhuma: INALCANCAVEL por construcao. `alheios` so recebe diagnostico para o qual `sob_checkout_aninhado` respondeu verdadeiro sobre ESTA mesma lista de raizes, entao o `break` sempre acontece. Cobrir exigiria chamar a funcao com uma lista de raizes diferente da que produziu `alheios` - estado que o programa nao constroi.
 EOF
 )}"
 

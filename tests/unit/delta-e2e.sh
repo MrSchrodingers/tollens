@@ -48,6 +48,13 @@ printf 'import os\n__all__ = ["nao_existe"]\n' > velho.py; git add -A; git commi
 git push -q origin HEAD:refs/heads/main >/dev/null 2>&1
 printf 'def f():\n    return 1\n' > novo.py; git add -A
 chk "1a parada cria a catraca e barra uma vez" "$(gate)" 2
+# ANTITAUTOLOGIA. As tres asserces de codigo de saida acima e abaixo eram satisfeitas por um
+# portao QUEBRADO: a limpeza de `$RAWF` acontecia ANTES do rejulgamento pos-semeadura, o nucleo
+# respondia `NAO VERIFICADO: entrada ilegivel ([Errno 2] ...)` e o RC virava 2 - o mesmo 2 que o
+# teste esperava. Medir so o codigo de saida nao distingue "barrou por ter julgado" de "barrou por
+# nao ter conseguido ler". A causa precisa entrar na medicao.
+chk "  e ela JULGOU: a causa nao e entrada ilegivel" \
+    "$(grep -c 'entrada ilegivel' "$TMP/o" "$TMP/e" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')" 0
 chk "  2a parada com a divida preexistente PASSA" "$(gate)" 0
 chk "  e a quebra tolerada e REPORTADA, nao calada" \
     "$(grep -c 'QUEBRA PREEXISTENTE TOLERADA' "$TMP/e" 2>/dev/null | head -1)" 1
@@ -81,9 +88,30 @@ repo d5
 mkdir -p sub; printf 'def f():\n    return jamais\n' > sub/mal.py; git add -A
 chk "sem o .git falso: barra" "$(gate)" 2
 : > sub/.git
-chk "  COM o .git falso: CONTINUA barrando" "$(gate)" 2
-chk "  CONTROLE: checkout de verdade e ignorado" \
-    "$(rm -f sub/.git; ( cd sub && git init -q . && git add -A 2>/dev/null && git -c user.email=t@t -c user.name=t commit -qm x >/dev/null 2>&1 ); gate)" 0
+chk "  COM o .git falso (ARQUIVO): CONTINUA barrando" "$(gate)" 2
+# O `.git` DIRETORIO vazio e um caso DIFERENTE do arquivo, e a diferenca decide um mutante.
+# Medido: `git rev-parse --resolve-git-dir sub/.git` falha nos dois, mas `git -C sub rev-parse
+# --verify HEAD` responde rc=0 no diretorio (SOBE para o repositorio pai) e rc=128 no arquivo.
+# Sem este caso, a exigencia de historia adicionada por G68 MASCARA o mutante MVG3: com
+# `test -e` no lugar de `--resolve-git-dir`, o arquivo vazio ainda seria barrado pela segunda
+# guarda e o mutante sobreviveria. Foi o que aconteceu - MVG3 sobreviveu ate este caso existir.
+rm -f sub/.git; mkdir -p sub/.git
+chk "  COM o .git falso (DIRETORIO vazio): CONTINUA barrando" "$(gate)" 2
+rm -rf sub/.git; : > sub/.git
+# R1 DO REFUTADOR: `--resolve-git-dir` fechou o `.git` FALSO e deixou aberto o VERDADEIRO vazio.
+# `git init sub` cria diretorio de repositorio valido, e tudo debaixo dele sumia do julgamento -
+# medido `antes EXIT=2, depois EXIT=0`. Este caso nao existia: o CONTROLE abaixo sempre commitou,
+# entao a suite nunca exercitou a raiz SEM historia. Nao era teste que consagrava o buraco - era
+# buraco que teste nenhum visitava.
+rm -f sub/.git
+( cd sub && git init -q . && git add -A 2>/dev/null ) >/dev/null 2>&1
+chk "  'git init' SEM commit nao e checkout: continua barrando" "$(gate)" 2
+chk "  CONTROLE: checkout de verdade (com historia) e ignorado" \
+    "$(( cd sub && git -c user.email=t@t -c user.name=t commit -qm x >/dev/null 2>&1 ); gate)" 0
+# E A EXCLUSAO E DECLARADA. Aprovar calado sobre N arquivos que se deixou de olhar e o que
+# transformava a exclusao legitima em bypass: o operador nao tinha como saber que ela agiu.
+chk "  e ela e REPORTADA, nao silenciosa" \
+    "$(grep -c 'EXCLUIDO POR CHECKOUT ANINHADO' "$TMP/o" "$TMP/e" 2>/dev/null | awk -F: '{s+=$2} END{print (s>0)?1:0}')" 1
 
 echo "== DE6. CHANGED grande nao desliga o adaptador (SIGPIPE) =="
 # F4 do refutador, e o mutante MV5 sobreviveu ate este caso existir. `printf | grep -q` sob
@@ -157,7 +185,59 @@ chk "  2a parada CONTINUA barrando (nao anistiou por eco)" "$(gate)" 2
 chk "  e a causa nomeada e a BASE, nao a semeadura" \
     "$(grep -c 'sem base anterior ao turno' "$TMP/o" "$TMP/e" 2>/dev/null | awk -F: '{s+=$2} END{print (s>0)?1:0}')" 1
 
-EXPECTED=23
+echo "== DE9. erro de sintaxe distante do hunk bloqueia (G65) =="
+# FALSO NEGATIVO MEDIDO no hook INSTALADO antes da correcao: ruff 0.16.2 removeu `E999` (fonte
+# primaria: `ruff rule E999` -> "This rule has been removed") e emite `invalid-syntax`, que nao
+# estava em `breakage_codes`. Erro de sintaxe virava HIGIENE e passava pelo teste de hunk, porque
+# a posicao que um parser reporta nao e a posicao do erro: parentese aberto na linha 1, reportado
+# na 202. Resultado medido: rc=0, stdout VAZIO, arvore que nao parseia aprovada em silencio.
+repo d9
+{ echo "VALORES = ["; for i in $(seq 1 200); do echo "    $i,"; done; echo "]"; } > grande.py
+git add -A; git commit -qm "arquivo grande valido" >/dev/null
+git push -q origin HEAD:refs/heads/main >/dev/null 2>&1
+# o turno toca SO a linha 1, e o parse quebra la no fim
+sed -i '1s/.*/VALORES = [ (/' grande.py
+LINHA_HUNK="$(git diff --unified=0 -- grande.py | grep -c '^@@ -1 ')"
+chk "o hunk do turno e a linha 1" "$LINHA_HUNK" 1
+LINHA_RUFF="$(ruff check --isolated --no-cache --select F,E9 --output-format json grande.py 2>/dev/null | python3 -c 'import json,sys;d=json.load(sys.stdin);print(min(x["location"]["row"] for x in d))')"
+chk "  e o analisador reporta LONGE dela (>100)" "$([ "${LINHA_RUFF:-0}" -gt 100 ] && echo sim || echo "nao($LINHA_RUFF)")" sim
+chk "  ainda assim o portao BARRA" "$(gate)" 2
+chk "  e nomeia o arquivo que nao parseia" \
+    "$(grep -c 'grande.py' "$TMP/o" "$TMP/e" 2>/dev/null | awk -F: '{s+=$2} END{print (s>0)?1:0}')" 1
+# CONTROLE NEGATIVO: sem ele, "barrou" nao distingue a correcao de "barra qualquer edicao".
+git checkout -q -- grande.py
+sed -i '1s/.*/VALORES = [  # comentario/' grande.py
+chk "  CONTROLE: a MESMA linha 1 editada sem quebrar o parse passa" "$(gate)" 0
+
+echo "== DE10. a lista de quebra e conferida contra a FERRAMENTA, nao contra si mesma (G65) =="
+# A correcao de G65 fecha o buraco de HOJE. Esta suite fecha o de AMANHA: le o comando EXATO
+# declarado no adaptador, roda-o sobre um arquivo que nao parseia, e exige que todo codigo
+# devolvido esteja em `breakage_codes`. Conferir a lista contra `ruff rule <codigo>` nao serviria -
+# `ruff rule E999` sai 0 e imprime a regra, so marcada como removida, e manter E999 para versoes
+# antigas e deliberado. O que decide e o que a ferramenta EMITE.
+printf 'VALORES = [ (\n' > "$TMP/naoparseia.py"
+FALTANDO="$(python3 - "$CLAUDE_ADAPTERS_DIR/python.json" "$TMP/naoparseia.py" <<'PYEOF'
+import json, subprocess, sys
+ad = json.load(open(sys.argv[1]))
+cmd = [ad["exec"]["command"]] + [a for a in ad["exec"]["args"] if a != "."] + [sys.argv[2]]
+saida = subprocess.run(cmd, capture_output=True, text=True).stdout
+try:
+    diags = json.loads(saida)
+except json.JSONDecodeError:
+    print("NAO_VERIFICADO_saida_nao_json"); raise SystemExit(0)
+if not diags:
+    print("NAO_VERIFICADO_zero_diagnosticos_em_arquivo_que_nao_parseia"); raise SystemExit(0)
+declarados = set(ad.get("breakage_codes") or [])
+# codigo NULO/VAZIO nao precisa estar declarado: `eh_quebra()` no nucleo ja o trata como quebra
+# por construcao. Exigi-lo aqui seria reprovar por uma protecao que existe.
+emitidos = {d.get("code") for d in diags}
+faltando = sorted(c for c in emitidos if c not in declarados and c not in (None, ""))
+print(",".join(faltando))
+PYEOF
+)"
+chk "todo codigo emitido em arquivo que nao parseia esta em breakage_codes" "$FALTANDO" ""
+
+EXPECTED=33
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

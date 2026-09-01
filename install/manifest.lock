@@ -15,8 +15,8 @@ hook	execution/hooks/poka-yoke-lint.sh	hooks/poka-yoke-lint.sh	1fc83e6b1c085de08
 hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	14d705cde6401a47abf6b8f006504457fef04e662f864190ed032953f943cbed
 hook	evidence/hooks/subagent-contract.sh	hooks/subagent-contract.sh	adcbddb4b1fdee0f684da7a876e2413cae9271ba315b74599b931c62f5daad68
 hook	evidence/hooks/subagent-probe.sh	hooks/subagent-probe.sh	9dd4623a90042f2beada89177e4619b78bed5582154bd6c8878cb54d82c3567a
-hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	7ac9154d71a2f80794f8c4d3c4fd250df3a8d5e94ecd063c317b6d18e63eac78
-lib	evidence/lint-delta.py	lint-delta.py	cdf1a43bc8607b623307bcf30a6ff629826849fb5c3a3aaa485dd138609d889d
+hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	9a929a1e494533814b33a270af7f62df68f495ac0661ea1b25fbe7212fbee776
+lib	evidence/lint-delta.py	lint-delta.py	2917d922bfda572b88ec47701dfb69da1d0efaf499dae8ab579062de2fe00f13
 agent	execution/agents/analista-fluxos.md	agents/analista-fluxos.md	6d1988c58ab889efb1fbf0bca699b6cd256729f37d7aa766712049c75b8a22c9
 agent	execution/agents/analista-otimalidade.md	agents/analista-otimalidade.md	69f3e0db13c53e25994e0be09fcbee654196b5c289c2d22113270d68f133b4f1
 agent	execution/agents/auditor-seguranca.md	agents/auditor-seguranca.md	741f1a83317d485e8e3ac4f1fc3488a1187b72e526b9662e357904291dc019e4
@@ -39,7 +39,7 @@ adapter	execution/adapters/code/dotnet.json	tollens/adapters/code/dotnet.json	de
 adapter	execution/adapters/code/go.json	tollens/adapters/code/go.json	47162accddf5187301305bea16abe82dfbbd5f5ccca85d83ba4bf575d79e6b34
 adapter	execution/adapters/code/java.json	tollens/adapters/code/java.json	c20e5d9ab26f6c95e330f136f53e6a764618362329166a2c8ee8240d9ad308fd
 adapter	execution/adapters/code/node.json	tollens/adapters/code/node.json	d7527e402fd3c00b8fc361176ff2c3585081c076ad00d1f1ebec04044b2af7c8
-adapter	execution/adapters/code/python.json	tollens/adapters/code/python.json	0c87192f648dadc1bbf2460cd29e65f78a8ecb4772aa9481c619dddf2fe942c9
+adapter	execution/adapters/code/python.json	tollens/adapters/code/python.json	ad32f1d970ceeb392f99226f3f7527ca1ee3538cd3d0225f8c88b80b9e96aef0
 adapter	execution/adapters/code/rust.json	tollens/adapters/code/rust.json	a929e782685e9d382ab618b24950417981e6d8c6e306032593aa10cbcda6328b
 adapter	execution/adapters/code/shell.json	tollens/adapters/code/shell.json	79192daf0c241a650d19c8420ef4726c134120800c106b7fef232f53ef3e7e2f
 adapter	execution/adapters/documents/media.json	tollens/adapters/documents/media.json	129993753c56c801aea9d1aa7858ef09bd9987901a60155376644f590ed0c6f3

@@ -73,12 +73,28 @@ def digital(caminho: str, codigo: str, mensagem: str) -> str:
     return hashlib.sha256(base.encode("utf-8")).hexdigest()[:16]
 
 
+# R6 DO REFUTADOR. `_cava` devolvia `None` para DUAS situacoes diferentes - chave AUSENTE e chave
+# PRESENTE com valor `null` - e `normaliza_diagnosticos` tratava as duas como "saida ilegivel".
+# Consequencia medida: um analisador que emita `"code": null` (que e como versoes de ruff
+# anteriores a criacao de `invalid-syntax` reportam erro de sintaxe) fazia o turno INTEIRO virar
+# NAO VERIFICADO, exit 2, em vez de ser julgado. Fail-closed, entao nao abria buraco - mas
+# tornava `eh_quebra(codigo is None)` INALCANCAVEL pelo unico caminho que o hook usa
+# (`--raw-file` + `--map`), e a justificativa que estava escrita aqui ("sem esta linha uma versao
+# que emita code:null reabre o buraco") era FALSA: reabriria como exit 2, nao como aprovacao.
+# O sentinela separa as duas: ausente continua sendo ilegivel; nulo e um diagnostico que o
+# analisador nao soube nomear, que e informacao - e `eh_quebra` a classifica como quebra.
+_AUSENTE = object()
+
+
 def _cava(obj, caminho: str):
-    """Le `location.row` de um dicionario aninhado. Chave ausente devolve None, e quem chama
-    transforma isso em NAO VERIFICADO - nunca em zero."""
+    """Le `location.row` de um dicionario aninhado.
+
+    Devolve `_AUSENTE` quando a chave nao existe (quem chama transforma em NAO VERIFICADO, nunca
+    em zero) e o VALOR quando ela existe - inclusive `None`, que e dado e nao ausencia.
+    """
     for parte in caminho.split("."):
         if not isinstance(obj, dict) or parte not in obj:
-            return None
+            return _AUSENTE
         obj = obj[parte]
     return obj
 
@@ -95,8 +111,16 @@ def normaliza_diagnosticos(brutos, mapa, prefixo=""):
         reg = {}
         for campo in ("path", "line", "code", "message"):
             v = _cava(b, mapa[campo])
-            if v is None:
+            if v is _AUSENTE:
                 raise KeyError(f"diagnostico {i}: chave {mapa[campo]!r} ausente na saida do analisador")
+            # `code` NULO e o unico campo em que nulo e informacao e nao defeito de leitura:
+            # significa "diagnostico que o analisador nao nomeou". Vira string vazia e `eh_quebra`
+            # o trata como QUEBRA. Nos outros tres campos nulo nao tem leitura util - sem caminho,
+            # sem linha ou sem mensagem nao ha o que julgar nem o que reportar.
+            if v is None:
+                if campo != "code":
+                    raise KeyError(f"diagnostico {i}: chave {mapa[campo]!r} com valor nulo na saida do analisador")
+                v = ""
             reg[campo] = v
         if prefixo and isinstance(reg["path"], str) and reg["path"].startswith(prefixo):
             reg["path"] = reg["path"][len(prefixo):]
@@ -121,6 +145,17 @@ def dentro_de_hunk(linha: int, faixas: list[tuple[int, int]]) -> bool:
     return any(ini <= linha <= fim for ini, fim in faixas)
 
 
+def eh_quebra(codigo, codigos_de_quebra):
+    """QUEBRA = codigo declarado, OU codigo ausente.
+
+    Predicado UNICO: `julga` e `--emit-baseline` precisam concordar. Se o baseline usasse um
+    criterio mais estreito, uma quebra preexistente jamais entraria nele e bloquearia para sempre
+    sem caminho de semeadura - portao que nao pode ser satisfeito e portao que se aprende a
+    contornar.
+    """
+    return codigo in codigos_de_quebra or codigo is None or codigo == ""
+
+
 def julga(diagnosticos, hunks, baseline, codigos_de_quebra, raizes_aninhadas=()):
     """Devolve (bloqueiam, tolerados, ignorados).
 
@@ -136,7 +171,12 @@ def julga(diagnosticos, hunks, baseline, codigos_de_quebra, raizes_aninhadas=())
             alheios.append(d)
             continue
         fp = digital(d["path"], d["code"], d["message"])
-        quebra = d["code"] in codigos_de_quebra
+        # CODIGO SEM NOME E QUEBRA, e a regra fecha a CLASSE em vez do repro. Um analisador nomeia
+        # a regra que aplicou; diagnostico SEM nome e o analisador dizendo que nao conseguiu
+        # aplicar regra nenhuma - falha de parse ou de leitura. Classificar isso como higiene o
+        # sujeitaria ao teste de hunk, e a posicao reportada por uma falha de parse nao e a
+        # posicao do erro (medido: colchete aberto na linha 1 e reportado na linha 202).
+        quebra = eh_quebra(d["code"], codigos_de_quebra)
         registro = dict(d, fingerprint=fp, classe="quebra" if quebra else "higiene")
         if quebra:
             (tolerados if fp in baseline else bloqueiam).append(registro)
@@ -220,7 +260,8 @@ def main(argv=None) -> int:
     if a.emit_baseline:
         fps = sorted({digital(d["path"], d["code"], d["message"])
                       for d in diagnosticos
-                      if d["code"] in codigos and not sob_checkout_aninhado(d["path"], raizes)})
+                      if eh_quebra(d["code"], codigos)
+                      and not sob_checkout_aninhado(d["path"], raizes)})
         print(json.dumps(fps))
         return EXIT_OK
 
@@ -232,6 +273,26 @@ def main(argv=None) -> int:
         "detalhe": [{k: r[k] for k in ("path", "line", "code", "message", "classe")}
                     for r in bloqueiam],
     }, ensure_ascii=False))
+
+    # A EXCLUSAO NUNCA CALA (R1 do refutador). Diagnostico descartado por morar em checkout
+    # aninhado era invisivel: o portao aprovava sem dizer que tinha deixado de olhar N arquivos.
+    # Silencio e o que transformava a exclusao em bypass - com `git init <subdir>` o ator governado
+    # movia o proprio trabalho para fora do julgamento e o portao saia 0 com stdout VAZIO. Exigir
+    # historia na raiz (feito no executor) mata a versao de um comando; ela nao fecha a classe,
+    # porque um commit a mais recria a raiz valida. O que fecha o SILENCIO e isto: toda execucao
+    # diz quantos diagnosticos saiu do julgamento e por qual raiz, e ai a exclusao e uma decisao
+    # que o operador ve, nao um buraco.
+    if alheios:
+        por_raiz = {}
+        for r in alheios:
+            for raiz in raizes:
+                if r["path"] == raiz or r["path"].startswith(raiz.rstrip("/") + "/"):
+                    por_raiz[raiz] = por_raiz.get(raiz, 0) + 1
+                    break
+        print(f"EXCLUIDO POR CHECKOUT ANINHADO: {len(alheios)} diagnostico(s) NAO foram julgados - "
+              f"moram em repositorio proprio dentro desta arvore:", file=sys.stderr)
+        for raiz, n in sorted(por_raiz.items(), key=lambda kv: -kv[1]):
+            print(f"  {raiz}/  {n} diagnostico(s)", file=sys.stderr)
 
     # O BASELINE NUNCA CALA. Quebra tolerada vai para stderr em toda execucao: se o operador deixar
     # de ver os 6 defeitos preexistentes, o baseline vira anistia permanente em vez de catraca.
