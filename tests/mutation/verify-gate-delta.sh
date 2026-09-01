@@ -48,18 +48,18 @@ PYEOF
 }
 
 echo "== mutacao: cada defeito de aprovacao silenciosa, reintroduzido =="
-mutante MV1 "A1: catraca semeada do estado ATUAL, anistiando a quebra do turno" \
+mutante MVG1 "A1: catraca semeada do estado ATUAL, anistiando a quebra do turno" \
   'SEEDREF="$DIFFBASE"' 'SEEDREF=HEAD'
-mutante MV2 "A2: analisador morto vira zero diagnosticos, isto e, aprovacao" \
+mutante MVG2 "A2: analisador morto vira zero diagnosticos, isto e, aprovacao" \
   "if ! printf '%s' \"\$RAW\" | jq -e 'type == \"array\"' >/dev/null 2>&1; then" 'if false; then'
-mutante MV3 "C1: raiz aninhada aceita entrada chamada .git, sem repositorio" \
+mutante MVG3 "C1: raiz aninhada aceita entrada chamada .git, sem repositorio" \
   'git rev-parse --resolve-git-dir "$_d/.git" >/dev/null 2>&1' 'test -e "$_d/.git"'
-mutante MV4 "B1: arquivo nao rastreado sai dos hunks" \
+mutante MVG4 "B1: arquivo nao rastreado sai dos hunks" \
   "git ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; }" 'true; }'
-mutante MV5 "F4: deteccao de extensao volta ao pipe que toma SIGPIPE" \
+mutante MVG5 "F4: deteccao de extensao volta ao pipe que toma SIGPIPE" \
   'if case "$_NL$CHANGED$_NL" in *"${ext}${_NL}"*) true ;; *) false ;; esac; then' \
   'if printf "%s\n" "$CHANGED" | grep -q -- "${ext}\$"; then'
-mutante MV6 "upstream aceito por ECO, sem validar o objeto" \
+mutante MVG6 "upstream aceito por ECO, sem validar o objeto" \
   'if [ -z "$UPSTREAM" ] || ! git -C "$ROOT" rev-parse --verify -q "${UPSTREAM}^{commit}" >/dev/null 2>&1; then' \
   'if false; then'
 

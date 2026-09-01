@@ -1429,6 +1429,32 @@
       "state": "resolved",
       "resolution_ref": "tests/mutation/lint-delta.sh",
       "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G63",
+      "wave": 25,
+      "review_round": "reexame da onda 25 pelo portao final",
+      "found_by": "refutador",
+      "mode": "remedicao",
+      "class": "correcao-do-repro-em-vez-da-classe",
+      "defect": "duas correcoes fecharam o caso exato que o revisor exibiu e reabriram a mesma classe por outro caminho",
+      "measured": "Medido pelo `refutador` no reexame: A1 fechou `com upstream` e reabriu `sem remoto` - `${DIFFBASE:-HEAD}` caia em HEAD, que E o estado do turno; C1 fechou `arquivo .git` e reabriu `diretorio .git`, porque `git -C <d> rev-parse --git-dir` SOBE para o repositorio pai quando o `.git` local e invalido e responde sucesso - com `git status` IDENTICO, invisivel. E condicional ad hoc por sintoma. O criterio de fechamento passou a ser `qual predicado eu deveria ter escrito`: `--resolve-git-dir` em vez de `--git-dir`, recusa em vez de fallback. Ao aplicar esse criterio apareceram TRES defeitos que nao estavam no parecer: arvore vazia servindo de base para a catraca, `@{u}` ecoado como resposta, e lista de candidatos de remoto fixa em `origin/*`.",
+      "state": "resolved",
+      "resolution_ref": "tests/mutation/verify-gate-delta.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G64",
+      "wave": 25,
+      "review_round": "reexame da onda 25 pelo portao final",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "espaco-de-nomes-de-identificador-de-teste-e-global",
+      "defect": "identificadores de caso e de mutante sao resolvidos pelo ledger de claims num set PLANO, entao colisao entre arquivos torna a evidencia nao-rastreavel",
+      "measured": "Tres colisoes nesta onda, todas pegas por `evidence/validate-claims.py` e por NENHUM outro portao: `D1`-`D5` contra `document-tools.sh`, `ML1`-`ML9` contra `literatura.sh`, `MV1`-`MV6` contra `fronteira-viva.sh`. O inventario tem 240 regressoes e 186 mutantes num espaco de nomes unico; a colisao nao quebra teste nenhum - quebra a INJETIVIDADE entre claim e evidencia, que e o que o ledger existe para garantir. Renomeados para `DE*`, `MLD*` e `MVG*`. Restricao que nao esta documentada em lugar nenhum e que eu violei tres vezes seguidas.",
+      "state": "resolved",
+      "resolution_ref": "evidence/validate-claims.py",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
     }
   ],
   "reading": [
@@ -1442,16 +1468,16 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 107,
+    "n_findings": 109,
     "wave_min": 11,
     "wave_max": 25,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 10,
+      "aplicacao-de-instrumento": 11,
       "auditoria-externa": 29,
       "execucao-em-ambiente-alheio": 3,
       "execucao-hostil": 1,
       "leitura-estrutural": 24,
-      "remedicao": 24,
+      "remedicao": 25,
       "sonda-de-sessao-viva": 2,
       "verificacao-de-fonte": 14
     },
@@ -1493,7 +1519,7 @@
     ],
     "by_state": {
       "open": 22,
-      "resolved": 85
+      "resolved": 87
     }
   },
   "historical_states": [
