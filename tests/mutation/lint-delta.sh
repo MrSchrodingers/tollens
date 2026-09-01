@@ -11,6 +11,11 @@
 set -uo pipefail
 . "$(dirname "$0")/../lib/lock.sh"
 cd "$(dirname "$0")/../.." || exit 1
+# ARENA: muta uma COPIA da arvore, nunca a arvore candidata. Backup-e-restaura no `trap` garante
+# EventuallyRestored, que NAO implica NeverObservableAsMutant - um SIGTERM no meio deixa o mutante
+# no disco, e e isso que `tests/unit/arnes-de-mutacao.sh` AM3 mede. Este arnes nasceu sem a arena
+# e a suite o pegou: "todo arnes de mutacao carrega a arena (got=lint-delta.sh want=nenhum)".
+. "$(dirname "$0")/../lib/arena.sh"
 ALVO="evidence/lint-delta.py"
 SUITE="tests/unit/lint-delta.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/mut-ld.XXXXXX")"; trap 'rm -rf "$TMP"' EXIT
