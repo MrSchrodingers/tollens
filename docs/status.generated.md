@@ -7,7 +7,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 
 | Suite | Assercoes | Exit |
 |---|---:|---:|
-| `tests/unit/regressao-gate.sh` | 63 | 1 |
+| `tests/unit/regressao-gate.sh` | 65 | 0 |
 | `tests/unit/document-tools.sh` | 57 | 0 |
 | `tests/unit/supply-chain.sh` | 9 | 0 |
 | `tests/unit/reprodutibilidade.sh` | variavel (ambiente) | 0 |
@@ -17,7 +17,7 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/fronteira-externa.sh` | 13 | 0 |
 | `tests/unit/managed.sh` | 66 | 0 |
 | `tests/unit/conformidade-managed.sh` | 21 | 0 |
-| `tests/unit/arnes-de-mutacao.sh` | ? | 2 |
+| `tests/unit/arnes-de-mutacao.sh` | 7 | 0 |
 | `tests/unit/schedule.sh` | 34 | 0 |
 | `tests/unit/fronteira-viva.sh` | 188 | 0 |
 | `tests/unit/literatura.sh` | 38 | 0 |
