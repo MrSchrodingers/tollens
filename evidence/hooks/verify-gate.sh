@@ -139,13 +139,37 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 #      legitimo, pela mesma razao que "fora de repositorio git" e inerte: e AUSENCIA DE
 #      FRONTEIRA, nao lacuna de verificacao. Declarar NOT_VERIFIED aqui seria ruido em todo
 #      repositorio local, e ruido e o que faz o operador desligar o gate.
+# `git rev-parse --abbrev-ref --symbolic-full-name '@{u}'` ECOA A PROPRIA ENTRADA quando nao ha
+# upstream: imprime `@{u}` em stdout, manda o erro para stderr e sai nao-zero - e o `|| true`
+# engolia o codigo. Medido em /var/www/amaral-intern-hub: `BASE='@{u}'`, `DIFFBASE='@{u}'`,
+# `SEEDREF='@{u}'`, `git archive '@{u}'` falha, e a catraca nunca era semeada. Pior, `CHANGED`
+# tambem usava essa string.
+#
+# E a familia da sonda que devolve lixo por nao casar - aqui na forma mais traicoeira: o comando
+# nao devolve vazio, devolve O ARGUMENTO DE VOLTA, e isso passa por resposta. So `rev-parse
+# --verify` sobre o objeto resolve.
+_NL=$'\n'
 UPSTREAM="$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+if [ -z "$UPSTREAM" ] || ! git -C "$ROOT" rev-parse --verify -q "${UPSTREAM}^{commit}" >/dev/null 2>&1; then
+  UPSTREAM=""
+fi
 BASE=""
 if [ -n "$UPSTREAM" ]; then
   BASE="$UPSTREAM"
 elif [ -n "$(git -C "$ROOT" remote 2>/dev/null)" ]; then
-  for _c in refs/remotes/origin/HEAD refs/remotes/origin/main refs/remotes/origin/master; do
-    if git -C "$ROOT" rev-parse --verify -q "$_c" >/dev/null 2>&1; then BASE="$_c"; break; fi
+  # A LISTA DE CANDIDATOS E DERIVADA DOS REMOTOS QUE EXISTEM, nao fixada em `origin`. Medido em
+  # /var/www/amaral-intern-hub - o repositorio de onde vem a maior parte dos registros que abrem a
+  # onda 25: os remotos chamam-se `debt-hub` e `debthub`, nenhum candidato `origin/*` casava, e
+  # `BASE` caia na ARVORE VAZIA. Com a catraca recusando semear sem base (F1), isso passaria a
+  # bloquear o repositorio principal do operador por 6 defeitos preexistentes - trocando anistia
+  # por travamento. `origin` e convencao, nao contrato: o mesmo erro de medir por nome que
+  # `.worktrees` ja custou nesta onda.
+  for _r in $(git -C "$ROOT" remote 2>/dev/null); do
+    for _s in HEAD main master; do
+      if git -C "$ROOT" rev-parse --verify -q "refs/remotes/$_r/$_s" >/dev/null 2>&1; then
+        BASE="refs/remotes/$_r/$_s"; break 2
+      fi
+    done
   done
   [ -n "$BASE" ] || BASE="$(git -C "$ROOT" hash-object -t tree /dev/null 2>/dev/null || true)"
 fi
@@ -176,7 +200,22 @@ for a in "$ADAPTERS"/*.json; do
   [ -f "$a" ] || continue
   while IFS= read -r ext; do
     [ -z "$ext" ] && continue
-    if printf '%s\n' "$CHANGED" | grep -q -- "${ext}\$"; then
+    # F4 DO REFUTADOR. `printf | grep -q` sob `pipefail` devolve 141 quando o `grep` casa CEDO e
+    # sai antes de o `printf` terminar de escrever: o `printf` toma SIGPIPE e o `pipefail` propaga.
+    # O `if` fica falso e o adaptador e DESCARTADO EM SILENCIO - portao inerte, exit 0, `verdict:
+    # pass`. Depende do dado: casamento no fim devolve 0, no inicio devolve 141. Medido em bash:
+    # 220 KB de CHANGED com `a.py` na primeira linha -> exit=141; com CHANGED pequeno -> 0.
+    #
+    # Em /var/www/amaral-intern-hub o CHANGED tem 161 KB, e e o repositorio de onde vem a maior
+    # parte dos 5054 registros que abrem esta onda: nao se sabe quantos dos `pass` sao 141 mudo.
+    # Defeito de 2026-08-03, anterior a esta onda, corrigido aqui porque a PREMISSA dela depende.
+    #
+    # `case` nao usa pipe e nao tem essa classe de falha. `$'\n'` delimita para nao casar
+    # `x.python` quando a extensao e `.py`.
+    # `$'\n'` DENTRO DE ASPAS DUPLAS nao e citacao ANSI-C: vira a string literal `$'\n'`, o
+    # `case` nunca casa e o adaptador para de rodar - medido, a suite ponta a ponta caiu de 14
+    # para 4. A nova linha precisa vir de uma variavel expandida fora das aspas.
+    if case "$_NL$CHANGED$_NL" in *"${ext}${_NL}"*) true ;; *) false ;; esac; then
       # G10: adaptador que DECLARA executar codigo do repositorio nunca roda automaticamente.
       # Pago com um defeito proprio: o adaptador .NET declarava executes_repository_code=false
       # sobre `dotnet format`, e a documentacao da Microsoft adverte que ele "may restore,
@@ -349,7 +388,14 @@ for a in "${APLICAVEIS[@]}"; do
     # digital jamais entrava na catraca.
     NESTED="$(cd "$ROOT" && find . -mindepth 2 -maxdepth 8 -name .git -printf '%h\n' 2>/dev/null \
               | sed 's|^\./||' | while IFS= read -r _d; do
-                  git -C "$_d" rev-parse --git-dir >/dev/null 2>&1 && printf '%s\n' "$_d"
+                  # F2 DO REFUTADOR, e a correcao anterior estava errada pelo predicado.
+                  # `git -C <d> rev-parse --git-dir` SOBE para o repositorio pai quando o `.git`
+                  # local e invalido: com `mkdir sub/.git` ele devolvia o `.git` do PAI e a
+                  # resposta era sucesso. Medido: exit 2 sem o diretorio falso, exit 0 com ele, e
+                  # `git status` IDENTICO nos dois - git nao ve diretorio vazio, entao o bypass era
+                  # invisivel. `--resolve-git-dir <caminho>` pergunta o que realmente importa:
+                  # ESTE caminho e um diretorio de repositorio? Falso -> 128.
+                  git rev-parse --resolve-git-dir "$_d/.git" >/dev/null 2>&1 && printf '%s\n' "$_d"
                 done | jq -R . | jq -sc .)"
     printf '%s' "$NESTED" | jq -e 'type == "array"' >/dev/null 2>&1 || NESTED='[]'
     # A5/B1/B2 DO REFUTADOR, tres defeitos na mesma extracao.
@@ -423,7 +469,14 @@ print(json.dumps(dict(h)))' 2>/dev/null)"
     MAPA="$(jq -c '.diagnostics.map' "$a")"
     BRK="$(jq -r '.breakage_codes // [] | join(",")' "$a")"
     TMPERR="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR=/dev/null
-    VER="$(python3 "$LD" --raw "$RAW" --map "$MAPA" --strip-prefix "$ROOT/" \
+    # F3 DO REFUTADOR, defeito INTRODUZIDO por esta onda. O Linux limita UM argv a
+    # MAX_ARG_STRLEN = 131.072 B; a saida do ruff em /var/www/amaral-intern-hub tem 147.920 B e JA
+    # estourava. O hook morria com `Argument list too long` (exit 126) e, como a semeadura exige
+    # RC==1, o repositorio ficava bloqueado PARA SEMPRE - gravando no ledger a mesma linha
+    # `falharam: python-analyzer` cujo excesso justifica a onda. Arquivo nao tem esse limite.
+    RAWF="$(mktemp "${TMPDIR:-/tmp}/tollens-raw.XXXXXX")" || RAWF=""
+    printf '%s' "$RAW" > "$RAWF" 2>/dev/null
+    VER="$(python3 "$LD" --raw-file "$RAWF" --map "$MAPA" --strip-prefix "$ROOT/" \
              --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
              --breakage-codes "$BRK" 2>"$TMPERR")"; RC=$?
     OUT="$VER
@@ -436,6 +489,8 @@ $(cat "$TMPERR" 2>/dev/null)"
       cat "$TMPERR" >&2
     fi
     [ "$TMPERR" != /dev/null ] && rm -f "$TMPERR"
+    [ -n "${RAWF:-}" ] && rm -f "$RAWF"
+    [ -n "${RAWBF:-}" ] && rm -f "$RAWBF"
     # SEMEADURA DO BASELINE, e ela e explicita e visivel. Sem baseline o portao reprovaria por
     # quebra preexistente para sempre; semear em silencio seria anistia. Semeia UMA vez, avisa, e
     # a partir dai a catraca so aceita o que ja estava la.
@@ -463,9 +518,35 @@ $(cat "$TMPERR" 2>/dev/null)"
       # `DIFFBASE` ja e calculado na linha 157 como merge-base com o upstream, e e a base que o
       # proprio hook usa para decidir `CHANGED`. Usar outra base para a catraca era incoerencia
       # interna: o turno era medido contra uma base e perdoado contra outra.
-      SEEDREF="${DIFFBASE:-HEAD}"
-      SEEDDIR="$(mktemp -d "${TMPDIR:-/tmp}/tollens-seed.XXXXXX")" || SEEDDIR=""
-      RAWBASE=""
+      # F1 DO REFUTADOR, e a correcao anterior fechou o REPRO e nao a CLASSE. `${DIFFBASE:-HEAD}`
+      # devolvia HEAD sempre que nao ha upstream NEM remoto - o estado normal de qualquer projeto
+      # antes do primeiro `git remote add`. Ali HEAD E o estado do turno, e a catraca voltava a
+      # gravar a digital da quebra recem-criada: medido, mesma digital que o mutante `SEEDREF=HEAD`
+      # produz. Fallback silencioso para uma base que se sabe errada e pior que recusar.
+      # ARVORE VAZIA NAO E UMA BASE, e sim a AUSENCIA de uma. `BASE` cai no hash da arvore vazia
+      # quando nenhum candidato de remoto resolve (linha ~150), e isso e legitimo para `CHANGED` -
+      # `git diff <arvore-vazia> HEAD` lista tudo. Para a CATRACA seria destrutivo: semear dali
+      # grava um baseline que tolera NADA e, pelo `[ ! -f "$BLPATH" ]`, IMPEDE a re-semeadura
+      # quando uma base real aparecer. E a armadilha A4 por outra porta - catraca inutil que nao
+      # se recria. Sem base real, recusar e a unica resposta honesta.
+      _VAZIA="$(git -C "$ROOT" hash-object -t tree /dev/null 2>/dev/null || true)"
+      SEEDREF="$DIFFBASE"
+      [ -n "$_VAZIA" ] && [ "$SEEDREF" = "$_VAZIA" ] && SEEDREF=""
+      SEEDDIR=""; RAWBASE=""
+      if [ -z "$SEEDREF" ]; then
+        # F8 DO REFUTADOR: esta mensagem so ia para `LACUNAS`, e `LACUNAS` e reportado DEPOIS de
+        # `FALHAS` - com `reporta` saindo antes. Como a semeadura so e tentada quando o julgamento
+        # BLOQUEOU, havia sempre falha, e a lacuna era codigo morto: o operador via "VERIFICACAO
+        # FALHOU" e nenhuma pista de que o bloqueio nao passaria sozinho. A razao da recusa vai
+        # tambem para a SAIDA da falha, porque e ela que explica por que o portao nao destrava.
+        _MSG="sem base anterior ao turno (upstream ausente ou apontando para ref inexistente, e nenhum candidato de remoto resolve). A catraca NAO foi semeada: semear da arvore vazia toleraria NADA e impediria a re-semeadura. Configure o upstream, ou semeie a mao com \`--emit-baseline\`."
+        SAIDA="$SAIDA
+--- $ID: $_MSG ---"
+        LACUNAS="$LACUNAS
+  - $ID: $_MSG"
+      else
+        SEEDDIR="$(mktemp -d "${TMPDIR:-/tmp}/tollens-seed.XXXXXX")" || SEEDDIR=""
+      fi
       if [ -n "$SEEDDIR" ] && git -C "$ROOT" archive "$SEEDREF" 2>/dev/null | tar -x -C "$SEEDDIR" 2>/dev/null; then
         RAWBASE="$(cd "$SEEDDIR" && timeout "$TMO" "$CMD" "${ARGS[@]}" 2>/dev/null)"
         # A4 DO REFUTADOR: `|| RAWBASE='[]'` fazia analisador que MORRE na semeadura gravar catraca
@@ -474,20 +555,22 @@ $(cat "$TMPERR" 2>/dev/null)"
         printf '%s' "$RAWBASE" | jq -e 'type == "array"' >/dev/null 2>&1 || RAWBASE=""
       fi
       BLTMP="$(mktemp "${BLPATH}.XXXXXX")" || BLTMP=""
-      if [ -n "$BLTMP" ] && [ -n "$RAWBASE" ] && python3 "$LD" --raw "$RAWBASE" --map "$MAPA" \
+      RAWBF="$(mktemp "${TMPDIR:-/tmp}/tollens-rawb.XXXXXX")" || RAWBF=""
+      [ -n "$RAWBASE" ] && printf '%s' "$RAWBASE" > "$RAWBF" 2>/dev/null
+      if [ -n "$BLTMP" ] && [ -n "$RAWBASE" ] && python3 "$LD" --raw-file "$RAWBF" --map "$MAPA" \
            --strip-prefix "$SEEDDIR/" \
            --nested-roots "$NESTED" --breakage-codes "$BRK" --emit-baseline > "$BLTMP" 2>/dev/null \
          && [ -s "$BLTMP" ] && jq -e 'type == "array"' "$BLTMP" >/dev/null 2>&1 \
          && mv -f "$BLTMP" "$BLPATH"; then
         LACUNAS="$LACUNAS
-  - $ID: catraca CRIADA agora ($(jq -r 'length' "$BLPATH" 2>/dev/null) defeito(s) preexistente(s) de HEAD passam a ser TOLERADOS, e sao reportados a cada execucao). Este turno FOI julgado contra ela. A lacuna declarada nao e o julgamento: e a TOLERANCIA recem-concedida, que nenhum humano revisou. Revise $BLPATH, ou apague-o para recriar."
+  - $ID: catraca CRIADA agora ($(jq -r 'length' "$BLPATH" 2>/dev/null) defeito(s) preexistente(s) da base anterior ao turno passam a ser TOLERADOS, e sao reportados a cada execucao). Este turno FOI julgado contra ela. A lacuna declarada nao e o julgamento: e a TOLERANCIA recem-concedida, que nenhum humano revisou. Revise $BLPATH, ou apague-o para recriar."
         # REJULGA CONTRA O BASELINE RECEM-CRIADO, nunca `RC=0` por decreto. Forcar zero aqui
         # fazia a PRIMEIRA parada passar sempre - inclusive quando a quebra era do proprio turno,
         # que e o oposto do que a catraca existe para fazer. O baseline vem do estado ANTERIOR;
         # se o defeito nao esta nele, ele e novo e continua bloqueando.
         BL="$(cat "$BLPATH" 2>/dev/null)"
         TMPERR2="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR2=/dev/null
-        VER="$(python3 "$LD" --raw "$RAW" --map "$MAPA" --strip-prefix "$ROOT/" \
+        VER="$(python3 "$LD" --raw-file "$RAWF" --map "$MAPA" --strip-prefix "$ROOT/" \
                  --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
                  --breakage-codes "$BRK" 2>"$TMPERR2")"; RC=$?
         OUT="$VER

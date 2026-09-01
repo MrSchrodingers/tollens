@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import pathlib
 import json
 import re
 import sys
@@ -158,6 +159,17 @@ def main(argv=None) -> int:
     p.add_argument("--baseline", default="", help="JSON: [fingerprint, ...] (vazio = sem baseline)")
     p.add_argument("--breakage-codes", required=True, help="lista separada por virgula")
     p.add_argument("--raw", default="", help="saida NATIVA do analisador (usar com --map)")
+    # F3 DO REFUTADOR, e e defeito INTRODUZIDO pela onda: o Linux limita UM argv a
+    # MAX_ARG_STRLEN = 131.072 B, independente do ARG_MAX total. A saida do ruff em
+    # /var/www/amaral-intern-hub tem 147.920 B - ja estoura HOJE. O hook morria com
+    # `Argument list too long`, exit 126, e como a semeadura exige RC==1 o repositorio ficava
+    # BLOQUEADO PARA SEMPRE, sem recurso, gravando no ledger a MESMA linha `falharam:
+    # python-analyzer` cujas 2942 ocorrencias justificam esta onda.
+    #
+    # Consequencia epistemica, e ela e a pior: a afirmacao "verificado em amaral-intern-hub:
+    # bloqueiam 0, tolerados 6" NAO podia ter sido observada atraves do hook naquele repositorio.
+    # Foi medida chamando este nucleo direto. Arquivo nao tem esse limite.
+    p.add_argument("--raw-file", default="", help="caminho com a saida NATIVA (sem limite de argv)")
     p.add_argument("--map", default="", help='JSON: {"path":"filename","line":"location.row",...}')
     p.add_argument("--strip-prefix", default="", help="prefixo absoluto a remover dos caminhos")
     p.add_argument("--nested-roots", default="", help="JSON: lista de checkouts aninhados (relativos)")
@@ -166,6 +178,16 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
 
     try:
+        if a.raw_file.strip():
+            a.raw = pathlib.Path(a.raw_file).read_text(encoding="utf-8", errors="replace")
+            # `--raw-file` VAZIO nao e arvore limpa: e leitura que nao produziu nada. Cair no
+            # `--diagnostics` default (`[]`) transformaria isso em "nenhum diagnostico", que e
+            # aprovacao - a mesma classe A2 que esta onda corrigiu no executor, aqui dentro do
+            # nucleo. Medido: `--raw-file /dev/null` devolvia rc=0.
+            if not a.raw.strip():
+                print("NAO VERIFICADO: `--raw-file` nao produziu conteudo. Arquivo vazio nao e "
+                      "arvore limpa - o analisador devolve `[]`, nunca nada.", file=sys.stderr)
+                return EXIT_NAO_VERIFICADO
         if a.raw.strip():
             if not a.map.strip():
                 print("NAO VERIFICADO: `--raw` exige `--map` - sem ele nao ha como saber de que "
@@ -177,7 +199,7 @@ def main(argv=None) -> int:
         raizes = tuple(json.loads(a.nested_roots)) if a.nested_roots.strip() else ()
         hunks = {k: [tuple(x) for x in v] for k, v in json.loads(a.hunks).items()}
         baseline = set(json.loads(a.baseline)) if a.baseline.strip() else set()
-    except (json.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
+    except (json.JSONDecodeError, TypeError, ValueError, KeyError, OSError) as exc:
         print(f"NAO VERIFICADO: entrada ilegivel ({exc}). O turno NAO foi julgado.", file=sys.stderr)
         return EXIT_NAO_VERIFICADO
 

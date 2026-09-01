@@ -55,6 +55,9 @@ mutante MLD8 "numero da mensagem vira # (nao gera falso-novo)" 's/_NUM.sub("#", 
 mutante MLD9 "prefixo absoluto removido do caminho" 's/reg\["path"\] = reg\["path"\]\[len(prefixo):\]/pass/'
 
 echo
-echo "MUTANTES=$((P-1)) MORTOS=$((P-1)) SOBREVIVENTES=$F"
+# O contador anterior derivava MORTOS de P, entao MUTANTES e MORTOS saiam SEMPRE iguais: com
+# um sobrevivente imprimiria "MUTANTES=8 MORTOS=8 SOBREVIVENTES=1" para 9 mutantes. Numero que
+# nao pode discordar do outro nao mede nada.
+echo "MUTANTES=$((P-1+F)) MORTOS=$((P-1)) SOBREVIVENTES=$F"
 if [ "$F" -eq 0 ]; then echo "mutacao verde: todo mutante morreu no caso correspondente"; exit 0; fi
 echo "mutacao VERMELHA: ha decisao do nucleo que a suite nao protege"; exit 1
