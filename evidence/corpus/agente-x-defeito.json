@@ -1490,10 +1490,10 @@
       "mode": "aplicacao-de-instrumento",
       "class": "chave-posicional-em-registro-de-excecao",
       "defect": "a CAMADA 2 de `evidence/cobertura.sh` identifica um ramo isento por NUMERO DE LINHA, entao qualquer insercao acima dele invalida a isencao e reprova o portao",
-      "measured": "Medido tres vezes nesta sessao sobre a MESMA isencao (`if __name__ == \"__main__\"` de `evidence/lint-delta.py`): 224 -> 246 -> 265, cada deslocamento causado por codigo inserido ACIMA da guarda. Cada reprovacao custou um ciclo completo de medicao (a suite roda instrumentada) para descobrir que o defeito nao era de cobertura, e sim da chave. O portao erra para o lado de REPROVAR, entao e ruido e nao falso negativo - por isso esta ABERTO e nao foi corrigido junto com G65/G66: nao bloqueia o requisito da onda, nao compartilha causa com eles e mexer no mecanismo da CAMADA 2 exige teste e mutante proprios. Direcao registrada, nao implementada: ancorar a isencao no TEXTO da linha (ou num marcador no proprio fonte) em vez do numero, o que tornaria a chave invariante a deslocamento - a mesma propriedade que `digital()` da a diagnostico em `lint-delta.py`, e que este arquivo nao tem para si.",
-      "state": "open",
-      "open_note": "Custo conhecido e aceito por ora: toda insercao acima de um item isento reprova o portao ate a reancoragem manual. Corrigir exige mudar o formato de ISENCOES em evidence/cobertura.sh, migrar as 35+ entradas existentes de orchestration/ e escrever o mutante que prova que a nova chave discrimina. Trabalho proprio, fora do escopo da onda 25.",
-      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+      "measured": "Medido tres vezes nesta sessao sobre a MESMA isencao (`if __name__ == \"__main__\"` de `evidence/lint-delta.py`): 224 -> 246 -> 265, cada deslocamento causado por codigo inserido ACIMA da guarda. Cada reprovacao custou um ciclo completo de medicao (a suite roda instrumentada) para descobrir que o defeito nao era de cobertura, e sim da chave. O portao erra para o lado de REPROVAR, entao e ruido e nao falso negativo - por isso esta ABERTO e nao foi corrigido junto com G65/G66: nao bloqueia o requisito da onda, nao compartilha causa com eles e mexer no mecanismo da CAMADA 2 exige teste e mutante proprios. Direcao registrada, nao implementada: ancorar a isencao no TEXTO da linha (ou num marcador no proprio fonte) em vez do numero, o que tornaria a chave invariante a deslocamento - a mesma propriedade que `digital()` da a diagnostico em `lint-delta.py`, e que este arquivo nao tem para si. RESOLVIDO na onda 25d por ANCORA TEXTUAL, quinto campo opcional em ISENCOES: quando presente, o texto da linha (sem indentacao) precisa bater com o fonte, senao a isencao e RECUSADA - nao ignorada - e o relatorio diz o que esperava e o que achou, para que reancorar nao seja adivinhacao. Isso fecha o unico modo de falha ABERTA que o cabecalho do proprio arquivo ja documentava: ramo NOVO caindo num numero ja isento e herdando justificativa alheia em silencio. Provado por controle: com UMA linha injetada acima, `NAO JUSTIFICADO: ramo 288->287: ancora esperava 'for raiz in raizes:', achou '\"bloqueiam\": len(bloqueiam), ...'`. As 35+ entradas herdadas seguem sem ancora e valendo como antes - a fragilidade passou a ser opcional em vez de compulsoria, o que evita migrar de uma vez um conjunto que ninguem reauditou.",
+      "state": "resolved",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md",
+      "resolution_ref": "evidence/cobertura.sh"
     },
     {
       "finding_id": "G68",
@@ -1658,14 +1658,13 @@
       "G53",
       "G54",
       "G56",
-      "G67",
       "G7",
       "G71",
       "G75"
     ],
     "by_state": {
-      "open": 25,
-      "resolved": 95
+      "open": 24,
+      "resolved": 96
     }
   },
   "historical_states": [
