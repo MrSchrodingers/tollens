@@ -444,7 +444,16 @@ for a in "${APLICAVEIS[@]}"; do
              git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null | sed 's|^|UNTRACKED |'; } | python3 -c '
 import sys,re,json,collections
 h=collections.defaultdict(list); f=None
-for l in sys.stdin:
+# G74. `for l in sys.stdin` decodifica UTF-8 e MORRE em byte que nao seja - e diff carrega o
+# conteudo do arquivo, entao qualquer fonte em latin-1 derruba o parser. O executor engolia o
+# erro (`2>/dev/null`) e caia em `HUNKS={}`, que nao e "nada foi tocado": e o valor MAIS
+# PERMISSIVO possivel, porque nenhum diagnostico cai em hunk nenhum e TODA a higiene e ignorada.
+# Medido em /var/www/amaral-intern-hub, o repositorio que justificou esta onda: byte 0xe3,
+# `UnicodeDecodeError`, HUNKS com ZERO chaves, `ignorados 80`. O numero que a onda publicou como
+# "higiene fora das linhas tocadas" era, naquele repositorio, o portao sem mapa nenhum.
+# `surrogateescape` preserva o byte cru sem decodificar: nome de arquivo e marcador de hunk sao
+# ASCII, e o conteudo da linha nao e lido por este parser.
+for l in sys.stdin.buffer.read().decode("utf-8", "surrogateescape").split("\n"):
     if l.startswith("UNTRACKED "):
         # arquivo NOVO nao rastreado: todas as linhas sao do turno, entao a faixa e total
         h[l[10:].strip()].append([1, 10**9])
@@ -456,7 +465,15 @@ for l in sys.stdin:
             i=int(m.group(1)); n=int(m.group(2) or 1)
             if n: h[f].append([i,i+n-1])
 print(json.dumps(dict(h)))' 2>/dev/null)"
-    printf '%s' "$HUNKS" | jq -e 'type == "object"' >/dev/null 2>&1 || HUNKS='{}'
+    # PARSER MORTO NAO E ARVORE INTOCADA. `|| HUNKS='{}'` tratava falha de leitura como "nenhuma
+    # linha foi tocada", que e o valor que faz TODA higiene ser ignorada - aprovacao silenciosa
+    # pelo caminho mais largo do portao. Agora a falha e declarada: o turno segue julgado (quebra
+    # continua bloqueando contra a catraca), mas o operador ve que o escopo de higiene foi perdido.
+    if ! printf '%s' "$HUNKS" | jq -e 'type == "object"' >/dev/null 2>&1; then
+      HUNKS='{}'
+      LACUNAS="$LACUNAS
+  - $ID: o mapa de linhas tocadas NAO pode ser lido (parser de diff falhou). Higiene NAO foi julgada neste turno - so quebra. Escopo de delta perdido, nao vazio."
+    fi
     # G_VAZIO NO ESCOPO DELTA. A mesma armadilha das outras duas formas, e ela e PIOR aqui:
     # um analisador sobre arvore sem nenhum arquivo do ecossistema devolve LISTA VAZIA, e lista
     # vazia atravessa o nucleo inteiro como "nada a bloquear" - aprovacao sobre nada, com todos os
@@ -506,10 +523,15 @@ print(json.dumps(dict(h)))' 2>/dev/null)"
     # estourava. O hook morria com `Argument list too long` (exit 126) e, como a semeadura exige
     # RC==1, o repositorio ficava bloqueado PARA SEMPRE - gravando no ledger a mesma linha
     # `falharam: python-analyzer` cujo excesso justifica a onda. Arquivo nao tem esse limite.
+    # G74: `--hunks` tambem estoura MAX_ARG_STRLEN, e nunca tinha estourado so porque o parser
+    # de diff morria antes em repositorio grande. Corrigido o parser, o mapa do amaral passou a
+    # ter 2685 chaves e o hook morreu com `Argument list too long` (exit 126). Mesmo remedio.
+    HUNKF="$(mktemp "${TMPDIR:-/tmp}/tollens-hunks.XXXXXX")" || HUNKF=""
+    printf '%s' "$HUNKS" > "$HUNKF" 2>/dev/null
     RAWF="$(mktemp "${TMPDIR:-/tmp}/tollens-raw.XXXXXX")" || RAWF=""
     printf '%s' "$RAW" > "$RAWF" 2>/dev/null
     VER="$(python3 "$LD" --raw-file "$RAWF" --map "$MAPA" --strip-prefix "$ROOT/" \
-             --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
+             --hunks-file "$HUNKF" --baseline "$BL" --nested-roots "$NESTED" \
              --breakage-codes "$BRK" 2>"$TMPERR")"; RC=$?
     OUT="$VER
 $(cat "$TMPERR" 2>/dev/null)"
@@ -612,7 +634,7 @@ $(cat "$TMPERR" 2>/dev/null)"
         BL="$(cat "$BLPATH" 2>/dev/null)"
         TMPERR2="$(mktemp "${TMPDIR:-/tmp}/tollens-delta.XXXXXX")" || TMPERR2=/dev/null
         VER="$(python3 "$LD" --raw-file "$RAWF" --map "$MAPA" --strip-prefix "$ROOT/" \
-                 --hunks "$HUNKS" --baseline "$BL" --nested-roots "$NESTED" \
+                 --hunks-file "$HUNKF" --baseline "$BL" --nested-roots "$NESTED" \
                  --breakage-codes "$BRK" 2>"$TMPERR2")"; RC=$?
         OUT="$VER
 $(cat "$TMPERR2" 2>/dev/null)"
@@ -628,6 +650,7 @@ $(cat "$TMPERR2" 2>/dev/null)"
     # ultimo leitor de $RAWF ja passou (o rejulgamento pos-semeadura).
     [ -n "${RAWF:-}" ] && rm -f "$RAWF"
     [ -n "${RAWBF:-}" ] && rm -f "$RAWBF"
+    [ -n "${HUNKF:-}" ] && rm -f "$HUNKF"
   elif [ "$(jq -r '.per_file // false' "$a")" = "true" ]; then
     # G_VAZIO (per_file): um adaptador per_file so examina os arquivos de CHANGED que ainda
     # existem no disco (`[ -f "$ROOT/$f" ] || continue`). Se apagar, renomear-com-conteudo-

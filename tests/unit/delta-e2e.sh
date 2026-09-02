@@ -237,7 +237,28 @@ PYEOF
 )"
 chk "todo codigo emitido em arquivo que nao parseia esta em breakage_codes" "$FALTANDO" ""
 
-EXPECTED=33
+echo "== DE11. byte nao-UTF-8 no diff nao apaga o mapa de hunks (G74) =="
+# O DEFEITO MAIS CARO DESTA ONDA, e ele era invisivel porque falhava para o lado permissivo:
+# `for l in sys.stdin` decodifica UTF-8 e MORRE em qualquer outro byte. Com `2>/dev/null` no
+# executor e `|| HUNKS='{}'` logo abaixo, parser morto virava mapa VAZIO - que nao e "nada foi
+# tocado", e sim o valor que faz TODA a higiene ser ignorada. Medido em /var/www/amaral-intern-hub:
+# byte 0xe3, HUNKS com ZERO chaves, e a onda publicou `ignorados 80` como se fosse escopo de delta.
+repo d11
+printf 'import os\n\nTEXTO = "acentua\xe3\xe7ao em latin-1"\n' > latin.py
+chk "o arquivo tem byte nao-UTF-8 (o caso nao e vacuo)" \
+    "$(python3 -c 'print(0 if open("latin.py","rb").read().decode("utf-8","ignore").encode()==open("latin.py","rb").read() else 1)')" 1
+git add -A
+# F401 na linha 1, DENTRO do hunk: so bloqueia se o mapa de hunks existir.
+chk "higiene na linha tocada ainda BARRA (parser sobreviveu ao byte)" "$(gate)" 2
+chk "  e o motivo e o diagnostico, nao lacuna de leitura" \
+    "$(grep -c 'mapa de linhas tocadas NAO pode ser lido' "$TMP/o" "$TMP/e" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')" 0
+# CONTROLE NEGATIVO: sem o byte problematico o comportamento e o mesmo - o caso mede o byte,
+# nao "o portao barra qualquer coisa".
+repo d11b
+printf 'import os\n\nTEXTO = "ascii puro"\n' > limpo.py; git add -A
+chk "  CONTROLE: mesmo arquivo em ASCII puro barra igual" "$(gate)" 2
+
+EXPECTED=37
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1
