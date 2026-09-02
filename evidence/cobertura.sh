@@ -268,8 +268,8 @@ orchestration/schedule.py|ramo|406->408|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->409|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|408->410|heranca-piso-absoluto-2026-08-11
 orchestration/schedule.py|ramo|436->-1|heranca-piso-absoluto-2026-08-11
-evidence/lint-delta.py|ramo|307->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.
-evidence/lint-delta.py|ramo|288->287|laco interno esgotado sem casar raiz nenhuma: INALCANCAVEL por construcao. `alheios` so recebe diagnostico para o qual `sob_checkout_aninhado` respondeu verdadeiro sobre ESTA mesma lista de raizes, entao o `break` sempre acontece. Cobrir exigiria chamar a funcao com uma lista de raizes diferente da que produziu `alheios` - estado que o programa nao constroi.
+evidence/lint-delta.py|ramo|323->-1|guarda `if __name__ == "__main__"` sem ramo falso alcancavel: o arquivo e sempre executado como programa pelo verify-gate, nunca importado. Cobrir o ramo exigiria importa-lo num teste so para isso, o que mediria o teste e nao o nucleo.|if __name__ == "__main__":
+evidence/lint-delta.py|ramo|304->303|laco interno esgotado sem casar raiz nenhuma: INALCANCAVEL por construcao. `alheios` so recebe diagnostico para o qual `sob_checkout_aninhado` respondeu verdadeiro sobre ESTA mesma lista de raizes, entao o `break` sempre acontece. Cobrir exigiria chamar a funcao com uma lista de raizes diferente da que produziu `alheios` - estado que o programa nao constroi.|for raiz in raizes:
 EOF
 )}"
 
@@ -404,10 +404,26 @@ for linha in le_linhas(pendente_path):
     caminho, motivo = linha.split("|", 1)
     pendente[caminho] = motivo
 
+# G67. A chave e POSICIONAL, e o proprio cabecalho deste arquivo nomeia o unico modo em que isso
+# falha ABERTO: um ramo NOVO cair num numero de linha ja isento e herdar justificativa alheia. O
+# mitigante escolhido foi redigir o motivo como INTENCAO, nunca como conteudo - o que funciona
+# para "debito herdado, nao investigado" e NAO funciona para isencao que afirma algo especifico
+# ("guarda `if __name__`", "laco interno sem casar raiz"): essas viram alegacao falsa sobre um
+# ramo diferente, em silencio.
+# ANCORA OPCIONAL, quinto campo: quando presente, e o texto (sem espaco de indentacao) que a
+# linha do arquivo PRECISA ter. Se nao tiver, a isencao e RECUSADA - nao ignorada -, porque
+# isencao que aponta para outro lugar e pior que isencao ausente. Entradas sem ancora seguem
+# valendo como antes; a fragilidade fica opcional em vez de compulsoria. Custo real e conhecido:
+# toda insercao acima de um item ancorado exige reancorar A MAO, e foi isso que aconteceu tres
+# vezes com `evidence/lint-delta.py` nesta onda (224 -> 246 -> 265 -> 307).
 isencoes = {}
+ancoras = {}
 for linha in le_linhas(isencoes_path):
-    caminho, tipo, alvo_item, motivo = linha.split("|", 3)
+    partes = linha.split("|", 4)
+    caminho, tipo, alvo_item, motivo = partes[:4]
     isencoes.setdefault(caminho, {})[(tipo, alvo_item)] = motivo
+    if len(partes) == 5 and partes[4].strip():
+        ancoras.setdefault(caminho, {})[(tipo, alvo_item)] = partes[4].strip()
 
 with open(cov_path, encoding="utf-8") as f:
     dados = json.load(f)
@@ -447,7 +463,24 @@ for caminho, piso in alvos:
         status_abs = f"PENDENTE ({pendente[caminho]})"
     else:
         isentas = isencoes.get(caminho, {})
-        faltas = []
+        ancoradas = ancoras.get(caminho, {})
+        # ANCORA CONFERIDA CONTRA O FONTE. Uma isencao cujo texto nao bate deixa de valer, e o
+        # relatorio diz o texto encontrado - senao a reancoragem vira adivinhacao.
+        fora_de_lugar = []
+        try:
+            fonte = pathlib.Path(caminho).read_text(encoding="utf-8").split("\n")
+        except OSError:
+            fonte = []
+        for chave, esperado in sorted(ancoradas.items()):
+            n = chave[1].split("->")[0]
+            if not n.isdigit() or not fonte:
+                continue
+            i = int(n)
+            achado = fonte[i - 1].strip() if 1 <= i <= len(fonte) else "<linha inexistente>"
+            if achado != esperado:
+                fora_de_lugar.append(f"{chave[0]} {chave[1]}: ancora esperava {esperado!r}, achou {achado!r}")
+                isentas = {k: v for k, v in isentas.items() if k != chave}
+        faltas = list(fora_de_lugar)
         for l in missing_lines:
             chave = ("linha", str(l))
             if chave not in isentas:

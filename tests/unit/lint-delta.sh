@@ -210,7 +210,29 @@ chk "  CONTROLE: sem raiz aninhada, os mesmos diagnosticos bloqueiam" \
 chk "  e ai NADA e reportado como excluido" \
     "$(python3 "$LD" --raw-file "$T_LD/alheios.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks '{}' --breakage-codes "$QUEBRA" 2>&1 >/dev/null | grep -c 'EXCLUIDO POR CHECKOUT')" 0
 
-EXPECTED=53
+echo "== LD16. --hunks-file: arquivo vazio nao e mapa vazio (G74) =="
+# SEGUNDA INSTANCIA DE F3, exposta pela correcao de G74: `--hunks` era argv e estourou
+# MAX_ARG_STRLEN quando o mapa do amaral passou de {} para 2685 chaves (`Argument list too long`,
+# exit 126). Nunca tinha estourado porque o parser morria antes - um defeito escondia o outro.
+# A guarda que importa e a mesma de LD13: leitura que nao produziu nada NAO pode virar o default,
+# porque `{}` faz TODA a higiene ser ignorada, que e o buraco que G74 fechou no executor.
+printf '{"a.py": [[8,8]]}' > "$T_LD/hunks.json"
+: > "$T_LD/hunks-vazio.json"
+chk "--hunks-file com a linha tocada bloqueia a higiene" \
+    "$(python3 "$LD" --raw-file "$T_LD/hig.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks-file "$T_LD/hunks.json" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 0
+printf '[{"filename":"/x/a.py","location":{"row":8},"code":"F401","message":"`os` imported but unused"}]' > "$T_LD/hig8.json"
+chk "  o MESMO diagnostico dentro do hunk do arquivo bloqueia" \
+    "$(python3 "$LD" --raw-file "$T_LD/hig8.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks-file "$T_LD/hunks.json" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 1
+chk "  arquivo de hunks VAZIO e NAO VERIFICADO, nao mapa vazio" \
+    "$(python3 "$LD" --raw-file "$T_LD/hig8.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks-file "$T_LD/hunks-vazio.json" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 2
+chk "  arquivo de hunks INEXISTENTE e NAO VERIFICADO" \
+    "$(python3 "$LD" --raw-file "$T_LD/hig8.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks-file "$T_LD/nao-existe.json" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 2
+# CONTROLE: `--hunks-file` VENCE `--hunks`, senao o executor poderia passar os dois e o mapa
+# antigo (argv, truncado) decidiria em silencio.
+chk "  --hunks-file vence --hunks quando os dois vem" \
+    "$(python3 "$LD" --raw-file "$T_LD/hig8.json" --map "$LD_MAPA" --strip-prefix '/x/' --hunks '{}' --hunks-file "$T_LD/hunks.json" --breakage-codes "$QUEBRA" >/dev/null 2>&1; echo $?)" 1
+
+EXPECTED=58
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

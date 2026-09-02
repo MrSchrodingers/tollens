@@ -49,10 +49,10 @@ O README referencia este arquivo em vez de duplicar numeros.
 | corpus-completude (auto) | 22 | passo dedicado no CI |
 | fable-guard (auto) | 12 | passo dedicado no CI |
 | hooks-de-guarda (auto) | 18 | passo dedicado no CI |
-| lint-delta (auto) | ? | NAO executado no CI |
+| lint-delta (auto) | 11 | passo dedicado no CI |
 | managed-transitive-trust (auto) | 2 | NAO executado no CI |
 | skill-invocation-policy (auto) | 2 | NAO executado no CI |
-| verify-gate-delta (auto) | ? | NAO executado no CI |
+| verify-gate-delta (auto) | 7 | passo dedicado no CI |
 
 ## Cobertura de decisao (branch), medida via subprocesso instrumentado
 

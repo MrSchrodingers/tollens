@@ -1490,10 +1490,10 @@
       "mode": "aplicacao-de-instrumento",
       "class": "chave-posicional-em-registro-de-excecao",
       "defect": "a CAMADA 2 de `evidence/cobertura.sh` identifica um ramo isento por NUMERO DE LINHA, entao qualquer insercao acima dele invalida a isencao e reprova o portao",
-      "measured": "Medido tres vezes nesta sessao sobre a MESMA isencao (`if __name__ == \"__main__\"` de `evidence/lint-delta.py`): 224 -> 246 -> 265, cada deslocamento causado por codigo inserido ACIMA da guarda. Cada reprovacao custou um ciclo completo de medicao (a suite roda instrumentada) para descobrir que o defeito nao era de cobertura, e sim da chave. O portao erra para o lado de REPROVAR, entao e ruido e nao falso negativo - por isso esta ABERTO e nao foi corrigido junto com G65/G66: nao bloqueia o requisito da onda, nao compartilha causa com eles e mexer no mecanismo da CAMADA 2 exige teste e mutante proprios. Direcao registrada, nao implementada: ancorar a isencao no TEXTO da linha (ou num marcador no proprio fonte) em vez do numero, o que tornaria a chave invariante a deslocamento - a mesma propriedade que `digital()` da a diagnostico em `lint-delta.py`, e que este arquivo nao tem para si.",
-      "state": "open",
-      "open_note": "Custo conhecido e aceito por ora: toda insercao acima de um item isento reprova o portao ate a reancoragem manual. Corrigir exige mudar o formato de ISENCOES em evidence/cobertura.sh, migrar as 35+ entradas existentes de orchestration/ e escrever o mutante que prova que a nova chave discrimina. Trabalho proprio, fora do escopo da onda 25.",
-      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+      "measured": "Medido tres vezes nesta sessao sobre a MESMA isencao (`if __name__ == \"__main__\"` de `evidence/lint-delta.py`): 224 -> 246 -> 265, cada deslocamento causado por codigo inserido ACIMA da guarda. Cada reprovacao custou um ciclo completo de medicao (a suite roda instrumentada) para descobrir que o defeito nao era de cobertura, e sim da chave. O portao erra para o lado de REPROVAR, entao e ruido e nao falso negativo - por isso esta ABERTO e nao foi corrigido junto com G65/G66: nao bloqueia o requisito da onda, nao compartilha causa com eles e mexer no mecanismo da CAMADA 2 exige teste e mutante proprios. Direcao registrada, nao implementada: ancorar a isencao no TEXTO da linha (ou num marcador no proprio fonte) em vez do numero, o que tornaria a chave invariante a deslocamento - a mesma propriedade que `digital()` da a diagnostico em `lint-delta.py`, e que este arquivo nao tem para si. RESOLVIDO na onda 25d por ANCORA TEXTUAL, quinto campo opcional em ISENCOES: quando presente, o texto da linha (sem indentacao) precisa bater com o fonte, senao a isencao e RECUSADA - nao ignorada - e o relatorio diz o que esperava e o que achou, para que reancorar nao seja adivinhacao. Isso fecha o unico modo de falha ABERTA que o cabecalho do proprio arquivo ja documentava: ramo NOVO caindo num numero ja isento e herdando justificativa alheia em silencio. Provado por controle: com UMA linha injetada acima, `NAO JUSTIFICADO: ramo 288->287: ancora esperava 'for raiz in raizes:', achou '\"bloqueiam\": len(bloqueiam), ...'`. As 35+ entradas herdadas seguem sem ancora e valendo como antes - a fragilidade passou a ser opcional em vez de compulsoria, o que evita migrar de uma vez um conjunto que ninguem reauditou.",
+      "state": "resolved",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md",
+      "resolution_ref": "evidence/cobertura.sh"
     },
     {
       "finding_id": "G68",
@@ -1572,6 +1572,32 @@
       "state": "resolved",
       "resolution_ref": "evidence/lint-delta.py",
       "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G74",
+      "wave": 25,
+      "review_round": "investigacao do G71 em repositorio real, apos o merge",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "parser-morto-vira-valor-mais-permissivo",
+      "defect": "o parser de hunks lia `sys.stdin` em modo texto e morria em byte nao-UTF-8; o executor engolia o erro e caia em `HUNKS={}`, que faz TODA a higiene ser ignorada",
+      "measured": "Medido em /var/www/amaral-intern-hub, o repositorio que justificou esta onda: `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe3 in position 277`. O `python3 -c` do executor tem `2>/dev/null` e a guarda seguinte e `jq -e 'type == \"object\"' || HUNKS='{}'` - a falha virava mapa VAZIO, que nao e 'nada foi tocado' e sim o valor MAIS PERMISSIVO do portao: nenhum diagnostico cai em hunk nenhum. Confirmado replicando a pipeline exata do hook naquele repositorio: HUNKS com ZERO chaves. Corrigido lendo `sys.stdin.buffer` com `surrogateescape` (nome de arquivo e marcador de hunk sao ASCII; o conteudo da linha nao e lido por este parser) e transformando falha de leitura em LACUNA declarada - o turno segue julgado contra a catraca, mas o operador ve que o escopo de higiene se perdeu. Depois da correcao, no mesmo repositorio: 2685 chaves. SEGUNDO DEFEITO EXPOSTO PELO PRIMEIRO, e ele estava escondido por ele: `--hunks` era passado como argv e estoura MAX_ARG_STRLEN com 2685 chaves - `Argument list too long`, exit 126. Nunca tinha estourado porque em repositorio grande o parser morria antes e HUNKS chegava como `{}`. Corrigido com `--hunks-file`, mesma solucao de F3 para `--raw`, mais a guarda de arquivo vazio no nucleo.",
+      "state": "resolved",
+      "resolution_ref": "evidence/hooks/verify-gate.sh",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
+    },
+    {
+      "finding_id": "G75",
+      "wave": 25,
+      "review_round": "investigacao do G71 em repositorio real, apos o merge",
+      "found_by": "aplicacao-de-instrumento",
+      "mode": "aplicacao-de-instrumento",
+      "class": "claim-publicada-medida-com-instrumento-quebrado",
+      "defect": "a medicao que justifica `scope: delta` no adaptador e no ADR - `bloqueiam 0, tolerados 6, ignorados 80` - foi observada com o parser de hunks morto e nao se sustenta",
+      "measured": "Refutada por G74. Com o parser corrigido, o MESMO repositorio pelo MESMO hook devolve `bloqueiam 86, tolerados 0, ignorados 0, alheios 87`. A causa nao e defeito de desenho: /var/www/amaral-intern-hub tem 1556 arquivos .py staged e NUNCA commitados (indice 1674 .py, HEAD 118 .py), entao para o git eles sao o diff do turno contra HEAD e a higiene deles e, por definicao, do turno. O portao esta correto e o estado daquela arvore e que e anomalo. O que cai e a afirmacao de que `delta` zeraria as 2942 reprovacoes ALI. NAO se conclui que `scope: delta` esta errado - o desenho continua separando divida preexistente de regressao nova, e isso e medido por DE2 e pelos mutantes. Conclui-se que o NUMERO publicado veio de instrumento quebrado, e que a promessa operacional para aquele repositorio especifico nao foi demonstrada. A licao e a mesma da regra 2 desta casa: antes de concluir de uma medida, conferir que o instrumento acha o caso positivo conhecido - aqui, um mapa de hunks com ZERO chaves num repositorio com 2609 arquivos sujos deveria ter sido lido como instrumento morto, e foi lido como resultado.",
+      "state": "open",
+      "open_note": "O que fica em aberto e OPERACIONAL, nao de desenho: com o parser vivo, o portao bloqueia 86 em amaral-intern-hub ate que aquela arvore seja commitada ou limpa. Nenhuma das duas correcoes candidatas para G71 muda isso - catraca de higiene semeada da base tambem veria os 86 como novos, porque a base nao contem os arquivos. Decidir o que fazer ali e do dono daquele repositorio, e exige saber por que 1556 arquivos estao staged ha meses.",
+      "source_ref": "docs/adr/0042-o-portao-julga-o-delta-nao-a-arvore.md"
     }
   ],
   "reading": [
@@ -1585,11 +1611,11 @@
   "completeness": "`tests/unit/governance-links.py` confere que todo identificador citado com marcador estruturado nos ADRs (`**C1 -`, `**F2 -`, `**A4 -`) aparece como `finding_id` aqui. Antes dessa checagem o portao so recontava as linhas PRESENTES - consistencia interna, nunca completude do universo.",
   "derived": {
     "_comment": "BLOCO DERIVADO - nao editar a mao. `evidence/corpus/render.py` o recalcula e `tests/unit/governance-links.py` reprova se divergir dos findings. Existe porque o cabecalho deste arquivo declarava 'ondas 11 a 15' e ADR 0031..0035 enquanto os proprios dados ja tinham onda 17 e ADR 0036 - metadado de frame escrito a mao envelhece contra o dado que ele descreve.",
-    "n_findings": 118,
+    "n_findings": 120,
     "wave_min": 11,
     "wave_max": 25,
     "counts_by_mode": {
-      "aplicacao-de-instrumento": 14,
+      "aplicacao-de-instrumento": 16,
       "auditoria-externa": 35,
       "execucao-em-ambiente-alheio": 3,
       "execucao-hostil": 1,
@@ -1632,13 +1658,13 @@
       "G53",
       "G54",
       "G56",
-      "G67",
       "G7",
-      "G71"
+      "G71",
+      "G75"
     ],
     "by_state": {
       "open": 24,
-      "resolved": 94
+      "resolved": 96
     }
   },
   "historical_states": [

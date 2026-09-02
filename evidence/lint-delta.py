@@ -196,6 +196,11 @@ def main(argv=None) -> int:
     # preexistente. Defeito achado pelo teste PONTA A PONTA; a suite unitaria nao o via porque
     # sempre passava `--hunks`.
     p.add_argument("--hunks", default="{}", help='JSON: {"arquivo.py": [[ini,fim], ...]}')
+    # G74, SEGUNDA INSTANCIA DE F3. `--raw` virou `--raw-file` por MAX_ARG_STRLEN e `--hunks`
+    # ficou como argv - nunca estourou porque, em repositorio grande, o parser de diff morria
+    # antes e `HUNKS` chegava como `{}`. Um defeito escondia o outro. Corrigido o parser, o mapa
+    # do amaral passou a ter 2685 chaves e o hook morreu com `Argument list too long`, exit 126.
+    p.add_argument("--hunks-file", default="", help="caminho com o JSON de hunks (sem limite de argv)")
     p.add_argument("--baseline", default="", help="JSON: [fingerprint, ...] (vazio = sem baseline)")
     p.add_argument("--breakage-codes", required=True, help="lista separada por virgula")
     p.add_argument("--raw", default="", help="saida NATIVA do analisador (usar com --map)")
@@ -237,7 +242,18 @@ def main(argv=None) -> int:
         else:
             diagnosticos = json.loads(a.diagnostics)
         raizes = tuple(json.loads(a.nested_roots)) if a.nested_roots.strip() else ()
-        hunks = {k: [tuple(x) for x in v] for k, v in json.loads(a.hunks).items()}
+        # `--hunks-file` VENCE `--hunks`, e um arquivo VAZIO nao e "{}": e leitura que nao
+        # produziu nada, e cair no default silencioso tornaria toda higiene ignorada - o mesmo
+        # buraco que G74 fechou no executor, aqui dentro do nucleo.
+        if a.hunks_file:
+            bruto_hunks = pathlib.Path(a.hunks_file).read_text(encoding="utf-8")
+            if not bruto_hunks.strip():
+                print("NAO VERIFICADO: --hunks-file vazio. O mapa de linhas tocadas nao foi lido.",
+                      file=sys.stderr)
+                return EXIT_NAO_VERIFICADO
+        else:
+            bruto_hunks = a.hunks
+        hunks = {k: [tuple(x) for x in v] for k, v in json.loads(bruto_hunks).items()}
         baseline = set(json.loads(a.baseline)) if a.baseline.strip() else set()
     except (json.JSONDecodeError, TypeError, ValueError, KeyError, OSError) as exc:
         print(f"NAO VERIFICADO: entrada ilegivel ({exc}). O turno NAO foi julgado.", file=sys.stderr)
