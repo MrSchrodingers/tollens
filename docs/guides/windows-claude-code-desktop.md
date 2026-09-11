@@ -15,9 +15,10 @@ python .\orchestration\render.py --check
 No Git Bash:
 
 ```bash
-bash tests/unit/runtime-ports.sh
-bash tests/unit/managed.sh
-bash tests/mutation/install.sh
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/tests/unit/runtime-ports.sh"
+bash "$ROOT/tests/unit/managed.sh"
+bash "$ROOT/tests/mutation/install.sh"
 ```
 
 ## Abrir

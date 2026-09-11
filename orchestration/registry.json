@@ -297,6 +297,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -407,6 +408,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -470,6 +472,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -689,6 +692,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -991,6 +995,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },

@@ -19,7 +19,7 @@
 # publica `ATIVACAO: INDICIO N evento(s)` lendo esse log, entao a afirmacao de governanca do
 # repositorio dependia de um instrumento que aplicar o repositorio destruia.
 #
-# Uso: bash install/hooks-spec.sh <base>
+# Uso: cd "$(git rev-parse --show-toplevel)" && bash install/hooks-spec.sh <base>
 #   <base> e string LITERAL embutida no JSON. Para o escopo de usuario e '$HOME/.claude/hooks',
 #   com o `$HOME` deliberadamente NAO expandido aqui: quem expande e o runtime, no momento da
 #   execucao. Para o escopo managed e um caminho absoluto root-owned.

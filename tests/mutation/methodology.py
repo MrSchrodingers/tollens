@@ -40,6 +40,9 @@ MUTANTS = [
     ("selecao-confundida", "protocol", ("design", "skill_selection_evaluated_separately"), False),
     ("sem-incerteza", "protocol", ("analysis", "report_confidence_intervals"), False),
     ("oculta-negativos", "protocol", ("analysis", "report_null_and_negative_results"), False),
+    # G108 (issue #52).
+    ("sem-registro-de-braco", "protocol", ("design", "arm_must_be_recorded_per_trial"), False),
+    ("braco-A-com-nudge", "protocol", ("design", "arms", "A_router_puro", "routing_nudges"), "on"),
 ]
 
 # ONDA 12. ESTE ARNES MATAVA POR CRASH, NAO POR ASSERCAO - achado do portao final.

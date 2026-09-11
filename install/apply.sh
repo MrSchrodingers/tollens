@@ -187,6 +187,11 @@ bash install/verify.sh; _VRC=$?
 case "$_VRC" in
   0) exit 0 ;;
   1) exit 1 ;;   # projecao de USUARIO divergente: e deste script, propaga
+  2) printf '\nA projecao de usuario esta instalada. O escopo managed (politica /opt e/ou\n'
+     printf 'capacidade em /etc) NAO PODE ser medido nesta chamada - o motivo esta acima, em\n'
+     printf '"GOVERNANCA GLOBAL". Isto e recusa de verificar, nao divergencia; nao e\n'
+     printf 'consertavel por este instalador, que so escreve a projecao de usuario.\n'
+     exit 0 ;;
   3) printf '\nA projecao de usuario esta instalada. A fase managed NAO esta implantada nesta\n'
      printf 'maquina - enquanto isso, a politica em vigor e gravavel pelo ator governado.\n'
      printf 'Para implantar (exige root e arvore de origem root:root, ver docs/adr/0026):\n'

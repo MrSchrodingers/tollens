@@ -14,10 +14,13 @@ LEIA PRIMEIRO, NESTA ORDEM, E NAO COMECE ANTES:
   docs/adr/0022-*.md         - a decisao central e os 6 adendos
 
 ESTADO DE PARTIDA (confirme antes de tocar em qualquer coisa):
-  bash scripts/status.sh --check           # exit 0
-  bash install/verify.sh                   # 0 (tudo conforme) ou 3 (managed nao implantado)
-  python3 evidence/validate-claims.py      # exit 0
-  gh run list --limit 1                    # success
+  ROOT="$(git rev-parse --show-toplevel)"
+  bash "$ROOT/scripts/status.sh" --check           # exit 0
+  bash "$ROOT/install/verify.sh"                   # 0 (tudo conforme), 3 (managed nao implantado),
+                                                    # 2 (managed NAO VERIFICADO aqui) ou 5 (managed
+                                                    # politica e/ou capacidade divergente) - issue #39
+  python3 "$ROOT/evidence/validate-claims.py"      # exit 0
+  gh run list --limit 1                            # success
 Se algum falhar, o primeiro trabalho e entender por que - nao contorne.
 
 MUDANCA DE FLUXO: `main` esta sob ruleset com bypass_actors vazio. Push direto e RECUSADO
