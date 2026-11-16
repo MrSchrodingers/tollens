@@ -17,9 +17,10 @@ Subagentes que pedem um modelo (`opus`, por exemplo) podem rodar em outro
 allowlist de modelos da politica managed; a causa NAO esta provada (ver Limites). Nada na cadeia
 de hooks comparava o modelo pedido com o que rodou.
 
-A divergencia foi medida com o modo `--scan` deste hook sobre `~/.claude/projects` (comando na
-secao Reproducao). Em 2026-11-16: 54 DIVERGE (48 `opus -> claude-sonnet-5-5` e 6
-`fable -> claude-sonnet-5-5`) em cerca de 1540 metas. As contagens absolutas crescem com o corpus;
+A divergencia foi medida com o modo `--scan` deste hook sobre `~/.claude/projects` (comando 1 da
+secao Reproducao). Em 2026-11-16, em varreduras independentes (revisao, refutacao e coordenacao;
+hora nao registrada), o scan acusou 54 DIVERGE sobre cerca de 1540 a 1570 metas: 48
+`opus -> claude-sonnet-5-5` e 6 `fable -> claude-sonnet-5-5`. O corpus e vivo: os totais crescem;
 o que se espera de uma reexecucao e a mesma ordem de grandeza e os mesmos pares. A consequencia e
 epistemica: o orquestrador delega uma revisao ou refutacao julgando que ela passou por um modelo
 mais forte, e a evidencia que volta carrega um rotulo de capacidade que o runtime nao cumpriu.
@@ -31,11 +32,14 @@ Chaves de um evento real de SubagentStop: `agent_id`, `agent_transcript_path`, `
 `permission_mode`, `prompt_id`, `scratchpad_dir`, `session_crons`, `session_id`,
 `stop_hook_active`, `transcript_path`. Fatos que governam o desenho (comando na secao Reproducao):
 
-1. Nao existe campo `model`: 353 eventos SubagentStop, nenhum com `model` (2026-11-16, sonda
-   `~/.claude/logs/subagent-probe.jsonl` e `.1`). A comparacao nao pode sair do payload.
+1. Nao existe campo `model`: em 2026-11-16 as 18:37, com o comando 2 da secao Reproducao, 470
+   eventos SubagentStop em `~/.claude/logs/subagent-probe.jsonl` e `.1`, nenhum com `model`. A
+   comparacao nao pode sair do payload.
 2. `effort` e o objeto `{"level":"high"}` da sessao, nao do subagente; nao serve de pedido.
-3. Nessa amostra, 124 eventos tem `agent_type` vazio e esses 124 sao exatamente os 124 sem
-   transcricao em disco (0 dos 229 com tipo preenchido). A classe desses 124 e desconhecida.
+3. Na mesma medicao (2026-11-16 as 18:37): 158 eventos com `agent_type` vazio, todos sem
+   transcricao em disco, e 312 com tipo preenchido e transcricao existente; nenhum evento com tipo
+   vazio e transcricao, nem com tipo e sem transcricao. O log e vivo: os totais crescem, a
+   estrutura se mantem. A classe dos eventos com tipo vazio e desconhecida.
 
 ## A decisao
 
@@ -50,14 +54,16 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   `transcript_path`, que e o do pai (ADR 0014).
 - COMPARACAO: pedido e efetivo passam pela mesma normalizacao: minusculas; sem sufixo `[...]`
   (como `[1m]`); sem prefixo `anthropic.` ou `<regiao>.anthropic.` (`us`, `eu`, `apac`, `global`);
-  sem sufixo `@AAAAMMDD`, `-vN`, `-vN:M` (Bedrock) ou `-AAAAMMDD`. Alias (`opus|sonnet|haiku|fable`,
+  sem sufixo `@AAAAMMDD`, `-vN`, `-vN:M` (Bedrock), `-latest` ou `-AAAAMMDD`. Alias (`opus|sonnet|haiku|fable`,
   ja normalizado: `opus[1m]` vale `opus`) casa pela familia do ID efetivo, derivada por token (o
   que cobre `claude-3-5-sonnet-20241022`). ID completo (`claude-*`) exige igualdade exata dos IDs
   normalizados, comparados por inteiro: o truncamento a 128 caracteres vale so para o log, e ID
   acima de 256 caracteres vira `indeterminado/id_longo`. DECISAO sobre snapshots: datas
   diferentes da mesma versao e familia NAO sao divergencia, porque a substituicao procurada troca
   familia ou versao, e nao a data de snapshot de uma mesma versao; versao diferente
-  (`claude-opus-4` contra `claude-opus-4-6`) diverge. `inherit`, vazio, null ou ausente:
+  (`claude-opus-4` contra `claude-opus-4-6`) diverge. O sufixo `-latest` e normalizado por
+  analogia com os demais; nenhuma fonte primaria dele foi lida, e entre os cerca de 1570 metas
+  reais so aparecem os pedidos `sonnet`, `opus`, `fable`, `haiku`, `inherit` e ausente. `inherit`, vazio, null ou ausente:
   `sem_pedido`. Tipo errado (numero, array, objeto, booleano) ou valor fora do vocabulario:
   `pedido_desconhecido`. Transcript ou meta ausente ou ilegivel, sem linha assistant, caminho fora
   da raiz, ID longo ou payload ilegivel: `indeterminado`. Divergencia: `DIVERGE`.
@@ -69,6 +75,9 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   registro. Payload que o `jq` rejeita (por exemplo surrogate solitario) passa por saneamento com
   `perl`, quando existe, e, se ainda falhar, vira linha `indeterminado/payload_ilegivel` com so
   `payload_bytes` e `payload_sha12` (12 primeiros hex do sha256 do bruto), mais `systemMessage`.
+  `jq` que passa a sonda e o `type` mas falha nos filtros de extracao (o mesmo controle do
+  `--scan`) vira `indeterminado/jq_filtro_falhou` mais `systemMessage`. Stdin com mais de um
+  objeto JSON: julga o primeiro e registra `payload_multiplo: true`, mais aviso.
 - ROTACAO: a 2 MB, sob `flock` num arquivo de trava ao lado do log, com tres geracoes (`.1`,
   `.2`, `.3`); a quarta rotacao descarta a mais antiga. Sem `flock`, ou sem a trava em 5 s, grava
   sem rotacionar: nao descarta nada, mas o log cresce sem teto enquanto a rotacao nao ocorre.
@@ -89,19 +98,21 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   pedido->efetivo; controles, TAB, quebra de linha e U+2028/U+2029 em caminhos viram espaco).
   Exit 0 sem `DIVERGE`, 1 com, 2 em erro de uso ou de instrumento: `jq` que nao funciona,
   `jq` que falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta
-  encontrado, ou arquivo ou diretorio ilegivel (contado como `ilegivel`). Um `--since` que
-  exclui tudo nao e erro (total 0, exit 0). O bloco termina com `exit` explicito e nunca le
+  encontrado, ou arquivo, diretorio ou symlink ilegivel (contado como `ilegivel`). O argumento e
+  os symlinks de projeto e de sessao sao resolvidos (`find -L`, alvo vira raiz permitida); symlink
+  quebrado ou em laco conta como `ilegivel`. `--since` vazio e erro de uso (exit 2); um `--since`
+  que exclui tudo nao e erro (total 0, exit 0). O bloco termina com `exit` explicito e nunca le
   stdin. Permite medir o passivo historico sem depender de o hook ter estado ativo.
 
 ## Limites declarados
 
-a. 56% dos metas reais nao trazem pedido (`sem_pedido`, inclui `inherit`; 858 de 1538 na
-   varredura de 2026-11-16, comando na secao Reproducao). O hook nao julga o que nao foi pedido
+a. 56% dos metas reais nao trazem pedido (`sem_pedido`, inclui `inherit`; cerca de 56% dos metas
+   na varredura de 2026-11-16, comando 1 da secao Reproducao). O hook nao julga o que nao foi pedido
    por parametro e nao le o frontmatter do agente. A refutacao viu `investigador`, cujo
    frontmatter atual declara `model: haiku`, rodar em `claude-opus-5-5` em 12 execucoes sem
    pedido no meta. O frontmatter vigente na epoca dessas execucoes pode ter sido outro: NAO
    VERIFICADO.
-b. Os 124 eventos com `agent_type` vazio e sem transcricao nao sao julgaveis (resultam
+b. Os eventos com `agent_type` vazio e sem transcricao (158 em 2026-11-16 as 18:37) nao sao julgaveis (resultam
    `indeterminado`), e a classe deles e desconhecida; pode incluir agentes de workflow: NAO
    VERIFICADO. O verificador nao recupera retroativamente o que o runtime apagou.
 c. Teto de leitura: transcript cuja primeira linha assistant fica alem de 1 MiB ou da linha 400
@@ -127,38 +138,44 @@ j. Regra 1 do ADR 0015 (hook novo so entra com evento REAL capturado como fixtur
    alimenta o hook com tres formas reais de evento SubagentStop (tipo preenchido com transcript,
    outra conta, tipo vazio sem transcript), sanitizadas de `subagent-probe.jsonl`, em
    `tests/fixtures/model-honor/` (sem `last_assistant_message`, `cwd`, `prompt_id` nem texto;
+   `session_id` e `agent_id` trocados por identificadores sinteticos de mesma forma e tamanho;
    chaves reais e `effort` como objeto; o transcript e o meta sao fabricados so com o modelo).
    Isso cobre a FORMA do evento. O hook nao foi exercido contra um evento SubagentStop AO VIVO,
    porque nao esta instalado em nenhum settings: NAO VERIFICADO no runtime. Regra 3 do mesmo ADR:
-   ver a secao Reproducao.
+   cada numero tem comando na secao Reproducao e os mutantes tem script em
+   `tests/mutation/model-honor/`. As fixtures de commits anteriores desta mudanca continham os
+   identificadores reais no historico do git; este commit os remove da arvore, nao do historico.
 k. Trava de log presa por outro processo: cada hook espera ate 5 s, grava sem rotacionar, e o log
    cresce enquanto a trava estiver presa. O timeout de 10 s do hook em `install/hooks-spec.sh`
    cobre a espera, mas um disco travado faz cada SubagentStop sequencial pagar 5 s.
 
 ## Reproducao
 
-Comandos que reproduzem cada numero citado. Os totais absolutos crescem com o corpus; os valores
-esperados abaixo sao os de 2026-11-16.
+Comandos que reproduzem cada numero citado. O corpus e os logs sao vivos: os totais absolutos
+crescem; cada valor abaixo traz a data e a hora em que foi obtido.
 
 1. Divergencia (`--scan`, exit 1 quando ha `DIVERGE`):
    `bash evidence/hooks/model-honor.sh --scan ~/.claude/projects`
-   Esperado: linhas `status` com `DIVERGE` 54, `honrado` cerca de 620, `sem_pedido` cerca de
-   860, `indeterminado` 3, e linhas `par` com `opus->claude-sonnet-5-5` 48 e
-   `fable->claude-sonnet-5-5` 6. Com `--since 2026-11-13T05:00:00Z`: 48 DIVERGE
-   `opus->claude-sonnet-5-5` e 19 `opus->claude-opus-5-5` honrados.
+   Esperado: linhas `status` com `DIVERGE` (54 em 2026-11-16, hora nao registrada), `honrado`,
+   `sem_pedido` (cerca de 56% do total), `indeterminado` (3), e linhas `par` com
+   `opus->claude-sonnet-5-5` (48) e `fable->claude-sonnet-5-5` (6). Com
+   `--since 2026-11-13T05:00:00Z`: 48 DIVERGE `opus->claude-sonnet-5-5` e 19
+   `opus->claude-opus-5-5` honrados (coordenacao, 2026-11-16, hora nao registrada).
 2. Eventos da sonda, com delimitador NAO branco (`IFS` de tab ou espaco colapsa campo vazio e ja
    produziu uma contagem errada, tratando o `agent_type` vazio como ausente):
    `cat ~/.claude/logs/subagent-probe.jsonl.1 ~/.claude/logs/subagent-probe.jsonl | jq -r 'select(.hook_event_name=="SubagentStop") | "\(.agent_type // "")|\(.agent_transcript_path // "")"' | while IFS='|' read -r t p; do [ -n "$t" ] && k=tipo || k=tipo_vazio; [ -e "$p" ] && e=com_transcript || e=sem_transcript; echo "$k $e"; done | sort | uniq -c`
-   Esperado em 2026-11-16 (353 eventos): `tipo_vazio sem_transcript` 124 e `tipo com_transcript`
-   229. Nenhum com `model`: o mesmo `jq` com `select(has("model"))` conta 0.
+   Obtido em 2026-11-16 as 18:37: `tipo com_transcript` 312 e `tipo_vazio sem_transcript` 158.
+   Nenhum com `model`: o mesmo `jq` com `select(has("model"))` conta 0 (idem, 18:37).
 3. `allowManagedHooksOnly`: `jq '.allowManagedHooksOnly' /etc/claude-code/managed-settings.json`
-   (arquivo, nao valor efetivo do runtime). Esperado em 2026-11-16: `true`.
+   (arquivo, nao valor efetivo do runtime). Obtido em 2026-11-16 as 18:37: `true`.
 4. Hook ausente de settings: `grep -c model-honor /etc/claude-code/managed-settings.json
-   ~/.claude/settings.json`. Esperado em 2026-11-16: 0 nos dois.
+   ~/.claude/settings.json`. Obtido em 2026-11-16 as 18:37: 0 nos dois.
+5. Mutantes: `bash tests/mutation/model-honor/run-all.sh` (ver o README do diretorio). Obtido em
+   2026-11-16 as 18:50: `MORTOS=68 DE=71`, vivos so os 3 equivalentes declarados, exit 0.
 
 ## Verificacao
 
-`tests/unit/model-honor.sh`: 33 casos, cada um protegendo um invariante nomeado no cabecalho da
+`tests/unit/model-honor.sh`: 37 casos, cada um protegendo um invariante nomeado no cabecalho da
 suite. O controle positivo (caso 1, `opus` contra `claude-sonnet-5-5`) foi registrado como
 vermelho pelo autor na sessao de 2026-11-16, antes de o hook existir; essa observacao nao e
 reproduzivel a partir do diff.
@@ -166,7 +183,7 @@ reproduzivel a partir do diff.
 Mutantes do hook (remocao de rotacao, trava e geracoes, tetos de leitura, familia, caixa,
 normalizacao, sanitizacao, escopo e saida do scan, fronteira de `--since`, fallback ao transcript
 do pai, raiz irma, tipo do meta, saneamento de surrogate, entre outros) foram aplicados para
-conferir a suite: 59 de 62 morreram. Os 3 sobreviventes sao equivalentes: o `trap 'exit 0' EXIT` (todo
+conferir a suite: 68 de 71 morreram (`bash tests/mutation/model-honor/run-all.sh`, exit 0, 2026-11-16 as 18:50). Os 3 sobreviventes sao equivalentes: o `trap 'exit 0' EXIT` (todo
 caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`); a guarda de raiz do
 transcript, coberta pela guarda de raiz do meta, derivado do mesmo caminho; e o teto de 300
 caracteres do `systemMessage`, que os tetos por campo (40 e 80) nao deixam atingir na pratica.

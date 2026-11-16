@@ -1,5 +1,5 @@
 {
-  "agent_id": "a169141ccf66a6a03",
+  "agent_id": "a1111111111111111",
   "agent_type": "implementador",
   "background_tasks": [],
   "effort": {
@@ -9,9 +9,9 @@
   "last_assistant_message": "",
   "permission_mode": "bypassPermissions",
   "session_crons": [],
-  "session_id": "cced4977-8b27-4d32-a431-285bb0dabcbf",
+  "session_id": "11111111-aaaa-4bbb-8ccc-111111111111",
   "stop_hook_active": false,
-  "agent_transcript_path": "@RAIZ@/-proj/cced4977-8b27-4d32-a431-285bb0dabcbf/subagents/agent-a169141ccf66a6a03.jsonl",
+  "agent_transcript_path": "@RAIZ@/-proj/11111111-aaaa-4bbb-8ccc-111111111111/subagents/agent-a1111111111111111.jsonl",
   "transcript_path": "@RAIZ@/pai/sessao.jsonl",
   "cwd": "",
   "prompt_id": "",

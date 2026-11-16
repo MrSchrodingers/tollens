@@ -1,5 +1,5 @@
 {
-  "agent_id": "a1dd83add5b28f273",
+  "agent_id": "a2222222222222222",
   "agent_type": "refutador",
   "background_tasks": [],
   "effort": {
@@ -9,9 +9,9 @@
   "last_assistant_message": "",
   "permission_mode": "bypassPermissions",
   "session_crons": [],
-  "session_id": "8a561ed7-e77f-4084-ba84-7677bb7a6acd",
+  "session_id": "22222222-aaaa-4bbb-8ccc-222222222222",
   "stop_hook_active": false,
-  "agent_transcript_path": "@RAIZ@/-proj/8a561ed7-e77f-4084-ba84-7677bb7a6acd/subagents/agent-a1dd83add5b28f273.jsonl",
+  "agent_transcript_path": "@RAIZ@/-proj/22222222-aaaa-4bbb-8ccc-222222222222/subagents/agent-a2222222222222222.jsonl",
   "transcript_path": "@RAIZ@/pai/sessao.jsonl",
   "cwd": "",
   "prompt_id": "",

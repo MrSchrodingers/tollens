@@ -1,5 +1,5 @@
 {
-  "agent_id": "a31353c77a0704a95",
+  "agent_id": "a3333333333333333",
   "agent_type": "",
   "background_tasks": [],
   "effort": {
@@ -9,9 +9,9 @@
   "last_assistant_message": "",
   "permission_mode": "acceptEdits",
   "session_crons": [],
-  "session_id": "08232066-16a3-4ea2-b9a3-2a20a470b33b",
+  "session_id": "33333333-aaaa-4bbb-8ccc-333333333333",
   "stop_hook_active": false,
-  "agent_transcript_path": "@RAIZ@/-proj/08232066-16a3-4ea2-b9a3-2a20a470b33b/subagents/agent-a31353c77a0704a95.jsonl",
+  "agent_transcript_path": "@RAIZ@/-proj/33333333-aaaa-4bbb-8ccc-333333333333/subagents/agent-a3333333333333333.jsonl",
   "transcript_path": "@RAIZ@/pai/sessao.jsonl",
   "cwd": "",
   "prompt_id": "",

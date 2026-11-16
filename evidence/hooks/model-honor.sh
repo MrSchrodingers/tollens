@@ -18,7 +18,7 @@
 #
 # COMPARACAO. Pedido e efetivo passam pela MESMA normalizacao (`norm_id`): minusculas; sem
 # sufixos `[...]` (ex.: `[1m]`); sem prefixo `anthropic.` nem `<regiao>.anthropic.` (us, eu, apac,
-# global); sem sufixo `@AAAAMMDD`, `-vN`, `-vN:M` (Bedrock) e `-AAAAMMDD`. Alias
+# global); sem sufixo `@AAAAMMDD`, `-vN`, `-vN:M` (Bedrock), `-latest` e `-AAAAMMDD`. Alias
 # (`opus|sonnet|haiku|fable`, ja normalizado, entao `opus[1m]` vale `opus`) casa pela FAMILIA do ID
 # efetivo, derivada por TOKEN (primeiro token de familia do ID normalizado, o que cobre tambem
 # `claude-3-5-sonnet-20241022`). ID completo (`claude-*`) exige igualdade exata dos IDs
@@ -111,11 +111,12 @@ sob_raiz() {
 # ID normalizado para comparacao (stdout). Ver COMPARACAO no cabecalho.
 norm_id() {
   local v="${1,,}" re_br='^(.*)\[[^]]*\]$' re_pf='^([a-z]+\.)?anthropic\.(.*)$'
-  local re_at='^(.*)@[0-9]{8}$' re_v='^(.*)-v[0-9]+(:[0-9]+)?$' re_d='^(.*)-[0-9]{8}$'
+  local re_at='^(.*)@[0-9]{8}$' re_v='^(.*)-v[0-9]+(:[0-9]+)?$' re_d='^(.*)-[0-9]{8}$' re_l='^(.*)-latest$'
   while [[ "$v" =~ $re_br ]]; do v="${BASH_REMATCH[1]}"; done
   [[ "$v" =~ $re_pf ]] && v="${BASH_REMATCH[2]}"
   [[ "$v" =~ $re_at ]] && v="${BASH_REMATCH[1]}"
   [[ "$v" =~ $re_v ]] && v="${BASH_REMATCH[1]}"
+  [[ "$v" =~ $re_l ]] && v="${BASH_REMATCH[1]}"
   [[ "$v" =~ $re_d ]] && v="${BASH_REMATCH[1]}"
   printf '%s' "$v"
 }
@@ -218,7 +219,7 @@ julga() {
 }
 
 # Grava a linha do evento. Em falha, LOGERR recebe o motivo curto; nunca aborta o hook.
-LOGERR=""; PBYTES=""; PSHA=""; ILL=""
+LOGERR=""; PBYTES=""; PSHA=""; ILL=""; MULT=""
 registra() {  # $1 session_id  $2 agent_id  $3 agent_type
   local linha err rc reason rot=flock
   LOGERR=""
@@ -226,11 +227,12 @@ registra() {  # $1 session_id  $2 agent_id  $3 agent_type
   linha="$(jq -nac --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sid "$1" --arg aid "$2" --arg at "$3" \
     --arg pm "$PEDIDO" --arg pe "$PEDIDO_EFFORT" --arg po "$ORIGEM" --arg pk "$PICKED" \
     --arg em "$EFETIVO" --arg st "$STATUS" --arg mo "$MOTIVO" --arg rot "$rot" \
-    --arg pb "$PBYTES" --arg ph "$PSHA" '
+    --arg pb "$PBYTES" --arg ph "$PSHA" --arg mu "$MULT" '
     {ts: $ts, session_id: $sid, agent_id: $aid, agent_type: $at, pedido_model: $pm[0:128],
      pedido_effort: $pe, pedido_origem: $po, picked_effort_model: $pk, efetivo_model: $em[0:128],
      status: $st, motivo: $mo, rotacao: $rot}
-    + (if $pb == "" then {} else {payload_bytes: ($pb | tonumber), payload_sha12: $ph} end)' 2>/dev/null)" \
+    + (if $pb == "" then {} else {payload_bytes: ($pb | tonumber), payload_sha12: $ph} end)
+    + (if $mu == "1" then {payload_multiplo: true} else {} end)' 2>/dev/null)" \
     || { LOGERR=jq_falhou; return 0; }
   err="$(
     ( umask 077
@@ -256,12 +258,13 @@ registra() {  # $1 session_id  $2 agent_id  $3 agent_type
 }
 
 emite() {
-  if [ "$STATUS" = DIVERGE ] || [ -n "$LOGERR" ] || [ -n "$ILL" ]; then
+  if [ "$STATUS" = DIVERGE ] || [ -n "$LOGERR" ] || [ -n "$ILL" ] || [ -n "$MULT" ]; then
     jq -nac --arg st "$STATUS" --arg p "$PEDIDO" --arg e "$EFETIVO" --arg t "${AT:-desconhecido}" \
-      --arg i "$AID" --arg le "$LOGERR" --arg ill "$ILL" '
+      --arg i "$AID" --arg le "$LOGERR" --arg ill "$ILL" --arg mu "$MULT" '
       [ (if $st == "DIVERGE"
          then "model-honor: pedido \($p[0:40]), rodou \($e[0:40]) (agente \($t[0:40]) \($i[0:40]))"
          else empty end),
+        (if $mu == "1" then "model-honor: payload com varios objetos JSON; julgado so o primeiro" else empty end),
         (if $ill != "" then "model-honor: \($ill); evento nao julgado" else empty end),
         (if $le != "" then "model-honor: nao consegui gravar o log (\($le[0:80]))" else empty end) ]
       | join(" | ") | {systemMessage: .[0:300]}' 2>/dev/null
@@ -269,20 +272,30 @@ emite() {
 }
 
 scan_main() {
-  local DIR="" SINCE="" SINCE_EP="" ACHADOS=0 TOTAL=0 DIVS="" FERR ST M MT MP K S N
+  local DIR="" SINCE="" HAS_SINCE=0 SINCE_EP="" QUEBRADOS=0 d r ACHADOS=0 TOTAL=0 DIVS="" FERR ST M MT MP K S N
   declare -A CNT=() PAR=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --since) [ "$#" -ge 2 ] || { echo "model-honor: --since exige valor" >&2; return 2; }; SINCE="$2"; shift 2 ;;
+      --since) [ "$#" -ge 2 ] || { echo "model-honor: --since exige valor" >&2; return 2; }; SINCE="$2"; HAS_SINCE=1; shift 2 ;;
       -*) echo "model-honor: opcao desconhecida: $1" >&2; return 2 ;;
       *) [ -z "$DIR" ] || { echo "model-honor: diretorio repetido" >&2; return 2; }; DIR="$1"; shift ;;
     esac
   done
   [ -n "$DIR" ] && [ -d "$DIR" ] || { echo "uso: model-honor.sh --scan <projects_dir> [--since <ISO8601>] (diretorio inexistente ou ausente)" >&2; return 2; }
+  if [ "$HAS_SINCE" = 1 ] && [ -z "$SINCE" ]; then
+    echo "model-honor: --since vazio (erro de uso; omita a opcao para varrer tudo)" >&2; return 2
+  fi
   if [ -n "$SINCE" ]; then
     SINCE_EP="$(date -d "$SINCE" +%s 2>/dev/null)" || { echo "model-honor: --since invalido: $SINCE" >&2; return 2; }
   fi
   add_root "$DIR"
+  # Symlinks de diretorio de projeto e de sessao: o alvo resolvido vira raiz permitida. Symlink
+  # quebrado ou em laco (que `realpath -e` nao resolve) e contado em `ilegivel`.
+  for d in "$DIR"/* "$DIR"/*/*; do
+    [ -L "$d" ] || continue
+    if r="$(realpath -e -- "$d" 2>/dev/null)" && [ -d "$r" ]; then add_root "$r"
+    else QUEBRADOS=$((QUEBRADOS + 1)); fi
+  done
   FERR="$(mktemp 2>/dev/null)" || FERR=/dev/null
   while IFS= read -r -d '' M; do
     ACHADOS=$((ACHADOS + 1))
@@ -304,11 +317,12 @@ scan_main() {
     PAR[$K]=$(( ${PAR[$K]:-0} + 1 ))
     MP="$(limpa "$M")"
     [ "$STATUS" = DIVERGE ] && DIVS="$DIVS$(printf 'diverge\t%s\t%s\t%s' "$MP" "$(limpa "$PEDIDO")" "$(limpa "$EFETIVO")")"$'\n'
-  done < <(find "$DIR" -mindepth 4 -maxdepth 4 \( -type f -o -type l \) -path '*/subagents/agent-*.meta.json' -print0 2>"$FERR")
+  done < <(find -L "$DIR" -mindepth 4 -maxdepth 4 \( -type f -o -type l \) -path '*/subagents/agent-*.meta.json' -print0 2>"$FERR")
   if [ -s "$FERR" ]; then
     N="$(wc -l < "$FERR" | tr -d ' ')"
     CNT[ilegivel]=$(( ${CNT[ilegivel]:-0} + N ))
   fi
+  CNT[ilegivel]=$(( ${CNT[ilegivel]:-0} + QUEBRADOS ))
   [ "$FERR" = /dev/null ] || rm -f "$FERR"
   if [ "$ACHADOS" -eq 0 ] && [ "${CNT[ilegivel]:-0}" -eq 0 ]; then
     echo "model-honor: nenhum agent-*.meta.json sob $DIR (esperado */*/subagents/); varredura sem objeto" >&2
@@ -358,7 +372,22 @@ if [ "$RCJ" -ne 0 ]; then
   emite
   exit 0
 fi
+if [[ "$TIPO" == *$'\n'* ]]; then
+  # Mais de um valor JSON no stdin: julga o PRIMEIRO e registra `payload_multiplo` (nunca silencio).
+  # (o `jq` de extracao abaixo emite 4 linhas por valor; `mapfile` le so as 4 do primeiro objeto)
+  MULT=1
+  TIPO="${TIPO%%$'\n'*}"
+fi
 [ "$TIPO" = object ] || exit 0
+if ! controle_filtros; then
+  # jq passa a sonda e o `type`, mas falha nos filtros de extracao: sem isto o evento sumia mudo.
+  PEDIDO=""; PEDIDO_EFFORT=""; PICKED=""; ORIGEM=ausente; EFETIVO=""; STATUS=indeterminado
+  MOTIVO=jq_filtro_falhou; AT=""; AID=""
+  registra "" "" ""
+  ILL="jq falha nos filtros de extracao"
+  emite
+  exit 0
+fi
 mapfile -t PF < <(printf '%s' "$IN" | jq -r '
   def c($n): strings | gsub("[[:cntrl:]]"; "") | .[0:$n];
   ((.session_id | c(256)) // ""), ((.agent_id | c(256)) // ""),

@@ -19,6 +19,8 @@
 #  I-ROBUSTEZ  payload que o jq rejeita (surrogate solitario) e jq que falha so no filtro nao
 #              apagam o evento nem o scan; o scan nunca le stdin e nunca sai 0 com instrumento
 #              quebrado.
+#  I-VISIVEL   nada some mudo: jq que falha nos filtros, stdin com varios objetos, --since vazio,
+#              symlink de projeto no scan (valido, quebrado ou em laco).
 #  I-REAL      o hook aceita a forma REAL do evento (chaves e `effort` objeto, ADR 0015 regra 1).
 #
 # Fixtures SINTETICAS e SEM conteudo: o transcript traz so {"type":"assistant","message":{"model":..}}.
@@ -392,8 +394,9 @@ t28 claude-opus-5-5 'claude-opus-5-5[1m]'
 t28 claude-opus-5-5 Claude-Opus-5-5
 t28 opus 'claude-opus-5-5[1m]'
 t28 claude-opus-5-5 'claude-opus-5-5[1m][x]'
-chk "28 sufixos [..], data, -vN:M e prefixos de regiao sao normalizados nos dois lados; versao diferente DIVERGE" \
-  "$R28" " honrado DIVERGE honrado honrado honrado honrado honrado DIVERGE honrado honrado honrado honrado"
+t28 claude-3-5-haiku-latest claude-3-5-haiku-20241022
+chk "28 sufixos [..], data, -latest, -vN:M e prefixos de regiao sao normalizados nos dois lados; versao diferente DIVERGE" \
+  "$R28" " honrado DIVERGE honrado honrado honrado honrado honrado DIVERGE honrado honrado honrado honrado honrado"
 
 echo "== 29. ID longo: compara o valor completo; acima de 256 e indeterminado =="
 LA="claude-opus-$(head -c 130 /dev/zero | tr '\0' a)"
@@ -463,9 +466,39 @@ done
 chk "33 as tres formas reais (tipo preenchido, outra conta, tipo vazio sem transcript) sao julgadas" \
   "$R33" " DIVERGE/tipo_ok DIVERGE/tipo_ok indeterminado/tipo_ok"
 
+echo "== 34. jq que passa a sonda e o type mas falha nos filtros: o hook avisa =="
+mkdir -p "$T/fakebin2"
+printf '#!/bin/sh\ncase "$*" in *gsub*) exit 3;; esac\nexec %s "$@"\n' "$(command -v jq)" > "$T/fakebin2/jq"; chmod +x "$T/fakebin2/jq"
+: > "$LOG"
+O34="$(env PATH="$T/fakebin2:$PATH" "$BASH_BIN" "$HOOK" 2>/dev/null <<<"$(payload "$PROJ/agent-c1.jsonl")")"; RC34=$?
+chk "34 exit 0, linha indeterminado/jq_filtro_falhou e systemMessage" \
+  "$RC34/$(campo .motivo)/$(printf '%s' "$O34" | jq -r '.systemMessage|test("filtros")' 2>/dev/null)" "0/jq_filtro_falhou/true"
+
+echo "== 35. stdin com varios objetos JSON: julga o primeiro e registra payload_multiplo =="
+run "$(payload "$PROJ/agent-c1.jsonl")"$'\n'"$(payload "$PROJ/agent-c2.jsonl")"
+R35="$ULT/$(campo .payload_multiplo)/$(printf '%s' "$OUT" | jq -r '.systemMessage|test("varios")' 2>/dev/null)"
+run "$(payload "$PROJ/agent-c1.jsonl")"; R35="$R35 $(campo '.payload_multiplo // "ausente"')"
+chk "35 dois objetos: DIVERGE do primeiro, campo e aviso; um objeto: sem o campo" "$R35" "DIVERGE/true/true ausente"
+
+echo "== 36. --scan e symlinks de diretorio: valido segue, quebrado e laco saem 2 =="
+S36="$T/scan36"
+mk "$S36/a/real/p/s/subagents" a "$(meta opus)" claude-sonnet-5-5; ln -sfn "$S36/a/real" "$S36/a/link"
+mk "$S36/b/fora/p1/s/subagents" b "$(meta opus)" claude-sonnet-5-5; mkdir -p "$S36/b/projects"; ln -sfn "$S36/b/fora/p1" "$S36/b/projects/p1"
+mk "$S36/c/projects/ok/s/subagents" c "$(meta opus)" claude-opus-5-5; ln -sfn "$S36/c/nao-existe" "$S36/c/projects/quebrado"
+mk "$S36/d/projects/p/s/subagents" d "$(meta opus)" claude-opus-5-5; ln -sfn "$S36/d/projects/p" "$S36/d/projects/p/s/lp"
+R36=""
+for alvo in "$S36/a/link" "$S36/b/projects" "$S36/c/projects" "$S36/d/projects"; do
+  "$BASH_BIN" "$HOOK" --scan "$alvo" >/dev/null 2>&1; R36="$R36 $?"
+done
+chk "36 raiz symlink e projeto symlink com DIVERGE: exit 1; symlink quebrado e laco: exit 2" "$R36" " 1 1 2 2"
+
+echo "== 37. --since vazio e erro de uso =="
+E37="$("$BASH_BIN" "$HOOK" --scan "$S1" --since "" 2>&1 >/dev/null)"; RC37=$?
+chk "37 --since vazio: exit 2 com stderr" "$RC37/$([ -n "$E37" ] && echo stderr || echo mudo)" "2/stderr"
+
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"
 # Pino da propria contagem (convencao de scripts/status.sh): caso removido em silencio e vermelho.
-EXPECTED=33
+EXPECTED=37
 [ "$((P+F))" -eq "$EXPECTED" ] || { echo "CONTAGEM INESPERADA: executados=$((P+F)) esperado=$EXPECTED"; exit 1; }
 [ "$F" -eq 0 ]
