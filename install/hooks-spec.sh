@@ -73,6 +73,7 @@ cat <<'JSON' | jq --arg b "$BASE" \
   "SubagentStop": [
     {"hooks":[{"type":"command","command":"bash @BASE@/subagent-probe.sh"}]},
     {"hooks":[{"type":"command","command":"bash @BASE@/subagent-contract.sh"}]},
+    {"hooks":[{"type":"command","command":"bash @BASE@/model-honor.sh","timeout":10}]},
     {"hooks":[{"type":"command","command":"bash @BASE@/ds4-notify.sh","timeout":5}]}
   ],
   "SubagentStart": [{"hooks":[

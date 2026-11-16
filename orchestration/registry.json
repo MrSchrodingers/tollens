@@ -586,6 +586,25 @@
       },
       "projection": "user"
     },
+    "model-honor.sh": {
+      "kind": "hook_instrument",
+      "source": "evidence/hooks/model-honor.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "SubagentStop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/model-honor.sh"
+          }
+        }
+      },
+      "projection": "user"
+    },
     "output-budget.sh": {
       "kind": "hook_guidance",
       "source": "execution/hooks/output-budget.sh",
