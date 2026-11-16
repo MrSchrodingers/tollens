@@ -26,7 +26,7 @@ for path in \
   fi
 done
 
-allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|\.git|\.github|\.gitignore|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|LICENSE|README\.md|README\.pt-BR\.md|SECURITY\.md|control|docs|evidence|execution|install|orchestration|scripts|tests)$'
+allowed_root='^(\.agents|\.claude|\.claude-plugin|\.codex|claude-plugins|\.git|\.github|\.gitignore|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|LICENSE|README\.md|README\.pt-BR\.md|SECURITY\.md|control|docs|evidence|execution|install|orchestration|scripts|tests)$'
 # RESIDUO IGNORADO PELO GIT NAO E ENTRADA NAO DECLARADA.
 #
 # Este laco varre o FILESYSTEM, nao o indice do git. Ate 2026-08-10 ele reprovava em
