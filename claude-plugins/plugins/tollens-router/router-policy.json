@@ -3,37 +3,91 @@
   "version": "2026-11-16.1",
   "mode": "shadow",
   "valid_until": "2026-11-30T00:00:00Z",
-  "model_allowlist": ["haiku", "sonnet", "opus"],
+  "model_allowlist": [
+    "haiku",
+    "sonnet",
+    "opus"
+  ],
   "tiers": {
-    "T0": { "model": "haiku", "effort": "low" },
-    "T1": { "model": "sonnet", "effort": "medium" },
-    "T2": { "model": "sonnet", "effort": "high" },
-    "T3": { "model": "opus", "effort": "medium" },
-    "T4": { "model": "opus", "effort": "high" }
+    "T0": {
+      "model": "haiku",
+      "effort": "low"
+    },
+    "T1": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "T2": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "T3": {
+      "model": "opus",
+      "effort": "medium"
+    },
+    "T4": {
+      "model": "opus",
+      "effort": "high"
+    }
   },
   "ficha_tiers": {
-    "complexidade": { "1": "T0", "2": "T1", "3": "T2", "4": "T3", "5": "T4" },
-    "risco": { "trivial": "T0", "normal": "T1", "medio": "T2", "alto": "T3" }
+    "complexidade": {
+      "1": "T0",
+      "2": "T1",
+      "3": "T2",
+      "4": "T3",
+      "5": "T4"
+    },
+    "risco": {
+      "trivial": "T0",
+      "normal": "T1",
+      "medio": "T2",
+      "alto": "T3"
+    }
   },
   "role_floors": {
     "refutador": "T3",
     "revisor-codigo": "T3",
     "auditor-seguranca": "T3"
   },
-  "reviewer_roles": ["revisor", "refutador", "revisor-codigo", "auditor-seguranca"],
+  "reviewer_roles": [
+    "revisor",
+    "refutador",
+    "revisor-codigo",
+    "auditor-seguranca"
+  ],
   "risk_surface": {
     "piso": "T3",
     "words": [
-      "autenticacao", "autorizacao", "migracao", "migracoes", "producao", "deploy",
-      "pagamento", "pagamentos", "segredo", "segredos", "dado pessoal", "dados pessoais",
-      "irreversivel", "irreversiveis",
-      "authentication", "authorization", "migration", "migrations", "production",
-      "payment", "payments", "secret", "secrets", "irreversible"
-    ]
+      "deploy",
+      "migra",
+      "autentic",
+      "autoriz",
+      "auth",
+      "senha",
+      "password",
+      "token",
+      "produc",
+      "pagament",
+      "segred",
+      "secret",
+      "credenc",
+      "irrevers",
+      "lgpd",
+      "pessoal",
+      "pessoais"
+    ],
+    "nota": "Casamento por prefixo no inicio de palavra (hifen e sublinhado separam), apos NFKC, remocao de caracteres de formato e marcas e dobra de homoglifos cirilicos e gregos comuns para latino. Homoglifo fora do mapa continua sem cobertura. Prefixos amplos elevam por excesso (ex.: secretaria, product): custo aceito."
   },
   "size": {
-    "prompt_chars": { "acima_de": 8000, "piso": "T2" },
-    "caminhos": { "acima_de": 12, "piso": "T2" }
+    "prompt_chars": {
+      "acima_de": 8000,
+      "piso": "T2"
+    },
+    "caminhos": {
+      "acima_de": 12,
+      "piso": "T2"
+    }
   },
   "pace": {
     "abaixo_de": -0.1,
@@ -41,6 +95,9 @@
   },
   "escalation": {
     "max_por_fluxo": 3
+  },
+  "limites": {
+    "prompt_max_bytes": 65536
   },
   "quality": {
     "piso_aprovacao": {
@@ -52,11 +109,31 @@
       }
     },
     "por_nivel": {
-      "T0": { "aprovacao_medida": null, "n": null, "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira." },
-      "T1": { "aprovacao_medida": null, "n": null, "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira." },
-      "T2": { "aprovacao_medida": null, "n": null, "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira." },
-      "T3": { "aprovacao_medida": null, "n": null, "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira." },
-      "T4": { "aprovacao_medida": null, "n": null, "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira." }
+      "T0": {
+        "aprovacao_medida": null,
+        "n": null,
+        "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira."
+      },
+      "T1": {
+        "aprovacao_medida": null,
+        "n": null,
+        "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira."
+      },
+      "T2": {
+        "aprovacao_medida": null,
+        "n": null,
+        "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira."
+      },
+      "T3": {
+        "aprovacao_medida": null,
+        "n": null,
+        "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira."
+      },
+      "T4": {
+        "aprovacao_medida": null,
+        "n": null,
+        "fonte": "Nada foi medido ainda. Valor inicial vem de Anthropic (Cost Optimization) e paddo.dev (The Default Was Right); o piloto de calibracao o substituira."
+      }
     }
   }
 }

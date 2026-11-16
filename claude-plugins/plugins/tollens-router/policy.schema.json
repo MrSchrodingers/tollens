@@ -1,41 +1,95 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "router-policy",
-  "description": "Politica do roteador interno de modelos. O validador executavel e validatePolicy em engine.mjs; este arquivo documenta o mesmo contrato e a suite confere que as chaves de topo coincidem.",
+  "description": "Politica do roteador interno de modelos. O validador executavel e validatePolicy em engine.mjs (regras adicionais que o schema nao expressa: custo nao decrescente entre niveis, round-trip de valid_until e horizonte de 400 dias, pisos de papel revisor >= T2, arrays densos); a suite confere que as chaves de topo coincidem.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "version", "mode", "valid_until", "model_allowlist", "tiers",
-    "ficha_tiers", "role_floors", "reviewer_roles", "risk_surface", "size", "pace",
-    "escalation", "quality"
+    "schema_version",
+    "version",
+    "mode",
+    "valid_until",
+    "model_allowlist",
+    "tiers",
+    "ficha_tiers",
+    "role_floors",
+    "reviewer_roles",
+    "risk_surface",
+    "size",
+    "pace",
+    "escalation",
+    "quality"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "version": { "type": "string", "minLength": 1, "maxLength": 64 },
-    "mode": { "enum": ["off", "shadow", "enforce"] },
+    "schema_version": {
+      "const": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "mode": {
+      "enum": [
+        "off",
+        "shadow",
+        "enforce"
+      ],
+      "description": "enforce com qualquer nivel nao medido e valido, mas validatePolicy devolve degradaPara:shadow."
+    },
     "valid_until": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
-      "description": "Instante UTC. now >= valid_until: validatePolicy devolve ok:true com degradaPara:shadow."
+      "description": "Instante UTC com round-trip estrito, no maximo 400 dias a frente de now. now >= valid_until: validatePolicy devolve ok:true com degradaPara:shadow."
     },
     "model_allowlist": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "not": { "pattern": "fable" } },
-      "description": "Aliases que o roteador pode emitir. Nunca contem fable."
+      "items": {
+        "enum": [
+          "haiku",
+          "sonnet",
+          "opus"
+        ]
+      },
+      "description": "Aliases que o roteador pode emitir. Somente haiku, sonnet e opus; nunca fable."
     },
     "tiers": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["T0", "T1", "T2", "T3", "T4"],
+      "required": [
+        "T0",
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ],
       "patternProperties": {
         "^T[0-4]$": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["model", "effort"],
+          "required": [
+            "model",
+            "effort"
+          ],
           "properties": {
-            "model": { "type": "string", "description": "Membro de model_allowlist." },
-            "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+            "model": {
+              "enum": [
+                "haiku",
+                "sonnet",
+                "opus"
+              ],
+              "description": "Membro de model_allowlist."
+            },
+            "effort": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            }
           }
         }
       }
@@ -43,98 +97,280 @@
     "ficha_tiers": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["complexidade", "risco"],
+      "required": [
+        "complexidade",
+        "risco"
+      ],
       "properties": {
         "complexidade": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["1", "2", "3", "4", "5"],
-          "patternProperties": { "^[1-5]$": { "enum": ["T0", "T1", "T2", "T3", "T4"] } }
+          "required": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ],
+          "patternProperties": {
+            "^[1-5]$": {
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4"
+              ]
+            }
+          }
         },
         "risco": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["trivial", "normal", "medio", "alto"],
+          "required": [
+            "trivial",
+            "normal",
+            "medio",
+            "alto"
+          ],
           "properties": {
-            "trivial": { "enum": ["T0", "T1", "T2", "T3", "T4"] },
-            "normal": { "enum": ["T0", "T1", "T2", "T3", "T4"] },
-            "medio": { "enum": ["T0", "T1", "T2", "T3", "T4"] },
-            "alto": { "enum": ["T0", "T1", "T2", "T3", "T4"] }
+            "trivial": {
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4"
+              ]
+            },
+            "normal": {
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4"
+              ]
+            },
+            "medio": {
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4"
+              ]
+            },
+            "alto": {
+              "enum": [
+                "T0",
+                "T1",
+                "T2",
+                "T3",
+                "T4"
+              ]
+            }
           }
         }
       }
     },
     "role_floors": {
       "type": "object",
-      "additionalProperties": { "enum": ["T0", "T1", "T2", "T3", "T4"] }
+      "additionalProperties": {
+        "enum": [
+          "T0",
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      }
     },
     "reviewer_roles": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
     },
     "risk_surface": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["piso", "words"],
+      "required": [
+        "piso",
+        "words",
+        "nota"
+      ],
       "properties": {
-        "piso": { "enum": ["T0", "T1", "T2", "T3", "T4"] },
-        "words": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 64 } }
+        "piso": {
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4"
+          ]
+        },
+        "words": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "description": "Prefixos de palavra comparados apos normalizacao."
+        },
+        "nota": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400,
+          "description": "Limites de cobertura da lista."
+        }
       }
     },
     "size": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["prompt_chars", "caminhos"],
+      "required": [
+        "prompt_chars",
+        "caminhos"
+      ],
       "properties": {
-        "prompt_chars": { "$ref": "#/$defs/limiar" },
-        "caminhos": { "$ref": "#/$defs/limiar" }
+        "prompt_chars": {
+          "$ref": "#/$defs/limiar"
+        },
+        "caminhos": {
+          "$ref": "#/$defs/limiar"
+        }
       }
     },
     "pace": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["abaixo_de", "acima_de"],
+      "required": [
+        "abaixo_de",
+        "acima_de"
+      ],
       "properties": {
-        "abaixo_de": { "type": "number", "description": "pace < abaixo_de => estado abaixo. Menor que acima_de." },
-        "acima_de": { "type": "number", "description": "pace > acima_de => estado acima." }
+        "abaixo_de": {
+          "type": "number",
+          "description": "pace < abaixo_de => estado abaixo. Menor que acima_de."
+        },
+        "acima_de": {
+          "type": "number",
+          "description": "pace > acima_de => estado acima."
+        }
       }
     },
     "escalation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["max_por_fluxo"],
-      "properties": { "max_por_fluxo": { "type": "integer", "minimum": 0, "maximum": 1000 } }
+      "required": [
+        "max_por_fluxo"
+      ],
+      "properties": {
+        "max_por_fluxo": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
     },
     "quality": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["piso_aprovacao", "por_nivel"],
+      "required": [
+        "piso_aprovacao",
+        "por_nivel"
+      ],
       "properties": {
         "piso_aprovacao": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["default", "por_papel"],
+          "required": [
+            "default",
+            "por_papel"
+          ],
           "properties": {
-            "default": { "type": "number", "minimum": 0, "maximum": 1 },
-            "por_papel": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 } }
+            "default": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "por_papel": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
           }
         },
         "por_nivel": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["T0", "T1", "T2", "T3", "T4"],
+          "required": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4"
+          ],
           "patternProperties": {
             "^T[0-4]$": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["aprovacao_medida", "n", "fonte"],
+              "required": [
+                "aprovacao_medida",
+                "n",
+                "fonte"
+              ],
               "properties": {
-                "aprovacao_medida": { "type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "null = nao medido: o nivel nao e elegivel e o nivel acima vale." },
-                "n": { "type": ["integer", "null"], "minimum": 1, "description": "null se e somente se aprovacao_medida e null." },
-                "fonte": { "type": "string", "minLength": 1, "maxLength": 400 }
+                "aprovacao_medida": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "null = nao medido: o nivel nao e elegivel e o nivel acima vale."
+                },
+                "n": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "description": "null se e somente se aprovacao_medida e null."
+                },
+                "fonte": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 400
+                }
               }
             }
           }
+        }
+      }
+    },
+    "limites": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_max_bytes"
+      ],
+      "properties": {
+        "prompt_max_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 4194304,
+          "description": "Teto do texto analisado (cabeca mais cauda); padrao 65536 quando ausente."
         }
       }
     }
@@ -143,10 +379,24 @@
     "limiar": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["acima_de", "piso"],
+      "required": [
+        "acima_de",
+        "piso"
+      ],
       "properties": {
-        "acima_de": { "type": "integer", "minimum": 1 },
-        "piso": { "enum": ["T0", "T1", "T2", "T3", "T4"] }
+        "acima_de": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "piso": {
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4"
+          ]
+        }
       }
     }
   }
