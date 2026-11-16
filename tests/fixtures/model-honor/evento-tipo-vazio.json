@@ -1,0 +1,19 @@
+{
+  "agent_id": "a31353c77a0704a95",
+  "agent_type": "",
+  "background_tasks": [],
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "SubagentStop",
+  "last_assistant_message": "",
+  "permission_mode": "acceptEdits",
+  "session_crons": [],
+  "session_id": "08232066-16a3-4ea2-b9a3-2a20a470b33b",
+  "stop_hook_active": false,
+  "agent_transcript_path": "@RAIZ@/-proj/08232066-16a3-4ea2-b9a3-2a20a470b33b/subagents/agent-a31353c77a0704a95.jsonl",
+  "transcript_path": "@RAIZ@/pai/sessao.jsonl",
+  "cwd": "",
+  "prompt_id": "",
+  "scratchpad_dir": ""
+}

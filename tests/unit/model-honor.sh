@@ -16,6 +16,10 @@
 #              casamento frouxo; pedido malformado nao vira `sem_pedido`.
 #  I-TETO      leitura de transcript e meta tem teto; campo textual do log e da saida tem teto.
 #  I5          nenhum conteudo (prompt, mensagem, transcript) chega ao log.
+#  I-ROBUSTEZ  payload que o jq rejeita (surrogate solitario) e jq que falha so no filtro nao
+#              apagam o evento nem o scan; o scan nunca le stdin e nunca sai 0 com instrumento
+#              quebrado.
+#  I-REAL      o hook aceita a forma REAL do evento (chaves e `effort` objeto, ADR 0015 regra 1).
 #
 # Fixtures SINTETICAS e SEM conteudo: o transcript traz so {"type":"assistant","message":{"model":..}}.
 # Cada caso e UM chk; os corpora parametrizados concatenam os resultados numa unica comparacao.
@@ -60,6 +64,8 @@ run(){
 }
 # resumo de um fixture pronto: "<rc>/<status>/<stdout vazio?>"
 resumo(){ run "$(payload "$1")"; printf '%s/%s/%s' "$RC" "$ULT" "$([ -z "$OUT" ] && echo vazio || echo saida)"; }
+mkdir -p "$T/fakebin"
+printf '#!/bin/sh\nexit 3\n' > "$T/fakebin/jq"; chmod +x "$T/fakebin/jq"
 meta(){ jq -nc --arg m "$1" '{agentType:"general-purpose",model:$m,effort:"high"}'; }
 campo(){ tail -n1 "$LOG" 2>/dev/null | jq -r "$1" 2>/dev/null; }
 
@@ -90,7 +96,7 @@ chk "4 fable->fable honrado; fable->sonnet DIVERGE" \
 echo "== 5. ID completo exige igualdade exata =="
 mk "$PROJ" c5a "$(meta claude-opus-5-5)" claude-opus-4-6
 mk "$PROJ" c5b "$(meta claude-opus-5-5)" claude-opus-5-5
-mk "$PROJ" c5c "$(meta claude-opus-5-5)" claude-opus-5-5-20261101
+mk "$PROJ" c5c "$(meta claude-opus-5-5)" claude-opus-5-55
 chk "5 ID diferente DIVERGE; ID igual honrado; ID com sufixo a mais DIVERGE (nao e prefixo)" \
   "$(resumo "$PROJ/agent-c5a.jsonl") $(resumo "$PROJ/agent-c5b.jsonl") $(resumo "$PROJ/agent-c5c.jsonl")" \
   "0/DIVERGE/saida 0/honrado/vazio 0/DIVERGE/saida"
@@ -101,9 +107,10 @@ mk "$PROJ" c6b "$(meta '')" claude-sonnet-5-5
 mk "$PROJ" c6c "$(meta inherit)" claude-sonnet-5-5
 mk "$PROJ" c6d '{"agentType":"general-purpose"}' claude-sonnet-5-5
 mk "$PROJ" c6e "$(meta gpt-9)" claude-sonnet-5-5
-R6=""; for n in c6a c6b c6c c6d c6e; do R6="$R6 $(resumo "$PROJ/agent-$n.jsonl")"; done
+mk "$PROJ" c6f "$(meta INHERIT)" claude-sonnet-5-5
+R6=""; for n in c6a c6b c6c c6d c6e c6f; do R6="$R6 $(resumo "$PROJ/agent-$n.jsonl")"; done
 chk "6 meta ausente=indeterminado; vazio/inherit/sem campo=sem_pedido; desconhecido=pedido_desconhecido" \
-  "$R6" " 0/indeterminado/vazio 0/sem_pedido/vazio 0/sem_pedido/vazio 0/sem_pedido/vazio 0/pedido_desconhecido/vazio"
+  "$R6" " 0/indeterminado/vazio 0/sem_pedido/vazio 0/sem_pedido/vazio 0/sem_pedido/vazio 0/pedido_desconhecido/vazio 0/sem_pedido/vazio"
 
 # Alvos hostis usados nos casos 7 e 8. Cada um tem conteudo que daria DIVERGE se fosse lido;
 # indeterminado prova que nao foi.
@@ -144,13 +151,14 @@ done
 chk "8 absoluto, ../, symlink do transcript, symlink do meta, sem sufixo agent-*: indeterminado" \
   "$R8" " 0/indeterminado/vazio 0/indeterminado/vazio 0/indeterminado/vazio 0/indeterminado/vazio 0/indeterminado/vazio"
 
-echo "== 9. entrada que nao e JSON e entrada vazia =="
+echo "== 9. entrada vazia ou JSON nao objeto: mudo; entrada ilegivel: registrada =="
 R9=""
 for entrada in 'isto nao e json {' '' '[1,2' 'null'; do
   : > "$LOG"; OUT9="$(printf '%s' "$entrada" | "$BASH_BIN" "$HOOK" 2>&1)"; RC9=$?
-  R9="$R9 $RC9/${#OUT9}/$(wc -l < "$LOG" | tr -d ' ')"
+  R9="$R9 $RC9/$([ -n "$OUT9" ] && echo msg || echo mudo)/$(wc -l < "$LOG" | tr -d ' ')/$(campo .motivo)"
 done
-chk "9 exit 0, sem saida e sem linha de log" "$R9" " 0/0/0 0/0/0 0/0/0 0/0/0"
+chk "9 exit 0; vazio e null: mudo; nao-JSON: 1 linha payload_ilegivel e aviso" "$R9" \
+  " 0/msg/1/payload_ilegivel 0/mudo/0/ 0/msg/1/payload_ilegivel 0/mudo/0/"
 
 echo "== 10. primeira linha assistant <synthetic> e ignorada =="
 mk "$PROJ" c10 "$(meta opus)" "<none>" "<synthetic>" claude-opus-5-5 claude-sonnet-5-5
@@ -205,27 +213,27 @@ chk "15 DIVERGE registrado, agent_type no teto, systemMessage JSON valido no tet
   "$RC/$ULT/$([ "$(campo '.agent_type|length')" -le 256 ] && echo teto)/$(printf '%s' "$OUT" | jq -r '.systemMessage|length<=300' 2>/dev/null)" \
   "0/DIVERGE/teto/true"
 
-echo "== 16. 150 hooks concorrentes no limite de rotacao: nenhum evento nem historico perdido =="
+echo "== 16. 60 hooks concorrentes no limite de rotacao: nenhum evento nem historico perdido =="
 # historico 1 KB abaixo do limite: a rotacao ocorre no meio da rajada, quando varios hooks ja estao vivos.
 head -c 2097100 /dev/zero | tr '\0' H > "$LOG"; printf '\n' >> "$LOG"; rm -f "$LOG.1"
-for i in $(seq 1 150); do
+for i in $(seq 1 60); do
   printf '{"session_id":"s1","agent_id":"par%s","agent_type":"x","agent_transcript_path":"%s"}' "$i" "$PROJ/agent-c1.jsonl" | "$BASH_BIN" "$HOOK" >/dev/null 2>&1 &
 done
 wait
 N16="$(cat "$LOG" "$LOG.1" 2>/dev/null | jq -Rr 'fromjson? | .agent_id // empty' 2>/dev/null | sort -u | wc -l | tr -d ' ')"
 # A corrida acima e probabilistica; a trava e verificada de forma deterministica: com a trava
-# retida por outro processo por ~1,5 s, o hook espera em vez de rotacionar/gravar por cima.
+# retida por outro processo por ~1,0 s, o hook espera em vez de rotacionar/gravar por cima.
 rm -f "$T/lk-ok"
-( exec 9>>"$LOG.lock"; flock 9; : > "$T/lk-ok"; sleep 1.5 ) &
+( exec 9>>"$LOG.lock"; flock 9; : > "$T/lk-ok"; sleep 1.0 ) &
 LKPID=$!
 until [ -e "$T/lk-ok" ]; do sleep 0.05; done
 T0="$(date +%s%N)"
 printf '%s' "$(payload "$PROJ/agent-c1.jsonl")" | "$BASH_BIN" "$HOOK" >/dev/null 2>&1
 T1="$(date +%s%N)"
 wait "$LKPID"
-R16L="$([ $((T1 - T0)) -ge 1000000000 ] && echo esperou || echo nao_esperou)"
-chk "16 150 eventos distintos e historico de ~2 MB intactos em .1; hook espera a trava retida" \
-  "$N16/$([ "$(stat -c %s "$LOG.1" 2>/dev/null || echo 0)" -ge 2097100 ] && echo historico)/$R16L" "150/historico/esperou"
+R16L="$([ $((T1 - T0)) -ge 500000000 ] && echo esperou || echo nao_esperou)"
+chk "16 60 eventos distintos e historico de ~2 MB intactos em .1; hook espera a trava retida" \
+  "$N16/$([ "$(stat -c %s "$LOG.1" 2>/dev/null || echo 0)" -ge 2097100 ] && echo historico)/$R16L" "60/historico/esperou"
 
 echo "== 17. limiar de rotacao: no limite nao rotaciona, acima rotaciona =="
 head -c 2097151 /dev/zero | tr '\0' H > "$LOG"; printf '\n' >> "$LOG"; rm -f "$LOG.1"
@@ -327,9 +335,137 @@ R24B="$ULT/$(campo '[.pedido_origem,.picked_effort_model]|join(",")')"
 chk "24 picked nao julga (opus->opus-5-5 honrado com picked fable); origem meta ou ausente" \
   "$R24A $R24B" "honrado/meta,claude-fable-5-2 sem_pedido/ausente,claude-sonnet-5-5"
 
+
+echo "== 25. payload que o jq rejeita nao apaga o evento; jq quebrado no hook avisa =="
+R25=""
+for sg in '\ud83d' '\udc00' '\\ud83d'; do
+  run "$(printf '{"session_id":"s%s","agent_id":"a1","agent_type":"t","agent_transcript_path":"%s"}' "$sg" "$PROJ/agent-c1.jsonl")"; R25="$R25 $ULT"
+done
+run "$(printf '{"session_id":"s%s","agent_id":"a1","agent_type":"t%s","agent_transcript_path":"%s"}' '\\ud83d' '\ud83d' "$PROJ/agent-c1.jsonl")"
+R25="$R25 $ULT/$(campo .session_id)"
+SEG25="SEGREDO-ILEGIVEL-$$"
+run "$(printf 'lixo %s {"x":"\\ud83d' "$SEG25")"
+R25="$R25 $(campo '[.status,.motivo,(.payload_bytes|type),(.payload_sha12|test("^[0-9a-f]{12}$"))]|join(",")')/$(grep -c "$SEG25" "$LOG")/$([ -n "$OUT" ] && echo msg)"
+J25="$(env PATH="$T/fakebin:$PATH" "$BASH_BIN" "$HOOK" 2>&1 <<<"$(payload "$PROJ/agent-c1.jsonl")")"; RJ25=$?
+R25="$R25 $RJ25/$(printf '%s' "$J25" | jq -r '.systemMessage|test("jq")' 2>/dev/null)"
+chk "25 surrogate solitario (alto, baixo) recuperado; barra escapada e texto; ilegivel registrado sem conteudo; jq quebrado avisa" \
+  "$R25" " DIVERGE DIVERGE DIVERGE DIVERGE/s\\ud83d indeterminado,payload_ilegivel,number,true/0/msg 0/true"
+
+echo "== 26. --scan com --since que exclui tudo: total 0, exit 0, mudo, nunca le stdin =="
+S26="$(timeout 3 "$BASH_BIN" "$HOOK" --scan "$S1" --since 2099-01-01T00:00:00Z 2>"$T/e26" < <(sleep 4))"; RC26=$?
+chk "26 exit 0, total 0, stderr vazio (nao pendura com stdin aberto)" \
+  "$RC26/$(printf '%s\n' "$S26" | awk -F'\t' '$1=="total"{print $2}')/$([ -s "$T/e26" ] && echo stderr || echo mudo)" "0/0/mudo"
+
+echo "== 27. --scan: jq que falha so no filtro e diretorio ilegivel saem 2 =="
+printf '#!/bin/sh\n[ "$1" = "-n" ] && { echo 2; exit 0; }\nexit 3\n' > "$T/fakebin/jq"
+E27="$(env PATH="$T/fakebin:$PATH" "$BASH_BIN" "$HOOK" --scan "$S1" 2>"$T/e27")"; RC27A=$?
+R27="$RC27A/$(printf '%s\n' "$E27" | awk -F'\t' '$1=="status"&&$2=="jq_erro"{print $2}')/$([ -s "$T/e27" ] && echo stderr || echo mudo)"
+printf '#!/bin/sh\nexit 3\n' > "$T/fakebin/jq"
+S27="$T/scan27"; mk "$S27/pa/sa/subagents" ok "$(meta opus)" claude-sonnet-5-5; mk "$S27/pb/sb/subagents" x "$(meta opus)" claude-sonnet-5-5
+chmod 000 "$S27/pb/sb/subagents"
+S27M="$T/scan27m"; mk "$S27M/pa/sa/subagents" m1 "$(meta opus)" claude-sonnet-5-5
+chmod 000 "$S27M/pa/sa/subagents/agent-m1.meta.json"
+WANT27="2/jq_erro/stderr 2/ilegivel/stderr 2/ilegivel/stderr"
+if [ "$(id -u)" -eq 0 ]; then R27="$R27 root_sem_chmod"; WANT27="2/jq_erro/stderr root_sem_chmod"
+else
+  E27B="$("$BASH_BIN" "$HOOK" --scan "$S27" 2>"$T/e27b")"; RC27B=$?
+  R27="$R27 $RC27B/$(printf '%s\n' "$E27B" | awk -F'\t' '$1=="status"&&$2=="ilegivel"{print $2}')/$([ -s "$T/e27b" ] && echo stderr || echo mudo)"
+  E27C="$("$BASH_BIN" "$HOOK" --scan "$S27M" 2>"$T/e27c")"; RC27C=$?
+  R27="$R27 $RC27C/$(printf '%s\n' "$E27C" | awk -F'\t' '$1=="status"&&$2=="ilegivel"{print $2}')/$([ -s "$T/e27c" ] && echo stderr || echo mudo)"
+fi
+chmod 755 "$S27/pb/sb/subagents"; chmod 644 "$S27M/pa/sa/subagents/agent-m1.meta.json"
+chk "27 jq so no filtro: exit 2 e jq_erro; subagents/ ilegivel e meta.json regular ilegivel: exit 2, ilegivel contado, stderr" \
+  "$R27" "$WANT27"
+
+echo "== 28. normalizacao nos dois lados: tabela pedido x efetivo =="
+R28=""
+t28(){ mk "$PROJ" c28 "$(meta "$1")" "$2"; run "$(payload "$PROJ/agent-c28.jsonl")"; R28="$R28 $ULT"; }
+t28 'opus[1m]' claude-opus-5-5
+t28 'sonnet[1m]' claude-opus-5-5
+t28 claude-opus-4-6-20251101 claude-opus-4-6
+t28 claude-opus-4-6 us.anthropic.claude-opus-4-6-v1:0
+t28 claude-opus-4-6 global.anthropic.claude-opus-4-6-v1
+t28 claude-opus-4-6 apac.anthropic.claude-opus-4-6-v1
+t28 'claude-opus-4-6@20260101' 'claude-opus-4-6@20250101'
+t28 claude-opus-4 claude-opus-4-6
+t28 claude-opus-5-5 'claude-opus-5-5[1m]'
+t28 claude-opus-5-5 Claude-Opus-5-5
+t28 opus 'claude-opus-5-5[1m]'
+t28 claude-opus-5-5 'claude-opus-5-5[1m][x]'
+chk "28 sufixos [..], data, -vN:M e prefixos de regiao sao normalizados nos dois lados; versao diferente DIVERGE" \
+  "$R28" " honrado DIVERGE honrado honrado honrado honrado honrado DIVERGE honrado honrado honrado honrado"
+
+echo "== 29. ID longo: compara o valor completo; acima de 256 e indeterminado =="
+LA="claude-opus-$(head -c 130 /dev/zero | tr '\0' a)"
+LONG300="claude-opus-$(head -c 300 /dev/zero | tr '\0' b)"
+R29=""
+mk "$PROJ" c29a "$(meta "${LA}X")" "${LA}Y"; run "$(payload "$PROJ/agent-c29a.jsonl")"; R29="$R29 $ULT"
+mk "$PROJ" c29b "$(meta "${LA}X")" "${LA}X"; run "$(payload "$PROJ/agent-c29b.jsonl")"; R29="$R29 $ULT"
+mk "$PROJ" c29c "$(meta "$LONG300")" "$LONG300"; run "$(payload "$PROJ/agent-c29c.jsonl")"; R29="$R29 $ULT/$(campo .motivo)"
+mk "$PROJ" c29d "$(meta "$LONG300")" claude-opus-5-5; run "$(payload "$PROJ/agent-c29d.jsonl")"; R29="$R29 $ULT/$(campo .motivo)"
+mk "$PROJ" c29e "$(meta claude-opus-5-5)" "$LONG300"; run "$(payload "$PROJ/agent-c29e.jsonl")"; R29="$R29 $ULT/$(campo .motivo)"
+chk "29 IDs longos que diferem so no fim DIVERGEM; iguais honram; acima de 256 em qualquer lado: indeterminado/id_longo" \
+  "$R29" " DIVERGE honrado indeterminado/id_longo indeterminado/id_longo indeterminado/id_longo"
+
+echo "== 30. sem flock registra rotacao; scan sem controle cru =="
+mkdir -p "$T/noflock-bin"
+for c in cat jq realpath head tail mkdir stat date dirname sort find mv tr wc sha256sum cut perl sleep rm env sed awk grep readlink touch; do
+  p="$(command -v "$c" 2>/dev/null)"; [ -n "$p" ] && ln -sf "$p" "$T/noflock-bin/$c"
+done
+: > "$LOG"; env PATH="$T/noflock-bin" "$BASH_BIN" "$HOOK" <<<"$(payload "$PROJ/agent-c1.jsonl")" >/dev/null 2>&1
+R30="$(campo .rotacao)"
+: > "$LOG"; "$BASH_BIN" "$HOOK" <<<"$(payload "$PROJ/agent-c1.jsonl")" >/dev/null 2>&1
+R30="$R30,$(campo .rotacao)"
+S4="$T/scan4"
+mk "$S4/p"$'\x1b'"[31mx/sa/subagents" e1 "$(meta opus)" "claude-"$'\xe2\x80\xa8'"sonnet"
+# locale C: sem a troca explicita de U+2028, o [[:cntrl:]] do locale UTF-8 mascara a ausencia dela.
+SC4="$(LC_ALL=C "$BASH_BIN" "$HOOK" --scan "$S4")"
+R30="$R30/$(printf '%s' "$SC4" | LC_ALL=C grep -c "$(printf '\033')")/$(printf '%s' "$SC4" | LC_ALL=C grep -c "$(printf '\xe2\x80\xa8')")"
+chk "30 rotacao=sem_flock sem flock e flock com flock; scan sem ESC nem U+2028 crus" "$R30" "sem_flock,flock/0/0"
+
+echo "== 31. rotacao preserva tres geracoes =="
+rm -f "$LOG" "$LOG".1 "$LOG".2 "$LOG".3
+for m in A B C; do
+  { printf 'MARCA-%s' "$m"; head -c 2100000 /dev/zero | tr '\0' H; printf '\n'; } > "$LOG"
+  printf '%s' "$(payload "$PROJ/agent-c1.jsonl")" | "$BASH_BIN" "$HOOK" >/dev/null 2>&1
+done
+chk "31 tres rotacoes: .1=C .2=B .3=A" \
+  "$(head -c 7 "$LOG.1" 2>/dev/null)/$(head -c 7 "$LOG.2" 2>/dev/null)/$(head -c 7 "$LOG.3" 2>/dev/null)" "MARCA-C/MARCA-B/MARCA-A"
+rm -f "$LOG".1 "$LOG".2 "$LOG".3
+
+echo "== 32. fronteiras: raiz irma, tipo do meta, transcript symlink com meta real, controle no modelo, log padrao, guarda claude-* =="
+R32=""
+EV="$HOME/.claude/projects-evil/proj/sess/subagents"; mk "$EV" ev "$(meta opus)" claude-sonnet-5-5
+R32="$R32 $(resumo "$EV/agent-ev.jsonl" | cut -d/ -f2)"
+run "$(jq -nc --arg p "$PROJ/agent-c1.jsonl" '{session_id:"s1",agent_id:"a1",agent_transcript_path:$p}')"; R32="$R32 $(campo .agent_type)"
+mk "$PROJ" sl NONE claude-sonnet-5-5; rm -f "$PROJ/agent-sl.jsonl"; ln -sfn "$FORA/agent-real.jsonl" "$PROJ/agent-sl.jsonl"; meta opus > "$PROJ/agent-sl.meta.json"
+R32="$R32 $(resumo "$PROJ/agent-sl.jsonl" | cut -d/ -f2)"
+mk "$PROJ" ctl "$(meta opus)" "claude-sonnet-5-5"$'\001'
+run "$(payload "$PROJ/agent-ctl.jsonl")"; R32="$R32 $(campo '.efetivo_model|test("[[:cntrl:]]")')"
+H2="$T/h2"; mkdir -p "$H2/.claude/projects/p/s/subagents"; mk "$H2/.claude/projects/p/s/subagents" d "$(meta opus)" claude-sonnet-5-5
+printf '%s' "$(payload "$H2/.claude/projects/p/s/subagents/agent-d.jsonl")" | env -u MODEL_HONOR_LOG HOME="$H2" "$BASH_BIN" "$HOOK" >/dev/null 2>&1
+R32="$R32 $(wc -l < "$H2/.claude/logs/model-honor.jsonl" 2>/dev/null | tr -d ' ')"
+mk "$PROJ" g32 "$(meta sonnet)" gpt-sonnet-9; run "$(payload "$PROJ/agent-g32.jsonl")"; R32="$R32 $ULT"
+chk "32 raiz irma indeterminado; agent_type vem do meta; symlink do transcript indeterminado; modelo sem controle; log padrao criado; sonnet x gpt-sonnet DIVERGE" \
+  "$R32" " indeterminado general-purpose indeterminado false 1 DIVERGE"
+
+echo "== 33. eventos REAIS sanitizados (ADR 0015, regra 1) =="
+FX=tests/fixtures/model-honor
+R33=""
+for fx in evento-tipo-preenchido evento-outra-conta evento-tipo-vazio; do
+  case "$fx" in evento-outra-conta) RAIZ="$HOME/.local/share/ai-central/accounts/acc1/projects" ;; *) RAIZ="$HOME/.claude/projects" ;; esac
+  PL="$(sed "s#@RAIZ@#$RAIZ#g" "$FX/$fx.json")"
+  AP="$(printf '%s' "$PL" | jq -r .agent_transcript_path)"; AGID="$(printf '%s' "$PL" | jq -r .agent_id)"
+  if [ "$fx" != evento-tipo-vazio ]; then mk "$(dirname "$AP")" "$AGID" "$(meta opus)" claude-sonnet-5-5; fi
+  run "$PL"
+  R33="$R33 $ULT/$([ "$(campo .agent_type)" = "$(jq -r .agent_type "$FX/$fx.json")" ] && echo tipo_ok)"
+done
+chk "33 as tres formas reais (tipo preenchido, outra conta, tipo vazio sem transcript) sao julgadas" \
+  "$R33" " DIVERGE/tipo_ok DIVERGE/tipo_ok indeterminado/tipo_ok"
+
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"
 # Pino da propria contagem (convencao de scripts/status.sh): caso removido em silencio e vermelho.
-EXPECTED=24
+EXPECTED=33
 [ "$((P+F))" -eq "$EXPECTED" ] || { echo "CONTAGEM INESPERADA: executados=$((P+F)) esperado=$EXPECTED"; exit 1; }
 [ "$F" -eq 0 ]

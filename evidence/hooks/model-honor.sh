@@ -16,30 +16,40 @@
 #    (`agent_transcript_path`), ignorando `<synthetic>`. NUNCA `transcript_path`, que e o do
 #    pai (ADR 0014). Teto de leitura: 1 MiB e 400 linhas do transcript, 64 KiB do meta.
 #
-# COMPARACAO. Alias (`opus|sonnet|haiku|fable`) casa pela FAMILIA do ID efetivo, derivada por
-# TOKEN (primeiro token `opus|sonnet|haiku|fable` do ID normalizado, que tambem cobre a
-# nomenclatura antiga `claude-3-5-sonnet-20241022`). Trocar a versao dentro da familia nao e
-# divergencia (o ID efetivo vai no log). ID completo (`claude-*`) exige igualdade exata APOS a
-# normalizacao: minusculas, sem sufixo `[...]` (ex.: `[1m]`), sem prefixo `anthropic.` (nem
-# `<regiao>.anthropic.`), sem sufixo `@<data>`. `inherit`, vazio, null ou ausente: `sem_pedido`.
-# Valor de tipo errado (numero, array, objeto, booleano) ou fora do vocabulario:
-# `pedido_desconhecido`. `indeterminado`: meta ou transcript ausente, ilegivel, ou sem linha
-# assistant, ou caminho fora da raiz.
+# COMPARACAO. Pedido e efetivo passam pela MESMA normalizacao (`norm_id`): minusculas; sem
+# sufixos `[...]` (ex.: `[1m]`); sem prefixo `anthropic.` nem `<regiao>.anthropic.` (us, eu, apac,
+# global); sem sufixo `@AAAAMMDD`, `-vN`, `-vN:M` (Bedrock) e `-AAAAMMDD`. Alias
+# (`opus|sonnet|haiku|fable`, ja normalizado, entao `opus[1m]` vale `opus`) casa pela FAMILIA do ID
+# efetivo, derivada por TOKEN (primeiro token de familia do ID normalizado, o que cobre tambem
+# `claude-3-5-sonnet-20241022`). ID completo (`claude-*`) exige igualdade exata dos IDs
+# normalizados, comparados por inteiro (so o log e truncado); ID acima de 256 caracteres:
+# `indeterminado/id_longo`. DECISAO: snapshots de datas diferentes da MESMA versao e familia nao
+# sao divergencia, porque a substituicao que este hook procura troca familia ou versao, nao a data
+# de snapshot de uma mesma versao. `inherit`, vazio, null ou ausente: `sem_pedido`. Valor de tipo
+# errado (numero, array, objeto, booleano) ou fora do vocabulario: `pedido_desconhecido`.
+# `indeterminado`: meta ou transcript ausente, ilegivel, ou sem linha assistant, ou caminho fora
+# da raiz, ou ID longo, ou payload ilegivel.
 #
 # SAIDA. Uma linha JSONL por evento em ${MODEL_HONOR_LOG:-$HOME/.claude/logs/model-honor.jsonl},
 # modo 0600, ASCII puro (U+2028/U+2029 saem escapados). Campos: ts, session_id, agent_id,
 # agent_type, pedido_model, pedido_effort, pedido_origem (`meta` ou `ausente`),
-# picked_effort_model, efetivo_model, status, motivo. Todo campo textual do payload e truncado
-# a 256 caracteres ANTES de montar o JSON (campo grande por `--arg` derruba o exec e apagaria o
-# DIVERGE). Nunca prompt, mensagem ou `last_assistant_message` (invariante I5).
-# Rotacao a 2 MB e append sob `flock` num arquivo de trava ao lado do log; sem `flock`, ou sem
-# obter a trava em 5 s, grava SEM rotacionar (nunca perde historico).
+# picked_effort_model, efetivo_model, status, motivo, rotacao (`flock` ou `sem_flock`). Todo campo
+# textual do payload e truncado a 256 caracteres (caminho: 4096) ANTES de montar o JSON (campo
+# grande por `--arg` derruba o exec e apagaria o DIVERGE). Nunca prompt, mensagem ou
+# `last_assistant_message` (invariante I5). Payload que o jq rejeita mesmo apos o saneamento de
+# surrogates solitarios (camada com perl, quando existe): linha `indeterminado/payload_ilegivel`
+# com so `payload_bytes` e `payload_sha12`, nunca conteudo.
+# Rotacao a 2 MB e append sob `flock` num arquivo de trava ao lado do log; sao mantidas TRES
+# geracoes (.1, .2, .3, deslocadas sob a trava); a quarta rotacao descarta a mais antiga. Sem
+# `flock`, ou sem obter a trava em 5 s, grava SEM rotacionar: nada e descartado, mas o log cresce
+# sem teto enquanto a rotacao nao ocorre.
 #
 # STDOUT (systemMessage, um unico JSON, no maximo 300 caracteres): DIVERGE; falha ao gravar o
-# log; jq ausente (texto fixo, sem jq). Nos demais casos, nada.
+# log; payload ilegivel; jq ausente ou quebrado (texto fixo, escrito sem jq). Nos demais casos,
+# nada.
 #
-# FALHA ABERTA (I1/I6): modo hook sai sempre 0 e nunca bloqueia. Entrada que nao e JSON objeto
-# ou sem nenhuma identificacao: sai 0 em silencio. Com identificacao minima, registra
+# FALHA ABERTA (I1/I6): modo hook sai sempre 0 e nunca bloqueia. Entrada vazia ou JSON que nao e
+# objeto, ou sem nenhuma identificacao: sai 0 em silencio. Com identificacao minima, registra
 # `indeterminado` com o motivo.
 #
 # CAMINHO HOSTIL: `agent_transcript_path` vem do payload. O caminho resolvido (realpath) precisa
@@ -49,11 +59,13 @@
 #
 # MODO --scan <projects_dir> [--since <ISO8601>]: aplica a MESMA funcao `julga` a todo
 # `*/*/subagents/agent-*.meta.json` sob o diretorio (a raiz permitida passa a ser o proprio
-# diretorio) e imprime um resumo TSV (campos separados por TAB; TAB e quebra de linha em
-# caminhos viram espaco). Filtro --since pela data de modificacao do meta (o limite entra).
-# Exit 0 sem DIVERGE, 1 com DIVERGE, 2 erro de uso ou de instrumento: jq que nao funciona,
-# diretorio inexistente, ou nenhum meta encontrado sob o diretorio (um --since que exclui tudo
-# nao e erro: o total sai 0).
+# diretorio) e imprime um resumo TSV (campos separados por TAB; controles, TAB, quebra de linha e
+# U+2028/U+2029 em caminhos e nomes viram espaco). Filtro --since pela data de modificacao do meta
+# (o limite entra).
+# Exit 0 sem DIVERGE, 1 com DIVERGE, 2 erro de uso ou de instrumento: jq que nao funciona ou que
+# falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta encontrado, ou
+# arquivo/diretorio ilegivel (contado como `ilegivel`). Um --since que exclui tudo nao e erro: o
+# total sai 0. O bloco --scan termina com `exit` explicito e nunca le stdin.
 #
 # LIMITES: so a PRIMEIRA mensagem assistant e julgada; linha de transcript maior que o teto de
 # leitura antes da primeira assistant resulta em `indeterminado`; entre o realpath e a leitura
@@ -68,6 +80,13 @@ if ! command -v jq >/dev/null 2>&1; then
   if [ "$MODO" = scan ]; then echo "model-honor: jq ausente" >&2; exit 2; fi
   # Sem jq nao ha como julgar; o aviso e literal, escrito sem jq, para o desligamento deixar rastro.
   printf '%s\n' '{"systemMessage":"model-honor: verificacao de modelo desligada, jq ausente"}'
+  exit 0
+fi
+
+# jq presente mas quebrado: a sonda precisa de um caso positivo conhecido.
+if [ "$(jq -n '1 + 1' 2>/dev/null)" != 2 ]; then
+  if [ "$MODO" = scan ]; then echo "model-honor: jq nao funciona neste ambiente" >&2; exit 2; fi
+  printf '%s\n' '{"systemMessage":"model-honor: verificacao de modelo desligada, jq nao funciona"}'
   exit 0
 fi
 
@@ -89,12 +108,15 @@ sob_raiz() {
   return 1
 }
 
-# ID normalizado para comparacao (stdout).
+# ID normalizado para comparacao (stdout). Ver COMPARACAO no cabecalho.
 norm_id() {
-  local v="${1,,}" re_br='^(.*)\[[^]]*\]$' re_pf='^([a-z]{2}\.)?anthropic\.(.*)$'
-  [[ "$v" =~ $re_br ]] && v="${BASH_REMATCH[1]}"
+  local v="${1,,}" re_br='^(.*)\[[^]]*\]$' re_pf='^([a-z]+\.)?anthropic\.(.*)$'
+  local re_at='^(.*)@[0-9]{8}$' re_v='^(.*)-v[0-9]+(:[0-9]+)?$' re_d='^(.*)-[0-9]{8}$'
+  while [[ "$v" =~ $re_br ]]; do v="${BASH_REMATCH[1]}"; done
   [[ "$v" =~ $re_pf ]] && v="${BASH_REMATCH[2]}"
-  v="${v%%@*}"
+  [[ "$v" =~ $re_at ]] && v="${BASH_REMATCH[1]}"
+  [[ "$v" =~ $re_v ]] && v="${BASH_REMATCH[1]}"
+  [[ "$v" =~ $re_d ]] && v="${BASH_REMATCH[1]}"
   printf '%s' "$v"
 }
 
@@ -108,11 +130,45 @@ familia_de() {
   return 0
 }
 
+# Filtros jq do meta e do transcript. Sao funcoes para que o --scan rode o MESMO filtro sobre uma
+# entrada de controle e distinga "arquivo ilegivel" de "jq que falha".
+jq_meta() {
+  jq -r '
+    def s: strings | gsub("[[:cntrl:]]"; "") | .[0:128];
+    def tipo: if . == null then ""
+              elif type == "string" then gsub("[[:cntrl:]]"; "") | .[0:257]
+              else "<tipo_invalido:" + type + ">" end;
+    if type == "object" then
+      (.model | tipo),
+      ((.effort | if type == "object" then (.level | s) else s end) // ""),
+      ((.agentType | s) // ""),
+      ((.pickedEffortModel | s) // "")
+    else empty end' 2>/dev/null
+}
+jq_efet() {
+  jq -Rr '
+    fromjson? | objects | select(.type == "assistant")
+    | (.message | objects | .model | strings)
+    | select(. != "<synthetic>" and . != "")
+    | gsub("[[:cntrl:]]"; "") | .[0:257]' 2>/dev/null | head -n 1
+}
+controle_filtros() {
+  [ "$(printf '%s' '{"model":"opus"}' | jq_meta | head -n 1)" = opus ] \
+    && [ "$(printf '%s\n' '{"type":"assistant","message":{"model":"claude-x"}}' | jq_efet)" = claude-x ]
+}
+
+# Troca controles ASCII e U+2028/U+2029 por espaco (saida do scan).
+limpa() {
+  local v="$1"
+  v="${v//[[:cntrl:]]/ }"; v="${v//$'\xe2\x80\xa8'/ }"; v="${v//$'\xe2\x80\xa9'/ }"
+  printf '%s' "$v"
+}
+
 # Julga um transcript de subagente. Entrada: caminho do transcript como veio. Saida, em globais:
 # PEDIDO PEDIDO_EFFORT PICKED ORIGEM EFETIVO META_TYPE STATUS MOTIVO.
 julga() {
   PEDIDO=""; PEDIDO_EFFORT=""; PICKED=""; ORIGEM=ausente; EFETIVO=""; META_TYPE=""; STATUS=""; MOTIVO=""
-  local tp="$1" rp mp mrp META_OK=0 MF=() pl EN FAM PN
+  local tp="$1" rp mp mrp META_OK=0 MF=() pl PN EN FAM
   if [ -z "$tp" ]; then STATUS=indeterminado; MOTIVO=sem_agent_transcript_path; return 0; fi
   rp="$(realpath -m -- "$tp" 2>/dev/null)"
   case "$rp" in
@@ -126,17 +182,8 @@ julga() {
     mrp="$(realpath -m -- "$mp" 2>/dev/null)"
     if ! sob_raiz "$mrp"; then STATUS=indeterminado; MOTIVO=caminho_fora_da_raiz; return 0; fi
     if [ -f "$mrp" ]; then
-      mapfile -t MF < <(head -c 65536 "$mrp" 2>/dev/null | jq -r '
-        def s: strings | gsub("[[:cntrl:]]"; "") | .[0:128];
-        def tipo: if . == null then ""
-                  elif type == "string" then gsub("[[:cntrl:]]"; "") | .[0:128]
-                  else "<tipo_invalido:" + type + ">" end;
-        if type == "object" then
-          (.model | tipo),
-          ((.effort | if type == "object" then (.level | s) else s end) // ""),
-          ((.agentType | s) // ""),
-          ((.pickedEffortModel | s) // "")
-        else empty end' 2>/dev/null)
+      if [ ! -r "$mrp" ]; then STATUS=indeterminado; MOTIVO=arquivo_ilegivel; return 0; fi
+      mapfile -t MF < <(head -c 65536 "$mrp" 2>/dev/null | jq_meta)
       if [ "${#MF[@]}" -eq 4 ]; then
         META_OK=1; PEDIDO="${MF[0]}"; PEDIDO_EFFORT="${MF[1]}"; META_TYPE="${MF[2]}"; PICKED="${MF[3]}"
       fi
@@ -148,44 +195,43 @@ julga() {
   if [ ! -e "$mp" ] && [ ! -L "$mp" ]; then STATUS=indeterminado; MOTIVO=meta_ausente; return 0; fi
   if [ "$META_OK" -ne 1 ]; then STATUS=indeterminado; MOTIVO=meta_ilegivel; return 0; fi
 
-  EFETIVO="$(head -c 1048576 "$rp" 2>/dev/null | head -n 400 | jq -Rr '
-    fromjson? | objects | select(.type == "assistant")
-    | (.message | objects | .model | strings)
-    | select(. != "<synthetic>" and . != "")
-    | gsub("[[:cntrl:]]"; "") | .[0:128]' 2>/dev/null | head -n 1)"
+  if [ ! -r "$rp" ]; then STATUS=indeterminado; MOTIVO=arquivo_ilegivel; return 0; fi
+  EFETIVO="$(head -c 1048576 "$rp" 2>/dev/null | head -n 400 | jq_efet)"
   if [ -z "$EFETIVO" ]; then STATUS=indeterminado; MOTIVO=sem_linha_assistant; return 0; fi
 
   pl="${PEDIDO,,}"
-  case "$pl" in
-    ""|inherit) STATUS=sem_pedido; MOTIVO=pedido_ausente_ou_inherit ;;
+  if [ -z "$pl" ] || [ "$pl" = inherit ]; then STATUS=sem_pedido; MOTIVO=pedido_ausente_ou_inherit; return 0; fi
+  if [ "${#PEDIDO}" -gt 256 ] || [ "${#EFETIVO}" -gt 256 ]; then STATUS=indeterminado; MOTIVO=id_longo; return 0; fi
+  PN="$(norm_id "$PEDIDO")"
+  EN="$(norm_id "$EFETIVO")"
+  case "$PN" in
     opus|sonnet|haiku|fable)
-      EN="$(norm_id "$EFETIVO")"
       FAM="$(familia_de "$EN")"
-      if [[ "$EN" == claude-* && "$FAM" == "$pl" ]]; then STATUS=honrado; MOTIVO=familia_igual
+      if [[ "$EN" == claude-* && "$FAM" == "$PN" ]]; then STATUS=honrado; MOTIVO=familia_igual
       else STATUS=DIVERGE; MOTIVO=familia_diferente; fi ;;
-    *)
-      PN="$(norm_id "$PEDIDO")"
-      case "$PN" in
-        claude-*)
-          if [ "$PN" = "$(norm_id "$EFETIVO")" ]; then STATUS=honrado; MOTIVO=id_igual
-          else STATUS=DIVERGE; MOTIVO=id_diferente; fi ;;
-        *) STATUS=pedido_desconhecido; MOTIVO=valor_fora_do_vocabulario ;;
-      esac ;;
+    claude-*)
+      if [ "$PN" = "$EN" ]; then STATUS=honrado; MOTIVO=id_igual
+      else STATUS=DIVERGE; MOTIVO=id_diferente; fi ;;
+    *) STATUS=pedido_desconhecido; MOTIVO=valor_fora_do_vocabulario ;;
   esac
   return 0
 }
 
 # Grava a linha do evento. Em falha, LOGERR recebe o motivo curto; nunca aborta o hook.
-LOGERR=""
+LOGERR=""; PBYTES=""; PSHA=""; ILL=""
 registra() {  # $1 session_id  $2 agent_id  $3 agent_type
-  local linha err rc reason
+  local linha err rc reason rot=flock
   LOGERR=""
+  command -v flock >/dev/null 2>&1 || rot=sem_flock
   linha="$(jq -nac --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sid "$1" --arg aid "$2" --arg at "$3" \
     --arg pm "$PEDIDO" --arg pe "$PEDIDO_EFFORT" --arg po "$ORIGEM" --arg pk "$PICKED" \
-    --arg em "$EFETIVO" --arg st "$STATUS" --arg mo "$MOTIVO" '
-    {ts: $ts, session_id: $sid, agent_id: $aid, agent_type: $at, pedido_model: $pm,
-     pedido_effort: $pe, pedido_origem: $po, picked_effort_model: $pk, efetivo_model: $em,
-     status: $st, motivo: $mo}' 2>/dev/null)" || { LOGERR=jq_falhou; return 0; }
+    --arg em "$EFETIVO" --arg st "$STATUS" --arg mo "$MOTIVO" --arg rot "$rot" \
+    --arg pb "$PBYTES" --arg ph "$PSHA" '
+    {ts: $ts, session_id: $sid, agent_id: $aid, agent_type: $at, pedido_model: $pm[0:128],
+     pedido_effort: $pe, pedido_origem: $po, picked_effort_model: $pk, efetivo_model: $em[0:128],
+     status: $st, motivo: $mo, rotacao: $rot}
+    + (if $pb == "" then {} else {payload_bytes: ($pb | tonumber), payload_sha12: $ph} end)' 2>/dev/null)" \
+    || { LOGERR=jq_falhou; return 0; }
   err="$(
     ( umask 077
       mkdir -p "$(dirname "$LOG")" || exit 1
@@ -193,7 +239,11 @@ registra() {  # $1 session_id  $2 agent_id  $3 agent_type
         exec 9>>"$LOG.lock" || exit 1
         if flock -w 5 9; then
           SZ=$(stat -c%s "$LOG" 2>/dev/null || echo 0)
-          [ "$SZ" -gt 2097152 ] && mv -f "$LOG" "$LOG.1"
+          if [ "$SZ" -gt 2097152 ]; then
+            [ -e "$LOG.2" ] && mv -f "$LOG.2" "$LOG.3"
+            [ -e "$LOG.1" ] && mv -f "$LOG.1" "$LOG.2"
+            mv -f "$LOG" "$LOG.1"
+          fi
         fi
       fi
       printf '%s\n' "$linha" >> "$LOG" ) 2>&1
@@ -205,25 +255,35 @@ registra() {  # $1 session_id  $2 agent_id  $3 agent_type
   return 0
 }
 
-if [ "$MODO" = scan ]; then
-  shift
-  DIR=""; SINCE=""
+emite() {
+  if [ "$STATUS" = DIVERGE ] || [ -n "$LOGERR" ] || [ -n "$ILL" ]; then
+    jq -nac --arg st "$STATUS" --arg p "$PEDIDO" --arg e "$EFETIVO" --arg t "${AT:-desconhecido}" \
+      --arg i "$AID" --arg le "$LOGERR" --arg ill "$ILL" '
+      [ (if $st == "DIVERGE"
+         then "model-honor: pedido \($p[0:40]), rodou \($e[0:40]) (agente \($t[0:40]) \($i[0:40]))"
+         else empty end),
+        (if $ill != "" then "model-honor: \($ill); evento nao julgado" else empty end),
+        (if $le != "" then "model-honor: nao consegui gravar o log (\($le[0:80]))" else empty end) ]
+      | join(" | ") | {systemMessage: .[0:300]}' 2>/dev/null
+  fi
+}
+
+scan_main() {
+  local DIR="" SINCE="" SINCE_EP="" ACHADOS=0 TOTAL=0 DIVS="" FERR ST M MT MP K S N
+  declare -A CNT=() PAR=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --since) [ "$#" -ge 2 ] || { echo "model-honor: --since exige valor" >&2; exit 2; }; SINCE="$2"; shift 2 ;;
-      -*) echo "model-honor: opcao desconhecida: $1" >&2; exit 2 ;;
-      *) [ -z "$DIR" ] || { echo "model-honor: diretorio repetido" >&2; exit 2; }; DIR="$1"; shift ;;
+      --since) [ "$#" -ge 2 ] || { echo "model-honor: --since exige valor" >&2; return 2; }; SINCE="$2"; shift 2 ;;
+      -*) echo "model-honor: opcao desconhecida: $1" >&2; return 2 ;;
+      *) [ -z "$DIR" ] || { echo "model-honor: diretorio repetido" >&2; return 2; }; DIR="$1"; shift ;;
     esac
   done
-  [ -n "$DIR" ] && [ -d "$DIR" ] || { echo "uso: model-honor.sh --scan <projects_dir> [--since <ISO8601>] (diretorio inexistente ou ausente)" >&2; exit 2; }
-  [ "$(jq -n '1 + 1' 2>/dev/null)" = 2 ] || { echo "model-honor: jq nao funciona neste ambiente" >&2; exit 2; }
-  SINCE_EP=""
+  [ -n "$DIR" ] && [ -d "$DIR" ] || { echo "uso: model-honor.sh --scan <projects_dir> [--since <ISO8601>] (diretorio inexistente ou ausente)" >&2; return 2; }
   if [ -n "$SINCE" ]; then
-    SINCE_EP="$(date -d "$SINCE" +%s 2>/dev/null)" || { echo "model-honor: --since invalido: $SINCE" >&2; exit 2; }
+    SINCE_EP="$(date -d "$SINCE" +%s 2>/dev/null)" || { echo "model-honor: --since invalido: $SINCE" >&2; return 2; }
   fi
   add_root "$DIR"
-  declare -A CNT PAR
-  DIVS=""; TOTAL=0; ACHADOS=0
+  FERR="$(mktemp 2>/dev/null)" || FERR=/dev/null
   while IFS= read -r -d '' M; do
     ACHADOS=$((ACHADOS + 1))
     if [ -n "$SINCE_EP" ]; then
@@ -232,32 +292,73 @@ if [ "$MODO" = scan ]; then
     fi
     julga "${M%.meta.json}.jsonl"
     TOTAL=$((TOTAL + 1))
-    CNT[$STATUS]=$(( ${CNT[$STATUS]:-0} + 1 ))
-    K="${PEDIDO:-?}->${EFETIVO:-?}"
+    ST="$STATUS"
+    if [ "$STATUS" = indeterminado ]; then
+      case "$MOTIVO" in
+        meta_ilegivel|sem_linha_assistant) controle_filtros || ST=jq_erro ;;
+        arquivo_ilegivel) ST=ilegivel ;;
+      esac
+    fi
+    CNT[$ST]=$(( ${CNT[$ST]:-0} + 1 ))
+    K="$(limpa "${PEDIDO:-?}")->$(limpa "${EFETIVO:-?}")"
     PAR[$K]=$(( ${PAR[$K]:-0} + 1 ))
-    MP="${M//[$'\t\n\r']/ }"
-    [ "$STATUS" = DIVERGE ] && DIVS="$DIVS$(printf 'diverge\t%s\t%s\t%s' "$MP" "$PEDIDO" "$EFETIVO")"$'\n'
-  done < <(find "$DIR" -mindepth 4 -maxdepth 4 \( -type f -o -type l \) -path '*/subagents/agent-*.meta.json' -print0 2>/dev/null)
-  if [ "$ACHADOS" -eq 0 ]; then
+    MP="$(limpa "$M")"
+    [ "$STATUS" = DIVERGE ] && DIVS="$DIVS$(printf 'diverge\t%s\t%s\t%s' "$MP" "$(limpa "$PEDIDO")" "$(limpa "$EFETIVO")")"$'\n'
+  done < <(find "$DIR" -mindepth 4 -maxdepth 4 \( -type f -o -type l \) -path '*/subagents/agent-*.meta.json' -print0 2>"$FERR")
+  if [ -s "$FERR" ]; then
+    N="$(wc -l < "$FERR" | tr -d ' ')"
+    CNT[ilegivel]=$(( ${CNT[ilegivel]:-0} + N ))
+  fi
+  [ "$FERR" = /dev/null ] || rm -f "$FERR"
+  if [ "$ACHADOS" -eq 0 ] && [ "${CNT[ilegivel]:-0}" -eq 0 ]; then
     echo "model-honor: nenhum agent-*.meta.json sob $DIR (esperado */*/subagents/); varredura sem objeto" >&2
-    exit 2
+    return 2
   fi
   printf 'total\t%s\n' "$TOTAL"
-  for S in DIVERGE honrado sem_pedido pedido_desconhecido indeterminado; do
+  for S in DIVERGE honrado sem_pedido pedido_desconhecido indeterminado jq_erro ilegivel; do
     [ "${CNT[$S]:-0}" -gt 0 ] && printf 'status\t%s\t%s\n' "$S" "${CNT[$S]}"
   done
-  if [ "${#PAR[@]}" -gt 0 ]; then
+  if [ "$TOTAL" -gt 0 ]; then
     while IFS= read -r K; do printf 'par\t%s\t%s\n' "$K" "${PAR[$K]}"; done < <(printf '%s\n' "${!PAR[@]}" | LC_ALL=C sort)
   fi
   [ -n "$DIVS" ] && printf '%s' "$DIVS"
-  [ "${CNT[DIVERGE]:-0}" -gt 0 ] && exit 1
-  exit 0
+  if [ "${CNT[jq_erro]:-0}" -gt 0 ] || [ "${CNT[ilegivel]:-0}" -gt 0 ]; then
+    echo "model-honor: varredura incompleta (jq_erro=${CNT[jq_erro]:-0}, ilegivel=${CNT[ilegivel]:-0}); o resultado nao vale" >&2
+    return 2
+  fi
+  [ "${CNT[DIVERGE]:-0}" -gt 0 ] && return 1
+  return 0
+}
+
+if [ "$MODO" = scan ]; then
+  shift
+  scan_main "$@"
+  exit $?
 fi
 
 # ---- modo hook: nunca bloqueia ----
 trap 'exit 0' EXIT
 IN="$(cat 2>/dev/null || true)"
-printf '%s' "$IN" | jq -e 'type == "object"' >/dev/null 2>&1 || exit 0
+TIPO="$(printf '%s' "$IN" | jq -r 'type' 2>/dev/null)"; RCJ=$?
+if [ "$RCJ" -ne 0 ] && command -v perl >/dev/null 2>&1; then
+  # Surrogate solitario (`\ud83d` sem par) e rejeitado pelo jq. Troca por U+FFFD, tratando `\\`
+  # (barra escapada) como texto: `\\ud83d` nao e escape.
+  IN2="$(printf '%s' "$IN" | perl -0pe 's{(\\\\)|\\u([dD][89abAB][0-9a-fA-F]{2})\\u([dD][c-fC-F][0-9a-fA-F]{2})|\\u([dD][89a-fA-F][0-9a-fA-F]{2})}{ defined $1 ? $1 : defined $2 ? "\\u$2\\u$3" : "\\ufffd" }ge' 2>/dev/null)"
+  TIPO="$(printf '%s' "$IN2" | jq -r 'type' 2>/dev/null)"; RCJ=$?
+  [ "$RCJ" -eq 0 ] && IN="$IN2"
+fi
+if [ "$RCJ" -ne 0 ]; then
+  # Payload nao vazio que nenhuma camada consegue ler: registra so tamanho e hash, nunca conteudo.
+  PBYTES="$(printf '%s' "$IN" | wc -c | tr -d ' ')"
+  PSHA="$(printf '%s' "$IN" | sha256sum 2>/dev/null | cut -c1-12)"
+  PEDIDO=""; PEDIDO_EFFORT=""; PICKED=""; ORIGEM=ausente; EFETIVO=""; STATUS=indeterminado
+  MOTIVO=payload_ilegivel; AT=""; AID=""
+  registra "" "" ""
+  ILL="payload ilegivel (${PBYTES} bytes, sha256 ${PSHA})"
+  emite
+  exit 0
+fi
+[ "$TIPO" = object ] || exit 0
 mapfile -t PF < <(printf '%s' "$IN" | jq -r '
   def c($n): strings | gsub("[[:cntrl:]]"; "") | .[0:$n];
   ((.session_id | c(256)) // ""), ((.agent_id | c(256)) // ""),
@@ -275,14 +376,5 @@ fi
 julga "$ATP"
 AT="${AT:-$META_TYPE}"
 registra "$SID" "$AID" "$AT"
-
-if [ "$STATUS" = DIVERGE ] || [ -n "$LOGERR" ]; then
-  jq -nac --arg st "$STATUS" --arg p "$PEDIDO" --arg e "$EFETIVO" --arg t "${AT:-desconhecido}" \
-    --arg i "$AID" --arg le "$LOGERR" '
-    [ (if $st == "DIVERGE"
-       then "model-honor: pedido \($p[0:40]), rodou \($e[0:40]) (agente \($t[0:40]) \($i[0:40]))"
-       else empty end),
-      (if $le != "" then "model-honor: nao consegui gravar o log (\($le[0:80]))" else empty end) ]
-    | join(" | ") | {systemMessage: .[0:300]}' 2>/dev/null
-fi
+emite
 exit 0

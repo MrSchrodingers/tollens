@@ -1,0 +1,19 @@
+{
+  "agent_id": "a1dd83add5b28f273",
+  "agent_type": "refutador",
+  "background_tasks": [],
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "SubagentStop",
+  "last_assistant_message": "",
+  "permission_mode": "bypassPermissions",
+  "session_crons": [],
+  "session_id": "8a561ed7-e77f-4084-ba84-7677bb7a6acd",
+  "stop_hook_active": false,
+  "agent_transcript_path": "@RAIZ@/-proj/8a561ed7-e77f-4084-ba84-7677bb7a6acd/subagents/agent-a1dd83add5b28f273.jsonl",
+  "transcript_path": "@RAIZ@/pai/sessao.jsonl",
+  "cwd": "",
+  "prompt_id": "",
+  "scratchpad_dir": ""
+}
