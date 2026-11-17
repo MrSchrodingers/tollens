@@ -17,6 +17,12 @@ vivos="$(grep ' rc=0' "$tmp/resultado.txt" | awk '{print $1}' | sort)"
 mortos="$(grep -vc ' rc=0' "$tmp/resultado.txt")"
 inesperados=""
 for v in $vivos; do grep -qx "$v" "$tmp/equivalentes.txt" || inesperados="$inesperados $v"; done
+# Uma linha por mutante: nome, morto/vivo e os casos da suite que o mataram.
+while read -r nome rc casos; do
+  estado=morto; [ "$rc" = "rc=0" ] && estado=vivo
+  eq=""; grep -qx "$nome" "$tmp/equivalentes.txt" && eq=" EQUIVALENTE"
+  echo "MUTANTE $nome $estado casos=${casos:--}$eq"
+done < <(sort "$tmp/resultado.txt")
 echo "MORTOS=$mortos DE=$total"
 echo "VIVOS: $(echo $vivos)"
 echo "EQUIVALENTES DECLARADOS: $(tr '\n' ' ' < "$tmp/equivalentes.txt")"

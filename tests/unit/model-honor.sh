@@ -21,6 +21,8 @@
 #              quebrado.
 #  I-VISIVEL   nada some mudo: jq que falha nos filtros, stdin com varios objetos, --since vazio,
 #              symlink de projeto no scan (valido, quebrado ou em laco).
+#              Tambem: jq que falha so na extracao, primeiro valor do stdin que nao e objeto,
+#              filtro do transcript quebrado no scan e symlink que escapa das raizes no scan.
 #  I-REAL      o hook aceita a forma REAL do evento (chaves e `effort` objeto, ADR 0015 regra 1).
 #
 # Fixtures SINTETICAS e SEM conteudo: o transcript traz so {"type":"assistant","message":{"model":..}}.
@@ -496,9 +498,47 @@ echo "== 37. --since vazio e erro de uso =="
 E37="$("$BASH_BIN" "$HOOK" --scan "$S1" --since "" 2>&1 >/dev/null)"; RC37=$?
 chk "37 --since vazio: exit 2 com stderr" "$RC37/$([ -n "$E37" ] && echo stderr || echo mudo)" "2/stderr"
 
+echo "== 38. --scan: symlink em subagents ou no meta que cai fora das raizes sai 2; dentro, segue =="
+S38="$T/scan38"
+mk "$T/f38/fora/subagents" x "$(meta opus)" claude-sonnet-5-5
+mkdir -p "$S38/a/p/s"; ln -sfn "$T/f38/fora/subagents" "$S38/a/p/s/subagents"
+mk "$T/f38/m" y "$(meta opus)" claude-sonnet-5-5
+mkdir -p "$S38/b/p/s/subagents"; cp "$T/f38/m/agent-y.jsonl" "$S38/b/p/s/subagents/agent-y.jsonl"
+ln -sfn "$T/f38/m/agent-y.meta.json" "$S38/b/p/s/subagents/agent-y.meta.json"
+mk "$S38/c/q/s/subagents" z "$(meta opus)" claude-opus-5-5; mkdir -p "$S38/c/p/s"; ln -sfn "$S38/c/q/s/subagents" "$S38/c/p/s/subagents"
+R38=""
+for alvo in "$S38/a" "$S38/b" "$S38/c"; do
+  "$BASH_BIN" "$HOOK" --scan "$alvo" >/dev/null 2>&1; R38="$R38 $?"
+done
+chk "38 subagents e meta symlink para fora: exit 2; subagents symlink para dentro: exit 0" "$R38" " 2 2 0"
+
+echo "== 39. jq que falha so no programa de extracao do payload: o hook avisa =="
+printf '#!/bin/sh\ncase "$*" in *"def c("*) exit 3;; esac\nexec %s "$@"\n' "$(command -v jq)" > "$T/fakebin2/jq39"; chmod +x "$T/fakebin2/jq39"
+mkdir -p "$T/fakebin3"; cp "$T/fakebin2/jq39" "$T/fakebin3/jq"
+: > "$LOG"
+O39="$(env PATH="$T/fakebin3:$PATH" "$BASH_BIN" "$HOOK" 2>/dev/null <<<"$(payload "$PROJ/agent-c1.jsonl")")"; RC39=$?
+chk "39 exit 0, linha indeterminado/jq_extracao_falhou e systemMessage" \
+  "$RC39/$(campo .motivo)/$(printf '%s' "$O39" | jq -r '.systemMessage|test("extracao")' 2>/dev/null)" "0/jq_extracao_falhou/true"
+
+echo "== 40. primeiro valor do stdin que nao e objeto util: julga o primeiro objeto com caminho =="
+D40="$(payload "$PROJ/agent-c1.jsonl")"
+R40=""
+run "{}$D40"; R40="$R40 $ULT/$(campo .payload_multiplo)"
+run "1"$'\n'"$D40"; R40="$R40 $ULT/$(campo .payload_multiplo)"
+run "{}"$'\n'"1"; R40="$R40 $ULT/$(campo .motivo)/$([ -n "$OUT" ] && echo msg)"
+chk "40 {}+objeto e 1+objeto: DIVERGE com payload_multiplo; sem nenhum objeto com caminho: payload_sem_caminho e aviso" \
+  "$R40" " DIVERGE/true DIVERGE/true indeterminado/payload_sem_caminho/msg"
+
+echo "== 41. --scan com jq que falha so no filtro do transcript: jq_erro e exit 2 =="
+mkdir -p "$T/fakebin4"
+printf '#!/bin/sh\ncase "$*" in *fromjson*) exit 3;; esac\nexec %s "$@"\n' "$(command -v jq)" > "$T/fakebin4/jq"; chmod +x "$T/fakebin4/jq"
+E41="$(env PATH="$T/fakebin4:$PATH" "$BASH_BIN" "$HOOK" --scan "$S1" 2>/dev/null)"; RC41=$?
+chk "41 exit 2 e status jq_erro (e nao indeterminado com exit 0)" \
+  "$RC41/$(printf '%s\n' "$E41" | awk -F'\t' '$1=="status"&&$2=="jq_erro"{print $2}')" "2/jq_erro"
+
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"
 # Pino da propria contagem (convencao de scripts/status.sh): caso removido em silencio e vermelho.
-EXPECTED=37
+EXPECTED=41
 [ "$((P+F))" -eq "$EXPECTED" ] || { echo "CONTAGEM INESPERADA: executados=$((P+F)) esperado=$EXPECTED"; exit 1; }
 [ "$F" -eq 0 ]

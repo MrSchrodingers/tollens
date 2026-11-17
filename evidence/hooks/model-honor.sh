@@ -48,6 +48,9 @@
 # log; payload ilegivel; jq ausente ou quebrado (texto fixo, escrito sem jq). Nos demais casos,
 # nada.
 #
+# MULTIPLOS VALORES no stdin: julga o primeiro objeto com `agent_transcript_path`, registra
+# `payload_multiplo`; sem nenhum, `indeterminado/payload_sem_caminho`.
+#
 # FALHA ABERTA (I1/I6): modo hook sai sempre 0 e nunca bloqueia. Entrada vazia ou JSON que nao e
 # objeto, ou sem nenhuma identificacao: sai 0 em silencio. Com identificacao minima, registra
 # `indeterminado` com o motivo.
@@ -309,7 +312,7 @@ scan_main() {
     if [ "$STATUS" = indeterminado ]; then
       case "$MOTIVO" in
         meta_ilegivel|sem_linha_assistant) controle_filtros || ST=jq_erro ;;
-        arquivo_ilegivel) ST=ilegivel ;;
+        arquivo_ilegivel|caminho_fora_da_raiz) ST=ilegivel ;;
       esac
     fi
     CNT[$ST]=$(( ${CNT[$ST]:-0} + 1 ))
@@ -373,10 +376,19 @@ if [ "$RCJ" -ne 0 ]; then
   exit 0
 fi
 if [[ "$TIPO" == *$'\n'* ]]; then
-  # Mais de um valor JSON no stdin: julga o PRIMEIRO e registra `payload_multiplo` (nunca silencio).
-  # (o `jq` de extracao abaixo emite 4 linhas por valor; `mapfile` le so as 4 do primeiro objeto)
+  # Mais de um valor JSON no stdin: julga o primeiro OBJETO com `agent_transcript_path` (pula `{}`,
+  # numeros, arrays e strings) e registra `payload_multiplo`; sem nenhum, `payload_sem_caminho`.
   MULT=1
-  TIPO="${TIPO%%$'\n'*}"
+  SEL="$(printf '%s' "$IN" | jq -c -n 'first(inputs | objects | select((.agent_transcript_path | type) == "string"))' 2>/dev/null)"
+  if [ -z "$SEL" ]; then
+    PEDIDO=""; PEDIDO_EFFORT=""; PICKED=""; ORIGEM=ausente; EFETIVO=""; STATUS=indeterminado
+    MOTIVO=payload_sem_caminho; AT=""; AID=""
+    registra "" "" ""
+    ILL="stdin com varios valores e nenhum objeto com agent_transcript_path"
+    emite
+    exit 0
+  fi
+  IN="$SEL"; TIPO=object
 fi
 [ "$TIPO" = object ] || exit 0
 if ! controle_filtros; then
@@ -392,6 +404,15 @@ mapfile -t PF < <(printf '%s' "$IN" | jq -r '
   def c($n): strings | gsub("[[:cntrl:]]"; "") | .[0:$n];
   ((.session_id | c(256)) // ""), ((.agent_id | c(256)) // ""),
   ((.agent_type | c(256)) // ""), ((.agent_transcript_path | c(4096)) // "")' 2>/dev/null)
+if [ "${#PF[@]}" -ne 4 ]; then
+  # O programa de extracao devolve sempre 4 linhas; menos que isso e jq que falha na extracao.
+  PEDIDO=""; PEDIDO_EFFORT=""; PICKED=""; ORIGEM=ausente; EFETIVO=""; STATUS=indeterminado
+  MOTIVO=jq_extracao_falhou; AT=""; AID=""
+  registra "" "" ""
+  ILL="jq falha na extracao dos campos do payload"
+  emite
+  exit 0
+fi
 SID="${PF[0]:-}"; AID="${PF[1]:-}"; AT="${PF[2]:-}"; ATP="${PF[3]:-}"
 [ -n "$SID$AID$ATP" ] || exit 0
 

@@ -88,8 +88,12 @@ M = {
  'D4_cnt': ('CNT[ilegivel]=$(( ${CNT[ilegivel]:-0} + QUEBRADOS ))', ':'),
  'D5_since': ('if [ "$HAS_SINCE" = 1 ] && [ -z "$SINCE" ]; then', 'if false; then'),
  'D3_latest': ('[[ "$v" =~ $re_l ]] && v="${BASH_REMATCH[1]}"', ':'),
+ 'mx1_controle_efet': ("    && [ \"$(printf '%s\\n' '{\"type\":\"assistant\",\"message\":{\"model\":\"claude-x\"}}' | jq_efet)\" = claude-x ]", '    && true'),
+ 'D1b_extracao': ('if [ "${#PF[@]}" -ne 4 ]; then', 'if false; then'),
+ 'D2d_naoobjeto': ('select((.agent_transcript_path | type) == "string")', 'select(true)'),
+ 'D2e_semcaminho': ('if [ -z "$SEL" ]; then', 'if false; then'),
+ 'R3_foraraiz': ('arquivo_ilegivel|caminho_fora_da_raiz) ST=ilegivel ;;', 'arquivo_ilegivel) ST=ilegivel ;;'),
 }
-
 
 def main() -> int:
     saida = pathlib.Path(sys.argv[1])

@@ -76,8 +76,11 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   `perl`, quando existe, e, se ainda falhar, vira linha `indeterminado/payload_ilegivel` com so
   `payload_bytes` e `payload_sha12` (12 primeiros hex do sha256 do bruto), mais `systemMessage`.
   `jq` que passa a sonda e o `type` mas falha nos filtros de extracao (o mesmo controle do
-  `--scan`) vira `indeterminado/jq_filtro_falhou` mais `systemMessage`. Stdin com mais de um
-  objeto JSON: julga o primeiro e registra `payload_multiplo: true`, mais aviso.
+  `--scan`) vira `indeterminado/jq_filtro_falhou` mais `systemMessage`. `jq` que falha so no
+  programa de extracao do payload (menos de 4 campos devolvidos) vira
+  `indeterminado/jq_extracao_falhou`, mais `systemMessage`. Stdin com mais de um valor JSON: julga
+  o primeiro OBJETO com `agent_transcript_path` (pula `{}`, numeros, arrays e strings) e registra
+  `payload_multiplo: true`, mais aviso; sem nenhum objeto com caminho, `indeterminado/payload_sem_caminho`.
 - ROTACAO: a 2 MB, sob `flock` num arquivo de trava ao lado do log, com tres geracoes (`.1`,
   `.2`, `.3`); a quarta rotacao descarta a mais antiga. Sem `flock`, ou sem a trava em 5 s, grava
   sem rotacionar: nao descarta nada, mas o log cresce sem teto enquanto a rotacao nao ocorre.
@@ -100,7 +103,9 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   `jq` que falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta
   encontrado, ou arquivo, diretorio ou symlink ilegivel (contado como `ilegivel`). O argumento e
   os symlinks de projeto e de sessao sao resolvidos (`find -L`, alvo vira raiz permitida); symlink
-  quebrado ou em laco conta como `ilegivel`. `--since` vazio e erro de uso (exit 2); um `--since`
+  quebrado ou em laco conta como `ilegivel`. Symlink em `subagents` ou no `.meta.json` e resolvido
+  por `realpath`: dentro das raizes permitidas, segue; fora delas (ou quando o nome resolvido nao
+  casa `*/subagents/agent-*.jsonl`), conta como `ilegivel` e o exit e 2. `--since` vazio e erro de uso (exit 2); um `--since`
   que exclui tudo nao e erro (total 0, exit 0). O bloco termina com `exit` explicito e nunca le
   stdin. Permite medir o passivo historico sem depender de o hook ter estado ativo.
 
@@ -148,6 +153,17 @@ j. Regra 1 do ADR 0015 (hook novo so entra com evento REAL capturado como fixtur
 k. Trava de log presa por outro processo: cada hook espera ate 5 s, grava sem rotacionar, e o log
    cresce enquanto a trava estiver presa. O timeout de 10 s do hook em `install/hooks-spec.sh`
    cobre a espera, mas um disco travado faz cada SubagentStop sequencial pagar 5 s.
+l. `-latest` e normalizado por analogia, sem fonte primaria lida. Efeito colateral conhecido, nao
+   alterado: pedido `claude-opus-latest` contra efetivo `claude-opus-4-6` DIVERGE (o alias nao
+   tem versao), e a existencia desse alias nao foi verificada. Nenhum meta real usa `-latest`: so
+   aparecem `sonnet`, `opus`, `fable`, `haiku`, `inherit` e ausente (medicao do coordenador em
+   2026-11-16, hora nao registrada; cerca de 1570 metas).
+m. Cerca de 56% dos metas reais nao trazem pedido (limite a). A solucao de fundo nao e este hook:
+   e um registro do roteador de modelos (o ledger do PRD do roteador) que grave o modelo pedido e
+   o efetivo no momento do disparo, em vez de inferi-los depois dos arquivos de transcript.
+n. Symlink dentro da arvore varrida pelo `--scan` que resolve para fora das raizes permitidas nao e
+   seguido: conta como `ilegivel` e o resultado e rejeitado (exit 2). Quem varre uma arvore com
+   symlinks para fora precisa passar cada raiz como argumento.
 
 ## Reproducao
 
@@ -170,12 +186,14 @@ crescem; cada valor abaixo traz a data e a hora em que foi obtido.
    (arquivo, nao valor efetivo do runtime). Obtido em 2026-11-16 as 18:37: `true`.
 4. Hook ausente de settings: `grep -c model-honor /etc/claude-code/managed-settings.json
    ~/.claude/settings.json`. Obtido em 2026-11-16 as 18:37: 0 nos dois.
-5. Mutantes: `bash tests/mutation/model-honor/run-all.sh` (ver o README do diretorio). Obtido em
-   2026-11-16 as 18:50: `MORTOS=68 DE=71`, vivos so os 3 equivalentes declarados, exit 0.
+5. Mutantes: `bash tests/mutation/model-honor/run-all.sh` (ver o README do diretorio; imprime uma
+   linha por mutante e o resumo). Sobre o hook de 86d3190, obtido em 2026-11-16 as 18:50:
+   `MORTOS=68 DE=71`, vivos so os 3 equivalentes declarados, exit 0. Sobre o hook atual, ver a
+   secao Verificacao.
 
 ## Verificacao
 
-`tests/unit/model-honor.sh`: 37 casos, cada um protegendo um invariante nomeado no cabecalho da
+`tests/unit/model-honor.sh`: 41 casos, cada um protegendo um invariante nomeado no cabecalho da
 suite. O controle positivo (caso 1, `opus` contra `claude-sonnet-5-5`) foi registrado como
 vermelho pelo autor na sessao de 2026-11-16, antes de o hook existir; essa observacao nao e
 reproduzivel a partir do diff.
@@ -183,10 +201,17 @@ reproduzivel a partir do diff.
 Mutantes do hook (remocao de rotacao, trava e geracoes, tetos de leitura, familia, caixa,
 normalizacao, sanitizacao, escopo e saida do scan, fronteira de `--since`, fallback ao transcript
 do pai, raiz irma, tipo do meta, saneamento de surrogate, entre outros) foram aplicados para
-conferir a suite: 68 de 71 morreram (`bash tests/mutation/model-honor/run-all.sh`, exit 0, 2026-11-16 as 18:50). Os 3 sobreviventes sao equivalentes: o `trap 'exit 0' EXIT` (todo
+conferir a suite. Sobre o hook de 2026-11-16 (commit 86d3190), `run-all.sh` deu `MORTOS=68 DE=71`
+(exit 0, 2026-11-16 as 18:50), com 3 sobreviventes equivalentes: o `trap 'exit 0' EXIT` (todo
 caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`); a guarda de raiz do
 transcript, coberta pela guarda de raiz do meta, derivado do mesmo caminho; e o teto de 300
 caracteres do `systemMessage`, que os tetos por campo (40 e 80) nao deixam atingir na pratica.
+Sobre o hook atual, os 5 mutantes acrescentados (`mx1_controle_efet`, `D1b_extracao`,
+`D2d_naoobjeto`, `D2e_semcaminho`, `R3_foraraiz`) morreram nos casos 41, 39, 40, 40 e 38
+(2026-11-17 as 11:08). A reexecucao completa dos 76 mutantes sobre o hook atual NAO foi concluida
+(estourou 1500 s por carga da maquina, load average de 41 a 110): NAO VERIFICADO.
+Rotacao sob 150 hooks concorrentes com tres geracoes pre-existentes (2026-11-17 as 11:09):
+150 de 150 eventos distintos preservados e marcas A, B e C em `.1`, `.2` e `.3`.
 
 ## Referencias
 
