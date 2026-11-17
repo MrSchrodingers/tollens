@@ -66,7 +66,9 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   reais so aparecem os pedidos `sonnet`, `opus`, `fable`, `haiku`, `inherit` e ausente. `inherit`, vazio, null ou ausente:
   `sem_pedido`. Tipo errado (numero, array, objeto, booleano) ou valor fora do vocabulario:
   `pedido_desconhecido`. Transcript ou meta ausente ou ilegivel, sem linha assistant, caminho fora
-  da raiz, ID longo ou payload ilegivel: `indeterminado`. Divergencia: `DIVERGE`.
+  da raiz, ID longo, payload ilegivel ou efetivo sem prefixo `claude-` apos a normalizacao (ARN
+  Bedrock, ID sem prefixo, outro fornecedor: `efetivo_nao_reconhecido`): `indeterminado`.
+  Divergencia: `DIVERGE`.
 - SAIDA: uma linha JSONL por evento em `${MODEL_HONOR_LOG:-~/.claude/logs/model-honor.jsonl}`,
   modo 0600, ASCII puro (U+2028 e U+2029 escapados), somente identificadores, nomes de modelo e
   motivo curto, com `pedido_origem` (`meta` ou `ausente`) e `rotacao` (`flock` ou `sem_flock`).
@@ -84,10 +86,13 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
 - ROTACAO: a 2 MB, sob `flock` num arquivo de trava ao lado do log, com tres geracoes (`.1`,
   `.2`, `.3`); a quarta rotacao descarta a mais antiga. Sem `flock`, ou sem a trava em 5 s, grava
   sem rotacionar: nao descarta nada, mas o log cresce sem teto enquanto a rotacao nao ocorre.
-- STDOUT: um unico `systemMessage` de no maximo 300 caracteres em quatro casos: DIVERGE; falha
-  ao gravar o log (`model-honor: nao consegui gravar o log (<motivo>)`); payload ilegivel; `jq`
-  ausente ou quebrado (texto fixo, escrito sem `jq`, para o desligamento do detector deixar
-  rastro). Nos demais casos, nada.
+- STDOUT: um unico `systemMessage` de no maximo 300 caracteres nestes casos: DIVERGE; falha ao
+  gravar o log; payload ilegivel; payload com varios valores (`payload_multiplo`); payload sem
+  objeto com caminho (`payload_sem_caminho`); `jq` que falha nos filtros (`jq_filtro_falhou`) ou
+  na extracao (`jq_extracao_falhou`); caminho fora da raiz (`caminho_fora_da_raiz`, tentativa de
+  escape); `jq` ausente ou quebrado (texto fixo, escrito sem `jq`, para o desligamento do detector
+  deixar rastro). Nos demais casos, nada: os outros `indeterminado` (meta ou transcript ausente
+  ou ilegivel, sem linha assistant, ID longo, efetivo nao reconhecido) so vao ao log.
 - FALHA ABERTA: o modo hook sai sempre com 0 e nunca bloqueia. A decisao de bloquear um
   subagente por modelo divergente nao e desta fatia; o hook so torna a divergencia observavel.
 - CAMINHO HOSTIL: o caminho do payload e resolvido com `realpath`, precisa casar
@@ -99,7 +104,11 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
 - MODO `--scan <projects_dir> [--since <ISO8601>]`: aplica a mesma funcao de julgamento a
   `*/*/subagents/agent-*.meta.json` e imprime resumo TSV (contagem por status e por par
   pedido->efetivo; controles, TAB, quebra de linha e U+2028/U+2029 em caminhos viram espaco).
-  Exit 0 sem `DIVERGE`, 1 com, 2 em erro de uso ou de instrumento: `jq` que nao funciona,
+  Exit 0 quando nada divergiu e nada ficou nao julgado; 1 com `DIVERGE`; 3 quando nada divergiu
+  mas ha `indeterminado` ou `pedido_desconhecido` (o resumo `NAO JULGADOS n de total` e a contagem
+  por motivo vao ao stderr, e linhas `motivo` ao stdout; `sem_pedido` nao conta como incompletude,
+  limite a, mas aparece no resumo); 2 em erro de uso ou de instrumento, com precedencia
+  2 > 1 > 3 > 0: `jq` que nao funciona,
   `jq` que falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta
   encontrado, ou arquivo, diretorio ou symlink ilegivel (contado como `ilegivel`). O argumento e
   os symlinks de projeto e de sessao sao resolvidos (`find -L`, alvo vira raiz permitida); symlink
@@ -150,6 +159,16 @@ j. Regra 1 do ADR 0015 (hook novo so entra com evento REAL capturado como fixtur
    cada numero tem comando na secao Reproducao e os mutantes tem script em
    `tests/mutation/model-honor/`. As fixtures de commits anteriores desta mudanca continham os
    identificadores reais no historico do git; este commit os remove da arvore, nao do historico.
+o. Caminho relativo em `agent_transcript_path` e resolvido contra o cwd do processo do hook, que
+   o runtime define; o caminho resultante ainda passa pela guarda de raiz, entao um relativo que
+   cai fora das raizes vira `caminho_fora_da_raiz`, mas o que um relativo valido significa depende
+   do cwd (nao medido).
+p. O mutante `G4_trap` (remover o `trap 'exit 0' EXIT`) sobrevive. A razao e por construcao (todo
+   caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`), mas nenhuma entrada que
+   provoque erro interno foi encontrada para provar a equivalencia: NAO VERIFICADO.
+q. Os achados m3 e m4 da quinta revisao independente foram entregues a esta mudanca so como
+   "limites a registrar", sem o texto do achado; nao ha o que descrever aqui sem inventar: NAO
+   VERIFICADO.
 k. Trava de log presa por outro processo: cada hook espera ate 5 s, grava sem rotacionar, e o log
    cresce enquanto a trava estiver presa. O timeout de 10 s do hook em `install/hooks-spec.sh`
    cobre a espera, mas um disco travado faz cada SubagentStop sequencial pagar 5 s.
@@ -170,13 +189,17 @@ n. Symlink dentro da arvore varrida pelo `--scan` que resolve para fora das raiz
 Comandos que reproduzem cada numero citado. O corpus e os logs sao vivos: os totais absolutos
 crescem; cada valor abaixo traz a data e a hora em que foi obtido.
 
-1. Divergencia (`--scan`, exit 1 quando ha `DIVERGE`):
+1. Divergencia (`--scan`: exit 1 quando ha `DIVERGE`, 3 quando nada divergiu mas ha nao julgados,
+   0 quando tudo foi julgado e nada divergiu):
    `bash evidence/hooks/model-honor.sh --scan ~/.claude/projects`
    Esperado: linhas `status` com `DIVERGE` (54 em 2026-11-16, hora nao registrada), `honrado`,
    `sem_pedido` (cerca de 56% do total), `indeterminado` (3), e linhas `par` com
    `opus->claude-sonnet-5-5` (48) e `fable->claude-sonnet-5-5` (6). Com
    `--since 2026-11-13T05:00:00Z`: 48 DIVERGE `opus->claude-sonnet-5-5` e 19
    `opus->claude-opus-5-5` honrados (coordenacao, 2026-11-16, hora nao registrada).
+   Medido com este hook em 2026-11-17 as 14:19, `--since 2026-11-13T05:00:00Z`: exit 1, `total` 239,
+   `DIVERGE` 48, `honrado` 77, `sem_pedido` 114 (O corpus e vivo; o valor de DIVERGE e o que se
+   compara).
 2. Eventos da sonda, com delimitador NAO branco (`IFS` de tab ou espaco colapsa campo vazio e ja
    produziu uma contagem errada, tratando o `agent_type` vazio como ausente):
    `cat ~/.claude/logs/subagent-probe.jsonl.1 ~/.claude/logs/subagent-probe.jsonl | jq -r 'select(.hook_event_name=="SubagentStop") | "\(.agent_type // "")|\(.agent_transcript_path // "")"' | while IFS='|' read -r t p; do [ -n "$t" ] && k=tipo || k=tipo_vazio; [ -e "$p" ] && e=com_transcript || e=sem_transcript; echo "$k $e"; done | sort | uniq -c`
@@ -193,7 +216,7 @@ crescem; cada valor abaixo traz a data e a hora em que foi obtido.
 
 ## Verificacao
 
-`tests/unit/model-honor.sh`: 41 casos, cada um protegendo um invariante nomeado no cabecalho da
+`tests/unit/model-honor.sh`: 45 casos, cada um protegendo um invariante nomeado no cabecalho da
 suite. O controle positivo (caso 1, `opus` contra `claude-sonnet-5-5`) foi registrado como
 vermelho pelo autor na sessao de 2026-11-16, antes de o hook existir; essa observacao nao e
 reproduzivel a partir do diff.
@@ -206,10 +229,13 @@ conferir a suite. Sobre o hook de 2026-11-16 (commit 86d3190), `run-all.sh` deu 
 caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`); a guarda de raiz do
 transcript, coberta pela guarda de raiz do meta, derivado do mesmo caminho; e o teto de 300
 caracteres do `systemMessage`, que os tetos por campo (40 e 80) nao deixam atingir na pratica.
-Sobre o hook atual, os 5 mutantes acrescentados (`mx1_controle_efet`, `D1b_extracao`,
+Sobre o hook de a98eb3f, os 5 mutantes acrescentados (`mx1_controle_efet`, `D1b_extracao`,
 `D2d_naoobjeto`, `D2e_semcaminho`, `R3_foraraiz`) morreram nos casos 41, 39, 40, 40 e 38
-(2026-11-17 as 11:08). A reexecucao completa dos 76 mutantes sobre o hook atual NAO foi concluida
-(estourou 1500 s por carga da maquina, load average de 41 a 110): NAO VERIFICADO.
+(2026-11-17 as 11:08). O gerador passou a produzir 81 mutantes (acrescentados `M5_id`,
+`M1_exit3`, `M1_pd`, `M1_resumo`, `M2_escape`) e o executor passou a classificar `morto` so com
+caso FAIL nomeado (`inconclusivo` para rc != 0 sem caso: timeout 124, contagem inesperada,
+dependencia ausente), gravando cada linha ao terminar. A execucao completa sobre o hook atual NAO
+foi concluida (carga da maquina): NAO VERIFICADO; nao se reemite "N de 81".
 Rotacao sob 150 hooks concorrentes com tres geracoes pre-existentes (2026-11-17 as 11:09):
 150 de 150 eventos distintos preservados e marcas A, B e C em `.1`, `.2` e `.3`.
 

@@ -23,6 +23,7 @@
 #              symlink de projeto no scan (valido, quebrado ou em laco).
 #              Tambem: jq que falha so na extracao, primeiro valor do stdin que nao e objeto,
 #              filtro do transcript quebrado no scan e symlink que escapa das raizes no scan.
+#  I-INCOMPLETO o --scan nao diz "sem DIVERGE" (exit 0) quando nada foi julgado: exit 3.
 #  I-REAL      o hook aceita a forma REAL do evento (chaves e `effort` objeto, ADR 0015 regra 1).
 #
 # Fixtures SINTETICAS e SEM conteudo: o transcript traz so {"type":"assistant","message":{"model":..}}.
@@ -152,8 +153,8 @@ for cam in "$FORA/agent-abs.jsonl" \
            "$PROJ/notas.jsonl"; do
   R8="$R8 $(resumo "$cam")"
 done
-chk "8 absoluto, ../, symlink do transcript, symlink do meta, sem sufixo agent-*: indeterminado" \
-  "$R8" " 0/indeterminado/vazio 0/indeterminado/vazio 0/indeterminado/vazio 0/indeterminado/vazio 0/indeterminado/vazio"
+chk "8 absoluto, ../, symlink do transcript, symlink do meta, sem sufixo agent-*: indeterminado com aviso (tentativa de escape)" \
+  "$R8" " 0/indeterminado/saida 0/indeterminado/saida 0/indeterminado/saida 0/indeterminado/saida 0/indeterminado/saida"
 
 echo "== 9. entrada vazia ou JSON nao objeto: mudo; entrada ilegivel: registrada =="
 R9=""
@@ -451,8 +452,8 @@ H2="$T/h2"; mkdir -p "$H2/.claude/projects/p/s/subagents"; mk "$H2/.claude/proje
 printf '%s' "$(payload "$H2/.claude/projects/p/s/subagents/agent-d.jsonl")" | env -u MODEL_HONOR_LOG HOME="$H2" "$BASH_BIN" "$HOOK" >/dev/null 2>&1
 R32="$R32 $(wc -l < "$H2/.claude/logs/model-honor.jsonl" 2>/dev/null | tr -d ' ')"
 mk "$PROJ" g32 "$(meta sonnet)" gpt-sonnet-9; run "$(payload "$PROJ/agent-g32.jsonl")"; R32="$R32 $ULT"
-chk "32 raiz irma indeterminado; agent_type vem do meta; symlink do transcript indeterminado; modelo sem controle; log padrao criado; sonnet x gpt-sonnet DIVERGE" \
-  "$R32" " indeterminado general-purpose indeterminado false 1 DIVERGE"
+chk "32 raiz irma indeterminado; agent_type vem do meta; symlink do transcript indeterminado; modelo sem controle; log padrao criado; efetivo sem prefixo claude- indeterminado" \
+  "$R32" " indeterminado general-purpose indeterminado false 1 indeterminado"
 
 echo "== 33. eventos REAIS sanitizados (ADR 0015, regra 1) =="
 FX=tests/fixtures/model-honor
@@ -536,9 +537,46 @@ E41="$(env PATH="$T/fakebin4:$PATH" "$BASH_BIN" "$HOOK" --scan "$S1" 2>/dev/null
 chk "41 exit 2 e status jq_erro (e nao indeterminado com exit 0)" \
   "$RC41/$(printf '%s\n' "$E41" | awk -F'\t' '$1=="status"&&$2=="jq_erro"{print $2}')" "2/jq_erro"
 
+echo "== 42. --scan: nada julgado nao e exit 0 (exit 3), e a precedencia 2 > 1 > 3 > 0 vale =="
+nometa(){ mkdir -p "$1"; printf '%s\n' "$(meta opus)" > "$1/agent-$2.meta.json"; }
+S42="$T/scan42"
+nometa "$S42/a/p/s/subagents" n1; nometa "$S42/a/p/s/subagents" n2; nometa "$S42/a/p/s/subagents" n3
+mkdir -p "$S42/a/p/s/subagents"; echo '{' > "$S42/a/p/s/subagents/agent-n4.meta.json"
+mk "$S42/b/p/s/subagents" pd "$(meta opus-4-5)" claude-sonnet-5-5
+nometa "$S42/c/p/s/subagents" i1; mk "$S42/c/p/s/subagents" dv "$(meta opus)" claude-sonnet-5-5
+mk "$S42/d/p/s/subagents" ok "$(meta opus)" claude-opus-5-5; mk "$S42/d/p/s/subagents" sp "$(meta '')" claude-sonnet-5-5
+R42=""
+for alvo in a b c d; do
+  "$BASH_BIN" "$HOOK" --scan "$S42/$alvo" >/dev/null 2>"$T/e42"; RC42=$?
+  R42="$R42 $RC42/$(grep -c 'NAO JULGADOS' "$T/e42")"
+done
+E42="$("$BASH_BIN" "$HOOK" --scan "$S42/a" 2>&1 >/dev/null | grep -c 'NAO JULGADOS 4 de 4')"
+chk "42 100% indeterminado e pedido_desconhecido: exit 3 com resumo; com DIVERGE: 1; so honrado e sem_pedido: 0; resumo 4 de 4" \
+  "$R42 $E42" " 3/1 3/1 1/1 0/0 1"
+
+echo "== 43. efetivo sem prefixo claude- e indeterminado, nao DIVERGE =="
+R43=""
+for par in "opus|arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6" "opus|opus-4-6" "sonnet|gpt-sonnet-9" "claude-opus-4-6|opus-4-6"; do
+  mk "$PROJ" c43 "$(meta "${par%%|*}")" "${par#*|}"; run "$(payload "$PROJ/agent-c43.jsonl")"; R43="$R43 $ULT/$(campo .motivo)"
+done
+chk "43 ARN, id sem prefixo, outro fornecedor e ID completo contra id sem prefixo: indeterminado/efetivo_nao_reconhecido" \
+  "$R43" " indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido"
+
+echo "== 44. tentativa de escape de caminho avisa; indeterminado comum fica mudo =="
+run "$(payload "$FORA/agent-abs.jsonl")"; R44="$(printf '%s' "$OUT" | jq -r '.systemMessage|test("fora")' 2>/dev/null)"
+run "$(payload "$PROJ/agent-nao-existe.jsonl")"; R44="$R44 $([ -z "$OUT" ] && echo mudo)"
+chk "44 caminho_fora_da_raiz emite systemMessage; transcript_ausente nao" "$R44" "true mudo"
+
+echo "== 45. executor de mutantes: morto exige caso FAIL nomeado; rc!=0 sem caso e inconclusivo =="
+printf 'A rc=1 7,\nB rc=0 \nC rc=124 \nD rc=1 \nEQ rc=0 \n' > "$T/res45"; printf 'EQ\n' > "$T/eq45"
+O45="$("$BASH_BIN" tests/mutation/model-honor/resumo.sh "$T/res45" "$T/eq45" 2>/dev/null)"; RC45=$?
+chk "45 A morto; B vivo; C e D inconclusivos; EQ equivalente; exit 2 (inconclusivo)" \
+  "$RC45/$(printf '%s\n' "$O45" | awk '$1=="MUTANTE"{printf "%s=%s ",$2,$3} /^MORTOS=/{printf "%s",$0}')" \
+  "2/A=morto B=vivo C=inconclusivo D=inconclusivo EQ=vivo MORTOS=1 DE=5 INCONCLUSIVOS=2"
+
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"
 # Pino da propria contagem (convencao de scripts/status.sh): caso removido em silencio e vermelho.
-EXPECTED=41
+EXPECTED=45
 [ "$((P+F))" -eq "$EXPECTED" ] || { echo "CONTAGEM INESPERADA: executados=$((P+F)) esperado=$EXPECTED"; exit 1; }
 [ "$F" -eq 0 ]

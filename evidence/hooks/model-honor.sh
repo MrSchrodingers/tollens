@@ -28,7 +28,9 @@
 # de snapshot de uma mesma versao. `inherit`, vazio, null ou ausente: `sem_pedido`. Valor de tipo
 # errado (numero, array, objeto, booleano) ou fora do vocabulario: `pedido_desconhecido`.
 # `indeterminado`: meta ou transcript ausente, ilegivel, ou sem linha assistant, ou caminho fora
-# da raiz, ou ID longo, ou payload ilegivel.
+# da raiz, ou ID longo, ou payload ilegivel, ou efetivo sem prefixo `claude-` depois da
+# normalizacao (ARN, ID sem prefixo, outro fornecedor: `efetivo_nao_reconhecido`). Caminho
+# relativo no payload e resolvido contra o cwd do hook (limite, ADR 0048).
 #
 # SAIDA. Uma linha JSONL por evento em ${MODEL_HONOR_LOG:-$HOME/.claude/logs/model-honor.jsonl},
 # modo 0600, ASCII puro (U+2028/U+2029 saem escapados). Campos: ts, session_id, agent_id,
@@ -44,9 +46,13 @@
 # `flock`, ou sem obter a trava em 5 s, grava SEM rotacionar: nada e descartado, mas o log cresce
 # sem teto enquanto a rotacao nao ocorre.
 #
-# STDOUT (systemMessage, um unico JSON, no maximo 300 caracteres): DIVERGE; falha ao gravar o
-# log; payload ilegivel; jq ausente ou quebrado (texto fixo, escrito sem jq). Nos demais casos,
-# nada.
+# STDOUT (systemMessage, um unico JSON, no maximo 300 caracteres), nestes casos: DIVERGE; falha
+# ao gravar o log; payload ilegivel; payload com varios valores (`payload_multiplo`); payload sem
+# objeto com caminho (`payload_sem_caminho`); jq que falha nos filtros (`jq_filtro_falhou`) ou na
+# extracao (`jq_extracao_falhou`); caminho fora da raiz (`caminho_fora_da_raiz`, tentativa de
+# escape); jq ausente ou quebrado (texto fixo, escrito sem jq). Nos demais casos, nada: os outros
+# `indeterminado` (meta ou transcript ausente ou ilegivel, sem linha assistant, ID longo, efetivo
+# nao reconhecido) so vao ao log.
 #
 # MULTIPLOS VALORES no stdin: julga o primeiro objeto com `agent_transcript_path`, registra
 # `payload_multiplo`; sem nenhum, `indeterminado/payload_sem_caminho`.
@@ -65,7 +71,10 @@
 # diretorio) e imprime um resumo TSV (campos separados por TAB; controles, TAB, quebra de linha e
 # U+2028/U+2029 em caminhos e nomes viram espaco). Filtro --since pela data de modificacao do meta
 # (o limite entra).
-# Exit 0 sem DIVERGE, 1 com DIVERGE, 2 erro de uso ou de instrumento: jq que nao funciona ou que
+# Exit 0 quando nada divergiu e nada ficou nao julgado; 1 com DIVERGE; 3 quando NADA divergiu mas
+# houve `indeterminado` ou `pedido_desconhecido` (o resumo `NAO JULGADOS n de total` e a contagem
+# por motivo vao ao stderr; `sem_pedido` nao conta como incompletude, so aparece no resumo);
+# 2 erro de uso ou de instrumento (precedencia 2 > 1 > 3 > 0): jq que nao funciona ou que
 # falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta encontrado, ou
 # arquivo/diretorio ilegivel (contado como `ilegivel`). Um --since que exclui tudo nao e erro: o
 # total sai 0. O bloco --scan termina com `exit` explicito e nunca le stdin.
@@ -211,10 +220,12 @@ julga() {
   case "$PN" in
     opus|sonnet|haiku|fable)
       FAM="$(familia_de "$EN")"
-      if [[ "$EN" == claude-* && "$FAM" == "$PN" ]]; then STATUS=honrado; MOTIVO=familia_igual
+      if [[ "$EN" != claude-* ]]; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido
+      elif [ "$FAM" = "$PN" ]; then STATUS=honrado; MOTIVO=familia_igual
       else STATUS=DIVERGE; MOTIVO=familia_diferente; fi ;;
     claude-*)
-      if [ "$PN" = "$EN" ]; then STATUS=honrado; MOTIVO=id_igual
+      if [[ "$EN" != claude-* ]]; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido
+      elif [ "$PN" = "$EN" ]; then STATUS=honrado; MOTIVO=id_igual
       else STATUS=DIVERGE; MOTIVO=id_diferente; fi ;;
     *) STATUS=pedido_desconhecido; MOTIVO=valor_fora_do_vocabulario ;;
   esac
@@ -261,13 +272,14 @@ registra() {  # $1 session_id  $2 agent_id  $3 agent_type
 }
 
 emite() {
-  if [ "$STATUS" = DIVERGE ] || [ -n "$LOGERR" ] || [ -n "$ILL" ] || [ -n "$MULT" ]; then
+  if [ "$STATUS" = DIVERGE ] || [ -n "$LOGERR" ] || [ -n "$ILL" ] || [ -n "$MULT" ] || [ "$MOTIVO" = caminho_fora_da_raiz ]; then
     jq -nac --arg st "$STATUS" --arg p "$PEDIDO" --arg e "$EFETIVO" --arg t "${AT:-desconhecido}" \
-      --arg i "$AID" --arg le "$LOGERR" --arg ill "$ILL" --arg mu "$MULT" '
+      --arg i "$AID" --arg le "$LOGERR" --arg ill "$ILL" --arg mu "$MULT" --arg mo "$MOTIVO" '
       [ (if $st == "DIVERGE"
          then "model-honor: pedido \($p[0:40]), rodou \($e[0:40]) (agente \($t[0:40]) \($i[0:40]))"
          else empty end),
         (if $mu == "1" then "model-honor: payload com varios objetos JSON; julgado so o primeiro" else empty end),
+        (if $mo == "caminho_fora_da_raiz" then "model-honor: caminho do subagente fora da raiz permitida (tentativa de escape?); evento nao julgado" else empty end),
         (if $ill != "" then "model-honor: \($ill); evento nao julgado" else empty end),
         (if $le != "" then "model-honor: nao consegui gravar o log (\($le[0:80]))" else empty end) ]
       | join(" | ") | {systemMessage: .[0:300]}' 2>/dev/null
@@ -275,8 +287,8 @@ emite() {
 }
 
 scan_main() {
-  local DIR="" SINCE="" HAS_SINCE=0 SINCE_EP="" QUEBRADOS=0 d r ACHADOS=0 TOTAL=0 DIVS="" FERR ST M MT MP K S N
-  declare -A CNT=() PAR=()
+  local NJ=0 DIR="" SINCE="" HAS_SINCE=0 SINCE_EP="" QUEBRADOS=0 d r ACHADOS=0 TOTAL=0 DIVS="" FERR ST M MT MP K S N
+  declare -A CNT=() PAR=() MOT=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --since) [ "$#" -ge 2 ] || { echo "model-honor: --since exige valor" >&2; return 2; }; SINCE="$2"; HAS_SINCE=1; shift 2 ;;
@@ -316,6 +328,7 @@ scan_main() {
       esac
     fi
     CNT[$ST]=$(( ${CNT[$ST]:-0} + 1 ))
+    if [ "$ST" = indeterminado ] || [ "$ST" = pedido_desconhecido ]; then MOT[$MOTIVO]=$(( ${MOT[$MOTIVO]:-0} + 1 )); fi
     K="$(limpa "${PEDIDO:-?}")->$(limpa "${EFETIVO:-?}")"
     PAR[$K]=$(( ${PAR[$K]:-0} + 1 ))
     MP="$(limpa "$M")"
@@ -339,11 +352,22 @@ scan_main() {
     while IFS= read -r K; do printf 'par\t%s\t%s\n' "$K" "${PAR[$K]}"; done < <(printf '%s\n' "${!PAR[@]}" | LC_ALL=C sort)
   fi
   [ -n "$DIVS" ] && printf '%s' "$DIVS"
+  # Nao julgados: indeterminado e pedido_desconhecido. `sem_pedido` nao conta (limite documentado
+  # no ADR 0048), mas aparece no resumo.
+  NJ=$(( ${CNT[indeterminado]:-0} + ${CNT[pedido_desconhecido]:-0} ))
+  if [ "$NJ" -gt 0 ]; then
+    {
+      echo "model-honor: NAO JULGADOS $NJ de $TOTAL (sem_pedido ${CNT[sem_pedido]:-0}, fora da conta)"
+      for K in "${!MOT[@]}"; do printf '  motivo %s: %s\n' "$K" "${MOT[$K]}"; done | LC_ALL=C sort
+    } >&2
+    for K in "${!MOT[@]}"; do printf 'motivo\t%s\t%s\n' "$K" "${MOT[$K]}"; done | LC_ALL=C sort
+  fi
   if [ "${CNT[jq_erro]:-0}" -gt 0 ] || [ "${CNT[ilegivel]:-0}" -gt 0 ]; then
     echo "model-honor: varredura incompleta (jq_erro=${CNT[jq_erro]:-0}, ilegivel=${CNT[ilegivel]:-0}); o resultado nao vale" >&2
     return 2
   fi
   [ "${CNT[DIVERGE]:-0}" -gt 0 ] && return 1
+  [ "$NJ" -gt 0 ] && return 3
   return 0
 }
 

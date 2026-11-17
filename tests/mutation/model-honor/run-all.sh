@@ -1,30 +1,21 @@
 #!/usr/bin/env bash
-# Gera os mutantes de evidence/hooks/model-honor.sh, roda a suite contra cada um (4 em paralelo)
-# e resume. Nada e escrito na arvore: tudo vai para um diretorio temporario. Exit 0 se todo
-# mutante NAO equivalente morreu; 1 se algum sobreviveu; 2 se o instrumento falhou.
+# Gera os mutantes de evidence/hooks/model-honor.sh, roda a suite contra cada um e resume.
+# Os mutantes vao para um diretorio temporario (removido ao sair); o ARQUIVO DE RESULTADO e
+# gravado a cada mutante e NAO e removido, para sobreviver a timeout ou interrupcao (caminho
+# impresso no inicio; MODEL_HONOR_MUT_RESULTADO o define; MODEL_HONOR_MUT_PARALELO e o numero de
+# processos, padrao 2). Estados: morto (caso FAIL nomeado), vivo (rc 0), inconclusivo (rc != 0 sem
+# caso nomeado). Exit 0 se todo nao equivalente morreu e nada ficou inconclusivo; 1 se algum nao
+# equivalente sobreviveu; 2 se ha inconclusivo ou o instrumento falhou.
 # Uso: cd "$(git rev-parse --show-toplevel)" && bash tests/mutation/model-honor/run-all.sh
 set -uo pipefail
 aqui="$(cd "$(dirname "$0")" && pwd)"
 raiz="$(cd "$aqui/../../.." && pwd)"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+res="${MODEL_HONOR_MUT_RESULTADO:-${TMPDIR:-/tmp}/model-honor-mut.$$.txt}"
 python3 -I "$aqui/gen.py" "$tmp" "$raiz/evidence/hooks/model-honor.sh" || exit 2
-: > "$tmp/resultado.txt"
-ls "$tmp"/m_*.sh | xargs -P 4 -I{} bash "$aqui/um.sh" {} "$tmp/resultado.txt"
-total="$(wc -l < "$tmp/resultado.txt" | tr -d ' ')"
+: > "$res"; echo "resultado (parcial valido): $res"
+ls "$tmp"/m_*.sh | xargs -P "${MODEL_HONOR_MUT_PARALELO:-2}" -I{} bash "$aqui/um.sh" {} "$res" >/dev/null
+total="$(wc -l < "$res" | tr -d ' ')"
 esperado="$(ls "$tmp"/m_*.sh | wc -l | tr -d ' ')"
 [ "$total" -eq "$esperado" ] || { echo "instrumento: $total resultados para $esperado mutantes" >&2; exit 2; }
-vivos="$(grep ' rc=0' "$tmp/resultado.txt" | awk '{print $1}' | sort)"
-mortos="$(grep -vc ' rc=0' "$tmp/resultado.txt")"
-inesperados=""
-for v in $vivos; do grep -qx "$v" "$tmp/equivalentes.txt" || inesperados="$inesperados $v"; done
-# Uma linha por mutante: nome, morto/vivo e os casos da suite que o mataram.
-while read -r nome rc casos; do
-  estado=morto; [ "$rc" = "rc=0" ] && estado=vivo
-  eq=""; grep -qx "$nome" "$tmp/equivalentes.txt" && eq=" EQUIVALENTE"
-  echo "MUTANTE $nome $estado casos=${casos:--}$eq"
-done < <(sort "$tmp/resultado.txt")
-echo "MORTOS=$mortos DE=$total"
-echo "VIVOS: $(echo $vivos)"
-echo "EQUIVALENTES DECLARADOS: $(tr '\n' ' ' < "$tmp/equivalentes.txt")"
-[ -z "$inesperados" ] || { echo "SOBREVIVENTES NAO EQUIVALENTES:$inesperados"; exit 1; }
-exit 0
+bash "$aqui/resumo.sh" "$res" "$tmp/equivalentes.txt"
