@@ -188,7 +188,7 @@ test('J1 parseRota nunca lanca, respeita o teto de 2 KiB, classifica ausente x i
 
 test('J1 piso por papel: refutador, revisor-codigo e auditor-seguranca no minimo T3, sem caixa e sem espacos extras', () => {
   const policy = medida();
-  for (const nome of ['refutador', 'revisor-codigo', 'auditor-seguranca', 'Refutador', ' REFUTADOR\t', 'Revisor-Codigo ', 'refutador\u200b', 'refut\u0430dor', 'ref\u00adutador', '\uff52\uff45\uff46utador']) {
+  for (const nome of ['refutador', 'revisor-codigo', 'auditor-seguranca', 'Refutador', ' REFUTADOR\t', 'Revisor-Codigo ', 'refutador\u200b', 'refut\u0430dor', 'ref\u00adutador', 'plugin:refutador', 'a:b:Auditor-Seguranca', 'refut\u00e1dor', 'refuta\u0301dor', '\uff52\uff45\uff46utador']) {
     for (const campo of ['role', 'subagentType']) {
       const r = decide(comFicha(FICHA(), 'revise', { [campo]: nome }), policy);
       assert.equal(r.tier, 'T3', `${campo}=${JSON.stringify(nome)}`);
@@ -269,6 +269,9 @@ test('J1 varredura completa: palavra de risco em qualquer posicao de prompt gran
   const falsoInicio = `${'a '.repeat(32767)}xxdeployxx ${miolo(2000)}`;
   assert.equal(falsoInicio.indexOf('deploy'), 65536, 'a fronteira cai exatamente antes de deploy, no meio do trecho xxdeployxx');
   assert.ok(!T(falsoInicio).reasons.includes('piso_superficie_de_risco'), 'xxdeploy atravessando a janela nao e palavra de risco');
+  const falsoAcentuado = `${'a '.repeat(32766)}\u00e7deployx ${miolo(2000)}`;
+  assert.equal(falsoAcentuado.indexOf('deploy'), 65533, 'deploy comeca 3 antes da fronteira, depois de uma letra acentuada');
+  assert.ok(!T(falsoAcentuado).reasons.includes('piso_superficie_de_risco'), 'letra acentuada antes de deploy: a janela recua ate o inicio do trecho');
   const partida = `${'a '.repeat(32766)}deploy ${miolo(2000)}`;
   assert.ok(partida.indexOf('deploy') < 65536 && partida.indexOf('deploy') + 6 > 65536, 'deploy atravessa a fronteira');
   assert.ok(T(partida).reasons.includes('piso_superficie_de_risco'), 'deploy atravessando a janela eleva');
@@ -316,6 +319,8 @@ test('J1 linearidade: o custo cresce por razao, sem limite absoluto de tempo', (
     assert.ok(razao < 40, `${nome}: 1 MiB sobre 128 KiB = ${razao.toFixed(1)} (linear ~8; quadratico ~64)`);
   }
   const um = mediana(padroes.comum(1024 * KIB));
+  const fdfa = mediana('\ufdfa'.repeat(1024 * KIB));
+  assert.ok(fdfa / Math.max(um, 0.05) < 40, `U+FDFA (NFKC expande 18x) sobre texto comum de mesmo tamanho = ${(fdfa / um).toFixed(1)}`);
   const dez = mediana(padroes.comum(10 * 1024 * KIB));
   assert.ok(dez / Math.max(um, 0.05) < 30, `10 MiB sobre 1 MiB = ${(dez / um).toFixed(1)}: a varredura para no teto`);
 });
@@ -428,6 +433,19 @@ test('J3 politica e entrada sao copiadas para dado puro e validadas na copia: ge
   let lidas = 0;
   const proxy = new Proxy(alvo, { get(t, k, r) { return k === 'mode' ? (lidas++ === 0 ? 'shadow' : 'enforce') : Reflect.get(t, k, r); } });
   assert.deepEqual(decide(comFicha(FICHA()), proxy), decide(comFicha(FICHA()), alvo), 'Proxy: decide sobre a copia, sem intervalo entre validar e usar');
+  const lanca = new Proxy({}, { ownKeys() { throw new Error('boom'); } });
+  const revogado = Proxy.revocable({}, {});
+  revogado.revoke();
+  for (const [nome, alvoRuim] of [['Proxy que lanca', lanca], ['Proxy revogado', revogado.proxy]]) {
+    let x;
+    assert.doesNotThrow(() => { x = decide(comFicha(FICHA()), alvoRuim); }, `${nome} como politica`);
+    sem(x, 'politica_invalida');
+    assert.doesNotThrow(() => assert.equal(validatePolicy(alvoRuim, { now: NOW }).ok, false), `${nome} em validatePolicy`);
+    assert.doesNotThrow(() => { x = decide(comFicha(FICHA(), 'x', { history: alvoRuim }), medida()); }, `${nome} no historico`);
+    sem(x, 'entrada_invalida');
+    assert.doesNotThrow(() => { x = decide(alvoRuim, medida()); }, `${nome} como entrada`);
+    sem(x, 'entrada_invalida');
+  }
   const ruins = [
     ['funcao no campo', (p) => { p.version = () => 'x'; }],
     ['simbolo', (p) => { p.version = Symbol('x'); }],
@@ -458,6 +476,9 @@ test('J3 politica e entrada sao copiadas para dado puro e validadas na copia: ge
     assert.doesNotThrow(() => { x = decide(monta(), medida()); }, nome);
     sem(x, 'entrada_invalida');
   }
+  let dag = { folha: 1 };
+  for (let i = 0; i < 14; i++) dag = { a: dag, b: dag, c: dag };
+  sem(decide(comFicha(FICHA(), 'x', { history: dag }), medida()), 'entrada_invalida'); // 3^14 visitas como arvore: o contador de nos recusa
   const json = JSON.parse('{"prompt":"tarefa","__proto__":{"admin":true},"now":' + NOW + '}');
   const ok = decide(json, medida());
   assert.ok(ok.tier !== null, 'chave __proto__ de JSON e dado, nao prototipo');
@@ -469,9 +490,9 @@ test('J3 politica e entrada sao copiadas para dado puro e validadas na copia: ge
 
 test('J8 politica vencida degrada para shadow; nunca promove off; fronteira exata vence', () => {
   const p = medida((x) => { x.valid_until = '2026-11-30T00:00:00Z'; });
-  assert.deepEqual(validatePolicy(p, { now: '2026-11-29T23:59:59Z' }), { ok: true });
-  assert.deepEqual(validatePolicy(p, { now: '2026-11-30T00:00:00Z' }), { ok: true, degradaPara: 'shadow' });
-  assert.deepEqual(validatePolicy(p, { now: '2027-02-01T00:00:00Z' }), { ok: true, degradaPara: 'shadow' });
+  assert.deepEqual(validatePolicy(p, { now: Date.parse('2026-11-29T23:59:59Z') }), { ok: true });
+  assert.deepEqual(validatePolicy(p, { now: Date.parse('2026-11-30T00:00:00Z') }), { ok: true, degradaPara: 'shadow' });
+  assert.deepEqual(validatePolicy(p, { now: Date.parse('2027-02-01T00:00:00Z') }), { ok: true, degradaPara: 'shadow' });
   assert.deepEqual(validatePolicy(p, { now: Date.parse('2026-12-01T00:00:00Z') }), { ok: true, degradaPara: 'shadow' }, 'now em ms');
   assert.deepEqual(validatePolicy(p, { now: Date.parse('2026-11-20T00:00:00Z') }), { ok: true }, 'now em ms, vigente');
   assert.deepEqual(validatePolicy(p, {}), { ok: true, degradaPara: 'shadow' }, 'sem now');
@@ -486,10 +507,10 @@ test('J8 politica vencida degrada para shadow; nunca promove off; fronteira exat
   assert.equal(off.mode, 'off', 'vencida nao promove off para shadow');
 });
 
-test('J8 relogio: so ms inteiros em [1.6e12, 4.1e12] ou ISO estrito; todo o resto degrada para shadow com sem_relogio_valido', () => {
+test('J8 relogio: so ms numericos inteiros em [1.6e12, 4.1e12]; texto (inclusive ISO) e o resto degrada para shadow com sem_relogio_valido', () => {
   const p = medida();
   const ruins = [0, -5, 1700000000, '1700000000', '0', '1970-01-01T00:00:00Z', 1.5e12, 4.2e12, NaN, Infinity, {}, [], null, undefined, true,
-    new Date(NOW), NOW + 0.5, '2026-11-16', 'ontem', '2026-02-31T00:00:00Z', '2026-11-16T24:00:00Z', '2026-11-16 00:00:00Z', '2026-11-16T00:00:00+00:00', '2026-11-16T00:00:00.1234Z'];
+    new Date(NOW), NOW + 0.5, '2026-11-16', 'ontem', '2026-11-16T00:00:00Z', '2026-11-16T00:00:00.000Z', '2026-11-16T00:00:00.5Z', '2026-02-31T00:00:00Z', '2026-11-16T24:00:00Z', '2026-11-16 00:00:00Z', '2026-11-16T00:00:00+00:00', '2026-11-16T00:00:00.1234Z'];
   for (const now of ruins) {
     assert.deepEqual(validatePolicy(p, { now }), { ok: true, degradaPara: 'shadow' }, `now=${String(now)}`);
     if (now instanceof Date) {
@@ -501,8 +522,8 @@ test('J8 relogio: so ms inteiros em [1.6e12, 4.1e12] ou ISO estrito; todo o rest
     assert.equal(x.mode, 'shadow', `now=${String(now)}`);
     assert.ok(x.reasons.includes('sem_relogio_valido'), `now=${String(now)}`);
   }
-  for (const now of [NOW, 1.6e12, 4.1e12 - 1, '2026-11-16T00:00:00Z', '2026-11-16T00:00:00.000Z', '2026-11-16T00:00:00.5Z']) {
-    const ms = typeof now === 'number' ? now : Date.parse(now);
+  for (const now of [NOW, 1.6e12, 4.1e12 - 1]) {
+    const ms = now;
     const vigente = medida((x) => { x.valid_until = `${new Date(ms + 30 * DIA).toISOString().slice(0, 19)}Z`; });
     assert.deepEqual(validatePolicy(vigente, { now }), { ok: true }, `now=${String(now)}`);
   }
@@ -616,6 +637,7 @@ test('J8 politica ausente ou invalida: validatePolicy ok:false e engine em off s
   assert.equal(validatePolicy(medida((p) => { p.valid_until = '2027-12-22T00:00:00Z'; }), { now: NOW }).ok, false, '401 dias nao');
   assert.deepEqual(validatePolicy(medida((p) => { p.role_floors['revisor-codigo'] = 'T2'; }), { now: NOW }), { ok: true }, 'piso T2 vale para revisor-codigo');
   assert.deepEqual(validatePolicy(medida((p) => { p.limites = {}; }), { now: NOW }), { ok: true }, 'limites vazio usa os padroes');
+  assert.deepEqual(validatePolicy(medida((p) => { p.role_floors.REFUTADOR = 'T2'; p.role_floors['plugin:Refutador'] = 'T1'; }), { now: NOW }), { ok: true }, 'nomes que colidem depois de normalizados ficam com o maior piso');
   assert.deepEqual(validatePolicy(medida((p) => { p.tiers.T0.emitivel = false; p.tiers.T1.emitivel = false; p.quality.por_nivel.T0 = { aprovacao_medida: null, n: null, fonte: 'x' }; p.quality.por_nivel.T1 = { aprovacao_medida: null, n: null, fonte: 'x' }; }), { now: NOW }), { ok: true },
   'enforce exige apenas os niveis emitiveis medidos');
   // paridade com o schema documental: o validador nunca aceita o que o schema recusa
@@ -673,14 +695,16 @@ test('J6 falha registrada sobe um nivel, uma vez por chave; a chave vem do chama
   const zeros = { k1: 1, a1: 0, a2: 0, a3: 0, a4: 0 };
   assert.equal(decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: zeros, autorTierPorChave: {} } }), policy).tier, 'T2', 'chaves com zero falha nao contam para o teto');
   const longa = 'k'.repeat(257);
-  assert.equal(decide(comFicha(f, 'x', { chave: longa, history: { falhasPorChave: { [longa]: 1 }, autorTierPorChave: {} } }), policy).tier, 'T1', 'chave acima de 256 caracteres e ignorada');
+  const comLonga = decide(comFicha(f, 'x', { chave: longa, history: { falhasPorChave: { [longa]: 1 }, autorTierPorChave: {} } }), policy);
+  assert.equal(comLonga.tier, 'T1', 'chave acima de 256 caracteres e ignorada');
+  assert.ok(comLonga.reasons.includes('sem_chave'), 'e vale como sem_chave');
   assert.equal(decide(comFicha(f, 'x', { chave: 'k'.repeat(256), history: { falhasPorChave: { ['k'.repeat(256)]: 1 }, autorTierPorChave: {} } }), policy).tier, 'T2', 'chave de 256 caracteres vale');
   const teto = decide(comFicha(FICHA({ c: 5 }), 'x', { chave: 'k1', history: h(1) }), policy);
   assert.equal(teto.tier, 'T4');
   assert.equal(teto.capped, true, 'subida pedida no topo conta como capped');
 });
 
-test('J6 teto por fluxo impede NOVAS subidas e nunca rebaixa chave que ja subiu', () => {
+test('J6 teto de NOVAS concessoes por fluxo: nunca rebaixa chave que ja subiu; 2 ou mais falhas sobem uma vez sem consumir o teto', () => {
   const policy = medida();
   const f = FICHA({ c: 2, r: 'normal' });
   const dec = (falhas, chave, p = policy) => decide(comFicha(f, 'x', { chave, history: { falhasPorChave: falhas, autorTierPorChave: {} } }), p);
@@ -695,12 +719,17 @@ test('J6 teto por fluxo impede NOVAS subidas e nunca rebaixa chave que ja subiu'
   const k1 = dec(pegajosa, 'k1');
   assert.equal(k1.tier, 'T2', 'k1 ja subiu e continua subida');
   assert.ok(!k1.reasons.includes('teto_por_fluxo'));
-  assert.equal(dec(pegajosa, 'k3').tier, 'T2', 'k3 ainda cabe: 3 - 1 subida ja concedida = 2 novas');
-  assert.equal(dec(pegajosa, 'k4').tier, 'T1', 'k4 e a terceira nova: negada');
+  assert.equal(dec(pegajosa, 'k4').tier, 'T2', 'k1 (2 falhas) nao consome o teto: k2, k3 e k4 cabem nas 3 vagas');
+  const registrada = { subidasConcedidas: ['k1'] };
+  const dec2 = (falhas, chave, extra) => decide(comFicha(f, 'x', { chave, history: { falhasPorChave: falhas, autorTierPorChave: {}, ...extra } }), policy);
+  assert.equal(dec2(pegajosa, 'k3', registrada).tier, 'T2', 'k1 registrada consome uma vaga: k3 ainda cabe (2 vagas)');
+  assert.equal(dec2(pegajosa, 'k4', registrada).tier, 'T1', 'k1 registrada: k4 e a terceira nova, negada');
   assert.equal(dec({ k1: 1 }, 'k1', medida((p) => { p.escalation.max_por_fluxo = 0; })).tier, 'T1', 'teto zero nunca concede nova subida');
-  assert.equal(dec({ a: 1, z1: 2, z2: 2, z3: 2 }, 'a').tier, 'T1', 'tres subidas ja concedidas esgotam o teto, mesmo depois de a na ordem de nome');
+  assert.equal(dec({ a: 1, z1: 2, z2: 2, z3: 2 }, 'a').tier, 'T2', 'z1..z3 com 2 falhas nao consomem o teto');
+  assert.equal(dec2({ a: 1, z1: 2, z2: 2, z3: 2 }, 'a', { subidasConcedidas: ['z1', 'z2', 'z3'] }).tier, 'T1', 'tres concessoes registradas esgotam o teto');
   assert.equal(dec({ k9: 2, k1: 1, k2: 1, k3: 1 }, 'k9').tier, 'T2', 'chave com 2 falhas continua subida mesmo depois de outras na ordem de nome');
   assert.equal(dec({ k1: 1, k2: '5', k3: '5', k4: '5', k5: null }, 'k1').tier, 'T2', 'valores que nao sao numero nao contam como subida concedida');
+  assert.equal(dec({ k9: 1, k2: '1', k3: '1', k4: '1' }, 'k9').tier, 'T2', 'texto "1" nao e falha: nao disputa vaga');
   // concessao pegajosa: nunca revoga, mesmo com chave nova que vem antes por nome
   const um = medida((p) => { p.escalation.max_por_fluxo = 1; });
   const com = (falhas, chave, extra = {}) => decide(comFicha(f, 'x', { chave, history: { falhasPorChave: falhas, autorTierPorChave: {}, ...extra } }), um);
@@ -971,6 +1000,81 @@ test('J10 prompt com qualquer terminador de linha: corpo preservado e piso de ri
   assert.equal(invalida.floor, 'T3', 'ficha invalida com CR: o corpo e analisado');
   const unica = decide(IN({ prompt: `@@ROTA e o formato; ${corpo}` }), policy);
   assert.equal(unica.floor, 'T3', 'linha unica com @@ROTA: o prompt inteiro e analisado');
+});
+
+test('J1 fronteira de janela: corrida de 127 ou mais nao-letras acima de U+007F antes da palavra de risco nao baixa o piso', () => {
+  const policy = medida();
+  const inicio = 65533; // `deploy` ocupa 65533..65538 e cruza a fronteira de 65536
+  const montar = (corrida, n) => `${' '.repeat(inicio - n)}${corrida.repeat(n)}deploy fim${' z'.repeat(40000)}`;
+  for (const [nome, ch] of [['NBSP', '\u00a0'], ['U+3000', '\u3000'], ['travessao', '\u2014'], ['espaco ASCII', ' ']]) {
+    for (const n of [100, 127, 128, 130, 200]) {
+      const prompt = montar(ch, n);
+      assert.equal(prompt.indexOf('deploy'), inicio);
+      const r = decide(IN({ prompt }), policy);
+      assert.equal(r.floor, 'T3', `${nome} x${n}`);
+      assert.ok(r.reasons.includes('piso_superficie_de_risco'), `${nome} x${n}: razao`);
+    }
+  }
+});
+
+test('J6 history cortado em 1000 entradas nao perde a falha nem revoga a concessao da chave do chamador', () => {
+  const policy = medida();
+  const f = FICHA({ c: 2, r: 'normal' });
+  const numericas = Object.fromEntries(Array.from({ length: 1700 }, (_, i) => [String(i), 1]));
+  const com = (falhas, chave, extra = {}) => decide(comFicha(f, 'x', { chave, history: { falhasPorChave: falhas, autorTierPorChave: {}, ...extra } }), policy);
+  for (const posicao of [1200, 1501]) {
+    const k = String(posicao);
+    const dois = com({ ...numericas, [k]: 2 }, k);
+    assert.ok(dois.reasons.includes('history_truncado'), `posicao ${posicao}`);
+    assert.equal(dois.tier, 'T2', `chave com 2 falhas na posicao ${posicao}: a falha nao se perde e a subida nao e revogada`);
+    assert.ok(!dois.reasons.includes('teto_por_fluxo'));
+  }
+  const alta = com({ ...numericas, 'z-chave': 2 }, 'z-chave');
+  assert.equal(alta.tier, 'T2', 'chave textual depois de 1700 numericas');
+  const lista = Array.from({ length: 1700 }, (_, i) => `t${i}`);
+  const registrada = com({ ...numericas, 'z-chave': 1 }, 'z-chave', { subidasConcedidas: [...lista, 'z-chave'] });
+  assert.equal(registrada.tier, 'T2', 'subidasConcedidas alem de 1000 itens: a chave registrada continua subida');
+  const naoRegistrada = com({ ...numericas, 'z-chave': 1 }, 'z-chave', { subidasConcedidas: lista });
+  assert.equal(naoRegistrada.tier, 'T1', 'historico truncado: sem nova concessao');
+  const longa = 'a'.repeat(300);
+  const um = medida((p) => { p.escalation.max_por_fluxo = 1; });
+  const r = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: { [longa]: 1, k1: 1 }, autorTierPorChave: {} } }), um);
+  assert.equal(r.tier, 'T2', 'chave de history com mais de 256 caracteres e descartada e nao ocupa a vaga');
+  const comItemLongo = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: { k1: 1 }, autorTierPorChave: {}, subidasConcedidas: [longa] } }), um);
+  assert.equal(comItemLongo.tier, 'T2', 'item de lista com mais de 256 caracteres e descartado e nao consome o teto');
+});
+
+test('J8 validador x schema: o validador nunca aceita o que o schema recusa, por mutacao de uma folha por vez', () => {
+  const base = medida();
+  const caminhos = [];
+  (function anda(o, p) { if (o !== null && typeof o === 'object') for (const k of Object.keys(o)) { caminhos.push([...p, k]); anda(o[k], [...p, k]); } })(base, []);
+  const POOL = [null, 0, 1, -1, 0.5, 0.49, 1.5, 1e9, '', 'x', true, [], {}, 'T0', 'T1', 'T2', 'T3', 'T4', 'haiku', 'opus', 'low', 'max', 'a'.repeat(70), 3, 1000, 1001, 2e53, -1000, 5000, ' ', undefined];
+  const poe = (o, p, v) => { let c = o; for (const k of p.slice(0, -1)) c = c[k]; if (v === undefined) delete c[p.at(-1)]; else c[p.at(-1)] = v; };
+  const furos = [];
+  let n = 0;
+  for (const c of caminhos) for (const v of POOL) {
+    const q = clone(base);
+    poe(q, c, v);
+    n++;
+    if (validatePolicy(q, { now: NOW }).ok && !valida(SCHEMA, q, SCHEMA)) furos.push(`${c.join('.')}=${JSON.stringify(v)}`);
+  }
+  const objetos = [[], ...caminhos.filter((c) => isObjeto(c.reduce((o, k) => o[k], base)))];
+  for (const c of objetos) {
+    const q = clone(base);
+    c.reduce((o, k) => o[k], q).zzz = 1;
+    n++;
+    if (validatePolicy(q, { now: NOW }).ok && !valida(SCHEMA, q, SCHEMA)) furos.push(`chave extra em ${c.join('.') || '(raiz)'}`);
+  }
+  assert.ok(n > 3000, `mutacoes geradas: ${n}`);
+  assert.deepEqual(furos.slice(0, 5), [], `${furos.length} mutacoes aceitas pelo validador e recusadas pelo schema`);
+});
+
+test('J1 papeis normalizados uma vez: validar e decidir com muitos papeis cresce linearmente', () => {
+  const mediana = (fn) => { const t = []; for (let i = 0; i < 3; i++) { const t0 = performance.now(); fn(); t.push(performance.now() - t0); } return t.sort((a, b) => a - b)[1]; };
+  const com = (n) => medida((p) => { for (let i = 0; i < n; i++) { p.role_floors[`papel-${i}`] = 'T3'; p.reviewer_roles.push(`papel-${i}`); } });
+  const roda = (n) => { const p = com(n); return mediana(() => { validatePolicy(p, { now: NOW }); decide(comFicha(FICHA(), 'x', { role: 'papel-7' }), p); }); };
+  const razao = roda(8000) / Math.max(roda(2000), 0.05);
+  assert.ok(razao < 9, `8000 papeis sobre 2000 = ${razao.toFixed(1)} (linear ~4; quadratico ~16)`);
 });
 
 // ---------------------------------------------------------------- propriedades

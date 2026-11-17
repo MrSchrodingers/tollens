@@ -39,6 +39,8 @@ const MAX_LINHA_BYTES = 2048;
 const MAX_TOKEN_CAMINHO = 512;
 const MAX_TOKEN_TEXTO = 64;
 const MAX_PALAVRAS = 256;
+const MAX_NOS = 100000;
+const PRE_CORTE_TRECHO = 1024;
 const MAX_CHAVE = 256;
 const MAX_HISTORY = 1000;
 const MAX_CHAVES_POLITICA = 10000;
@@ -54,7 +56,7 @@ const TERMINADOR_RE = /[\r\n\u2028\u2029\u0085]/;
 const PREFIXO_ROTA = /^@@ROTA(?:[ \t]|$)/;
 const CHAVE_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 const INSTANTE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-const AGORA_ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,3}))?Z$/;
+const LETRA_RE = /[\p{L}\p{N}\p{M}\p{Cf}]/u;
 const CHARSET_CAMINHO_RE = /^[A-Za-z0-9_.~/-]+$/;
 const EXTENSAO_RE = /\.[A-Za-z0-9]{1,8}$/;
 const TRECHO_RE = /[\p{L}\p{N}\p{M}\p{Cf}]+/gu;
@@ -86,16 +88,36 @@ function dobrar(texto) {
   return saida;
 }
 
-// Nome de papel: NFKC, sem caracteres de formato (zero-width, soft hyphen), sem caixa, sem espacos
-// extras e com homoglifos dobrados, como as palavras de risco.
-const papel = (s) => (typeof s === 'string' && s.length <= 128
-  ? dobrar(s.normalize('NFKC').replace(FORMATO_RE, '').trim().replace(/\s+/g, ' ').toLowerCase())
-  : '');
+// Nome de papel: NFKC, sem caracteres de formato (zero-width, soft hyphen) e sem marcas combinantes,
+// sem caixa, sem espacos extras e com homoglifos dobrados, como as palavras de risco. Um prefixo de
+// namespace `plugin:nome` vale pelo ultimo segmento (so pode ELEVAR o piso).
+const papel = (s) => {
+  if (typeof s !== 'string' || s.length > 128) return '';
+  const norm = dobrar(s.normalize('NFKC').replace(FORMATO_RE, '').replace(/\s+/g, ' ').toLowerCase())
+    .normalize('NFD').replace(MARCAS_RE, '');
+  return norm.slice(norm.lastIndexOf(':') + 1).trim();
+};
+
+// Mapa de papeis normalizado UMA vez por objeto (as copias sao novas a cada decisao e nunca mudam);
+// nomes que colidem depois de normalizados ficam com o maior valor.
+const PAPEIS = new WeakMap();
+function mapaDePapeis(mapa) {
+  let m = PAPEIS.get(mapa);
+  if (m === undefined) {
+    m = new Map();
+    const valor = (x) => (typeof x === 'number' ? x : tierIdx(x));
+    for (const [k, v] of Object.entries(mapa)) {
+      const n = papel(k);
+      if (!m.has(n) || valor(v) > valor(m.get(n))) m.set(n, v);
+    }
+    PAPEIS.set(mapa, m);
+  }
+  return m;
+}
 
 function valorDoPapel(mapa, nome) {
   if (nome === '' || !isObj(mapa)) return undefined;
-  for (const [k, v] of Object.entries(mapa)) if (papel(k) === nome) return v;
-  return undefined;
+  return mapaDePapeis(mapa).get(nome);
 }
 
 // ---------------------------------------------------------------- dado puro
@@ -107,30 +129,38 @@ const IMPURO = Symbol('impuro');
 // ciclo e profundidade excessiva. Cada propriedade e lida UMA vez, pelo descritor, e tudo o que se
 // valida depois e a copia: nao ha intervalo entre validar e usar. Um Proxy nao e detectavel, mas
 // cai na mesma regra (so o descritor lido uma vez entra na copia). Dentro de `history` o excesso de
-// entradas e cortado (marcado em ctx.truncado) em vez de recusado.
+// entradas e cortado (marcado em ctx.truncado) em vez de recusado, mas a entrada da `chave` do
+// chamador e buscada por acesso direto ANTES do corte e sempre mantida. Total de nos visitados
+// limitado (um DAG compartilhado visitado como arvore cresce exponencialmente).
 function copiar(v, profundidade, pilha, ctx, truncavel) {
   const t = typeof v;
   if (v === null || t === 'string' || t === 'number' || t === 'boolean' || t === 'undefined') return v;
-  if (t !== 'object' || profundidade > MAX_PROFUNDIDADE || pilha.has(v)) return IMPURO;
+  if (t !== 'object' || profundidade > MAX_PROFUNDIDADE || pilha.has(v) || ++ctx.nos > MAX_NOS) return IMPURO;
   const lista = Array.isArray(v);
   const proto = Object.getPrototypeOf(v);
   if (lista ? proto !== Array.prototype : proto !== Object.prototype && proto !== null) return IMPURO;
   let chaves = Object.keys(v);
   const teto = truncavel ? MAX_HISTORY : MAX_CHAVES_POLITICA;
+  let extra = null;
   if (chaves.length > teto) {
     if (!truncavel) return IMPURO;
     ctx.truncado = true;
+    if (ctx.chave !== undefined && lista && v.indexOf(ctx.chave) >= teto) extra = ctx.chave;
+    if (ctx.chave !== undefined && !lista && Object.hasOwn(v, ctx.chave) && chaves.indexOf(ctx.chave) >= teto) extra = ctx.chave;
     chaves = chaves.slice(0, teto);
   }
   pilha.add(v);
   const saida = lista ? [] : {};
   if (lista) saida.length = Math.min(v.length, truncavel ? MAX_HISTORY : MAX_CHAVES_POLITICA);
+  if (extra !== null) chaves.push(lista ? String(v.indexOf(extra)) : extra);
   for (const k of chaves) {
+    if (truncavel && !lista && k.length > MAX_CHAVE) continue;
     const d = Object.getOwnPropertyDescriptor(v, k);
     if (d === undefined || !Object.hasOwn(d, 'value')) {
       pilha.delete(v);
       return IMPURO;
     }
+    if (truncavel && lista && typeof d.value === 'string' && d.value.length > MAX_CHAVE) continue;
     const c = copiar(d.value, profundidade + 1, pilha, ctx, truncavel || (profundidade === 0 && k === 'history'));
     if (c === IMPURO) {
       pilha.delete(v);
@@ -209,7 +239,7 @@ function resolverFicha(input) {
 // empurram o texto util), normalizado por NFKC e so entao cortado em 64 PONTOS DE CODIGO (o corte
 // antes do NFKC partia jamo e par substituto). O custo fica limitado pela janela de varredura.
 function normalizarTrecho(bruto) {
-  const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').normalize('NFKC').toLowerCase();
+  const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').slice(0, PRE_CORTE_TRECHO).normalize('NFKC').toLowerCase();
   const corte = Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('');
   return dobrar(corte).normalize('NFD').replace(MARCAS_RE, '');
 }
@@ -259,14 +289,19 @@ function acumulaCaminhos(janela, vistos, limite) {
   }
 }
 
-const codigoDePalavra = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c > 127;
+// Letra, digito, marca ou formato (como o separador de trechos); par substituto conta como palavra.
+function codigoDePalavra(texto, i) {
+  const c = texto.charCodeAt(i);
+  if (c < 128) return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+  return (c >= 0xd800 && c <= 0xdfff) || LETRA_RE.test(texto[i]);
+}
 
 // A proxima janela comeca no inicio de um trecho de palavra dentro da sobreposicao (para nao partir
 // uma palavra nem criar um inicio de palavra falso); sem fronteira ali, segue sem sobreposicao.
 function proximoInicio(texto, fim) {
   const piso = Math.max(fim - SOBREPOSICAO, 0);
   let corte = fim;
-  while (corte > piso && codigoDePalavra(texto.charCodeAt(corte - 1))) corte--;
+  while (corte > piso && codigoDePalavra(texto, corte - 1)) corte--;
   return corte > piso ? corte : fim;
 }
 
@@ -293,23 +328,17 @@ function varrer(texto, risco, queRisco, limiteCaminhos, quePaths) {
 
 // ---------------------------------------------------------------- relogio e politica
 
-// ISO estrito com ida e volta: recusa dia inexistente (31 de fevereiro) e hora 24.
-function instanteIso(texto, re) {
-  if (typeof texto !== 'string') return NaN;
-  const m = re.exec(texto);
-  if (!m) return NaN;
+// ISO estrito (so para valid_until) com ida e volta: recusa dia inexistente (31 de fevereiro) e hora 24.
+function instanteIso(texto) {
+  if (typeof texto !== 'string' || !INSTANTE_RE.test(texto)) return NaN;
   const t = Date.parse(texto);
   if (Number.isNaN(t)) return NaN;
-  const canonico = `${texto.slice(0, 19)}.${(m[1] ?? '').padEnd(3, '0')}Z`;
-  return new Date(t).toISOString() === canonico ? t : NaN;
+  return new Date(t).toISOString() === `${texto.slice(0, 19)}.000Z` ? t : NaN;
 }
 
-// `now` valido: ms inteiros ou ISO estrito, em [1.6e12, 4.1e12]. Segundos, zero, negativo, texto
-// numerico e Date nao valem.
-function agoraMs(now) {
-  const ms = typeof now === 'number' ? now : instanteIso(now, AGORA_ISO_RE);
-  return Number.isInteger(ms) && ms >= AGORA_MIN && ms <= AGORA_MAX ? ms : NaN;
-}
+// `now` valido: ms inteiros em [1.6e12, 4.1e12]. Segundos, zero, negativo, texto (inclusive ISO) e
+// Date nao valem.
+const agoraMs = (now) => (Number.isInteger(now) && now >= AGORA_MIN && now <= AGORA_MAX ? now : NaN);
 
 // 'sem_relogio_valido' e 'vencida' degradam; politica vigente devolve null.
 function situacaoDeValidade(validUntil, now) {
@@ -335,7 +364,6 @@ const ehTexto = (x, max) => typeof x === 'string' && x.length >= 1 && x.length <
 function validarLimiar(l, caminho, erros) {
   if (!exato(l, ['acima_de', 'piso'], caminho, erros)) return;
   if (!ehInteiroEm(l.acima_de, 1, Number.MAX_SAFE_INTEGER)) erros.push(`${caminho}.acima_de: inteiro >= 1`);
-  if (tierIdx(l.piso) < 0) erros.push(`${caminho}.piso: nivel invalido`);
 }
 
 const limiteDe = (policy, nome, padrao) => (own(policy.limites, nome) ? policy.limites[nome] : padrao);
@@ -359,7 +387,7 @@ function validarCopia(policy, opts) {
   if (policy.schema_version !== 1) erros.push('schema_version: deve ser 1');
   if (!ehTexto(policy.version, 64)) erros.push('version: texto de 1 a 64');
   if (!MODES.includes(policy.mode)) erros.push('mode: off|shadow|enforce');
-  const validUntil = instanteIso(policy.valid_until, INSTANTE_RE);
+  const validUntil = instanteIso(policy.valid_until);
   if (Number.isNaN(validUntil)) erros.push('valid_until: instante UTC AAAA-MM-DDTHH:MM:SSZ valido');
   const agora = agoraMs(opts?.now);
   if (validUntil - agora > HORIZONTE_MS) { // NaN em qualquer lado: comparacao falsa, sem horizonte a conferir
@@ -440,6 +468,7 @@ function validarCopia(policy, opts) {
   if (exato(policy.size, ['prompt_chars', 'caminhos', 'acima_do_teto'], 'size', erros)) {
     validarLimiar(policy.size.prompt_chars, 'size.prompt_chars', erros);
     validarLimiar(policy.size.caminhos, 'size.caminhos', erros);
+    if (tierIdx(policy.size.caminhos?.piso) < 2) erros.push('size.caminhos.piso: T2 ou acima');
     if (tierIdx(policy.size.prompt_chars?.piso) < 2) erros.push('size.prompt_chars.piso: T2 ou acima');
     if (exato(policy.size.acima_do_teto, ['piso'], 'size.acima_do_teto', erros) && tierIdx(policy.size.acima_do_teto.piso) < 2) {
       erros.push('size.acima_do_teto.piso: T2 ou acima');
@@ -490,8 +519,14 @@ function validarCopia(policy, opts) {
 }
 
 export function validatePolicy(policy, opts) {
+  let copia;
+  try {
+    copia = copiar(policy, 0, new Set(), { truncado: false, nos: 0 }, false);
+  } catch {
+    return { ok: false, erros: ['politica: leitura falhou (Proxy que lanca ou revogado)'] };
+  }
   // IMPURO (simbolo) nao e objeto: validarCopia o recusa.
-  return validarCopia(copiar(policy, 0, new Set(), { truncado: false }, false), opts);
+  return validarCopia(copia, opts);
 }
 
 // ---------------------------------------------------------------- decisao
@@ -515,20 +550,18 @@ function exigenciaDeAprovacao(policy, nomes) {
 
 const listaDeTextos = (x) => (Array.isArray(x) ? x.filter((k) => typeof k === 'string') : []);
 
-// Subida por falha. Concessao PEGAJOSA: uma chave que ja subiu (em `history.subidasConcedidas`, que o
-// mod persiste, ou com 2 ou mais falhas) continua subida, e o teto por fluxo so decide as NOVAS.
-// Entre as novas (1 falha), a ordem e a temporal (`history.ordem`), depois chave critica (nome com
-// palavra de risco ou listada em `history.chavesCriticas`), depois o nome. Historico truncado: sem
-// nova concessao.
+// Subida por falha. Teto de NOVAS concessoes por fluxo: `escalation.max_por_fluxo` menos as chaves de
+// `history.subidasConcedidas` (que o mod persiste). Uma chave que ja subiu continua subida (nunca
+// revogada); uma chave com 2 ou mais falhas sobe uma vez sem consumir o teto (sem laco). Entre as
+// novas (1 falha), a ordem e a temporal (`history.ordem`), depois chave critica (nome com palavra de
+// risco ou listada em `history.chavesCriticas`), depois o nome. Historico truncado: sem nova concessao.
+// A pegajosidade vale enquanto a falha existe no historico; fora dele, so a lista persistida a mantem.
 function concedeSubida(h, chave, falhas, max, criticaDe) {
   if (h.concedidas.has(chave) || falhas >= 2) return true;
   if (h.truncado) return false;
-  const jaConcedidas = new Set(h.concedidas);
   const novas = [];
   for (const [k, n] of Object.entries(h.falhasPorChave)) {
-    if (typeof n !== 'number') continue;
-    if (n >= 2) jaConcedidas.add(k);
-    else if (n >= 1 && !h.concedidas.has(k)) novas.push(k);
+    if (typeof n === 'number' && n >= 1 && n < 2 && !h.concedidas.has(k)) novas.push(k);
   }
   const posicao = (k) => (h.ordem.has(k) ? h.ordem.get(k) : Infinity);
   const antes = (a, b) => {
@@ -536,7 +569,7 @@ function concedeSubida(h, chave, falhas, max, criticaDe) {
     if (criticaDe(a) !== criticaDe(b)) return criticaDe(a);
     return a < b;
   };
-  const vagas = max - jaConcedidas.size;
+  const vagas = max - h.concedidas.size;
   let anteriores = 0;
   for (const k of novas) {
     if (k !== chave && antes(k, chave)) anteriores++;
@@ -546,12 +579,26 @@ function concedeSubida(h, chave, falhas, max, criticaDe) {
 }
 
 export function decide(input, policy) {
-  const pol = copiar(policy, 0, new Set(), { truncado: false }, false); // IMPURO nao passa em validarCopia
-  const ctx = { truncado: false };
-  const copiaDaEntrada = isObj(input) ? copiar(input, 0, new Set(), ctx, false) : {};
-  if (copiaDaEntrada === IMPURO) return semDecisao('entrada_invalida');
-  const inp = copiaDaEntrada;
-  const policyCopia = pol;
+  let policyCopia;
+  try {
+    policyCopia = copiar(policy, 0, new Set(), { truncado: false, nos: 0 }, false); // IMPURO nao passa em validarCopia
+  } catch {
+    return semDecisao('politica_invalida'); // Proxy que lanca ou revogado
+  }
+  const ctx = { truncado: false, nos: 0, chave: undefined };
+  let inp;
+  try {
+    if (isObj(input)) {
+      const d = Object.getOwnPropertyDescriptor(input, 'chave');
+      if (d !== undefined && typeof d.value === 'string' && d.value.length >= 1 && d.value.length <= MAX_CHAVE) ctx.chave = d.value;
+      inp = copiar(input, 0, new Set(), ctx, false);
+    } else {
+      inp = {};
+    }
+  } catch {
+    return semDecisao('entrada_invalida');
+  }
+  if (inp === IMPURO) return semDecisao('entrada_invalida');
   const validade = validarCopia(policyCopia, { now: inp.now });
   if (!validade.ok) return semDecisao('politica_invalida');
 

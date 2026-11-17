@@ -9,20 +9,25 @@ Nao existe ainda mod, ledger nem leitura de `session.measure`; este documento na
 `decide` e `validatePolicy` copiam a politica e a entrada para dado puro no inicio e validam a COPIA.
 Dado puro e: nulo, booleano, numero, texto, lista e objeto simples (prototipo `Object.prototype` ou
 nulo). Sao recusados, sem excecao: funcao, simbolo, bigint, `Date`, `Map`, instancia de classe, objeto
-com outro prototipo, getter ou setter, ciclo e profundidade acima de 16. Politica recusada devolve
+com outro prototipo, getter ou setter, ciclo, profundidade acima de 16 e mais de 100000 nos visitados
+(um DAG compartilhado conta cada visita). Politica recusada devolve
 `politica_invalida`; entrada recusada devolve `entrada_invalida`; nos dois casos `tier`, `model` e
 `effort` sao nulos, `mode` e `modo_efetivo` sao `off` e `aplicar` e falso. Cada propriedade e lida uma
-vez, pelo descritor. Um `Proxy` nao e detectavel: entra pela mesma regra (a copia e consistente), nao
-e rejeitado. O mod deve passar dado vindo de `JSON.parse`.
+vez, pelo descritor. Um `Proxy` nao e detectavel: um que NAO lanca entra pela mesma regra (a copia e
+consistente) e nao e rejeitado. Um `Proxy` que lanca ou foi revogado nunca faz `decide` nem
+`validatePolicy` lancarem: a leitura e protegida e o resultado e `politica_invalida` ou
+`entrada_invalida` (`validatePolicy` devolve `ok:false`). O mod deve passar dado vindo de `JSON.parse`.
 
 ## O que o mod deve passar em `input`
 
-- `now`: milissegundos inteiros desde a epoca, em [1,6e12, 4,1e12], ou ISO estrito
-  `AAAA-MM-DDTHH:MM:SS[.mmm]Z` na mesma faixa. Segundos, zero, negativo, texto numerico e `Date`
-  nao valem: o motor trata como `sem_relogio_valido` e degrada para shadow (`Date` na entrada ainda
-  e `entrada_invalida`, por nao ser dado puro).
+- `now`: milissegundos inteiros NUMERICOS desde a epoca, em [1,6e12, 4,1e12]. Qualquer texto (inclusive
+  ISO), segundos, zero, negativo e `Date` nao valem: o motor trata como `sem_relogio_valido` e degrada
+  para shadow (`Date` na entrada ainda e `entrada_invalida`, por nao ser dado puro). `valid_until`
+  da politica continua ISO estrito.
 - `prompt`: texto bruto da chamada. O motor le a ficha na primeira linha e varre o texto sem ela, em
-  janelas de 64 KiB com sobreposicao de 128 caracteres, ate `policy.limites.prompt_max_bytes` (padrao
+  janelas de 64 KiB com sobreposicao de ate 128 caracteres (a proxima janela recua ate o inicio de um
+  trecho de letras, digitos, marcas ou formato; corrida de espacos, travessoes ou outros nao-letras
+  acima de U+007F nao a engana), ate `policy.limites.prompt_max_bytes` (padrao
   1 MiB, em unidades de texto UTF-16). Acima do teto o motor sinaliza `prompt_acima_do_teto`, aplica
   o piso `size.acima_do_teto` e varre so o que cabe no teto. O texto so e varrido para o que ainda
   pode elevar o piso: se o piso de papel, de autor ou de tamanho ja iguala o de risco, a varredura
@@ -33,14 +38,22 @@ e rejeitado. O mod deve passar dado vindo de `JSON.parse`.
   autor "da mesma chave". `ficha.t` e validada, mas o `decide` nao a usa: e informativa para o ledger
   do mod.
 - `role` e `subagentType`: comparados com os nomes da politica por NFKC, sem caracteres de formato
-  (zero-width, soft hyphen), sem caixa, sem espacos extras e com homoglifos cirilicos e gregos
-  dobrados, como as palavras de risco.
+  (zero-width, soft hyphen), sem marcas combinantes, sem caixa, sem espacos extras e com homoglifos
+  cirilicos e gregos dobrados, como as palavras de risco. Um prefixo de namespace `plugin:nome` vale
+  pelo ultimo segmento (so pode elevar o piso). Nomes que colidem depois de normalizados ficam com o
+  maior piso.
 - `history` (ate 1000 entradas por lista ou mapa; o excedente e cortado com `history_truncado` e
-  nao concede nova subida; o corte so ocorre depois de enumerar as chaves, entao o mod deve passar
-  o historico ja aparado: medido, enumerar 1 milhao de chaves custa cerca de 1,3 s so no motor):
+  nao concede nova subida, mas a entrada da `chave` do chamador e buscada por acesso direto ANTES do
+  corte e sempre mantida, entao uma falha ou uma concessao da chave nunca se perde; chaves e itens de
+  texto com mais de 256 caracteres sao descartados; o corte so ocorre depois de enumerar as chaves,
+  entao o mod deve passar o historico ja aparado: medido, enumerar 1 milhao de chaves custa cerca de
+  1,3 s so no motor):
   - `falhasPorChave`: falhas por chave, ja aparado pelo ledger do fluxo corrente.
-  - `subidasConcedidas`: lista de chaves que ja subiram, persistida pelo mod. Concessao pegajosa: o
-    motor nunca revoga uma chave desta lista nem uma com 2 ou mais falhas.
+  - `subidasConcedidas`: lista de chaves que ja subiram, persistida pelo mod (R2 DEVE persisti-la: a
+    pegajosidade so vale enquanto a falha existe no historico; fora dele, so esta lista a mantem).
+    O motor nunca revoga uma chave desta lista nem uma com 2 ou mais falhas. Teto de NOVAS
+    concessoes por fluxo: `escalation.max_por_fluxo` menos as chaves de `subidasConcedidas`. Uma
+    chave com 2 ou mais falhas sobe uma vez sem consumir o teto (sem laco).
   - `ordem`: chaves na ordem temporal da primeira falha. As subidas NOVAS (1 falha) usam as vagas que
     restam sob `escalation.max_por_fluxo` na ordem de `ordem`, depois chave critica (nome com palavra
     de risco ou listada em `chavesCriticas`), depois o nome.
@@ -81,7 +94,7 @@ emitiveis acima): `tier` volta a `tier_base`, `aplicar` falso (`sem_nivel_elegiv
 
 Alem da forma, o validador exige: custo estritamente crescente entre niveis (modelo, depois effort),
 ao menos um nivel emitivel, aliases somente `haiku`, `sonnet`, `opus`, `risk_surface.piso` >= T3,
-`size.prompt_chars.piso` e `size.acima_do_teto.piso` >= T2, pisos de papel para `refutador` e
+`size.prompt_chars.piso`, `size.caminhos.piso` e `size.acima_do_teto.piso` >= T2, pisos de papel para `refutador` e
 `auditor-seguranca` (>= T3) e `revisor-codigo` (>= T2), `reviewer_roles` contido em `role_floors` com
 piso >= T2, os 16 prefixos de risco minimos, palavras com 3 ou mais caracteres apos normalizacao,
 `piso_aprovacao` >= 0,5 e por papel >= o default, `valid_until` com ida e volta e no maximo 400 dias

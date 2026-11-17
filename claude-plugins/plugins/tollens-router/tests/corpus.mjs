@@ -97,7 +97,7 @@ export function* casos(n, seed, base) {
     return p;
   };
   const dirigido = () => {
-    const tipo = pick(['ritmo', 'repeticao', 'revisor']);
+    const tipo = pick(['ritmo', 'repeticao', 'revisor', 'risco', 'papel']);
     const ficha = { c: pick([2, 3, 4, 5]), r: 'trivial', v: 'sim', t: 'k1' };
     const input = {
       prompt: `@@ROTA ${JSON.stringify(ficha)}\ntarefa`, now: 1794787200000, subagentType: 'implementador', role: 'autor', chave: 'k1',
@@ -114,7 +114,31 @@ export function* casos(n, seed, base) {
       input.history.autorTierPorChave = { k1: pick(T) };
       if (rnd() < 0.5) input.history.autorTierMax = pick(T);
     }
-    return { input, policy: limpa() };
+    let oraculo;
+    if (tipo === 'repeticao') oraculo = { minTier: Math.min(4, ficha.c), motivo: 'repeticao sobe um nivel sobre a ficha' };
+    if (tipo === 'papel') {
+      const papeis = [['refutador', 3], ['Refutador', 3], ['plugin:refutador', 3], ['auditor-seguranca', 3], ['revisor-codigo', 2], ['x:Auditor-Seguranca', 3]];
+      const [nome, minimo] = pick(papeis);
+      input.role = nome;
+      oraculo = { minTier: minimo, motivo: `piso do papel ${nome}` };
+    }
+    if (tipo === 'risco') {
+      // Oraculo independente do piso: palavra de risco inserida em posicao aleatoria (inclusive nas
+      // fronteiras de janela e depois de corridas de nao-letras acima de U+007F).
+      const prefixos = ['deploy', 'migra', 'autentic', 'produc', 'pagament', 'segred', 'senha', 'token', 'credenc', 'irrevers', 'lgpd', 'pessoal'];
+      const palavra = pick(prefixos) + pick(['', 'ed', 'cao', 's']);
+      const total = pick([3000, 20000, 70000, 140000, 200000]);
+      const enchimento = pick(['lorem ipsum dolor ', 'x\u00a0y ', 'lorem\u3000ipsum ', 'a\u2014b ', 'a\u00e7\u00e3o ipsum ']);
+      let texto = enchimento.repeat(Math.ceil(total / enchimento.length)).slice(0, total);
+      const perto = rnd() < 0.5;
+      let pos = perto ? 65536 * (1 + Math.floor(rnd() * 3)) + Math.floor(rnd() * 600) - 300 : Math.floor(rnd() * total);
+      pos = Math.max(1, Math.min(pos, total - 20));
+      const corrida = rnd() < 0.5 ? pick(['\u00a0', '\u3000', '\u2014']).repeat(100 + Math.floor(rnd() * 200)) : ' ';
+      texto = `${texto.slice(0, pos)}${corrida}${palavra} ${texto.slice(pos)}`;
+      input.prompt = `@@ROTA ${JSON.stringify({ c: 1, r: 'trivial', v: 'sim', t: 'k1' })}\n${texto}`;
+      oraculo = { minTier: 3, motivo: `${palavra} na posicao ${pos} de ${texto.length}` };
+    }
+    return { input, policy: limpa(), oraculo };
   };
   for (let i = 0; i < n; i++) {
     if (rnd() < 0.3) {

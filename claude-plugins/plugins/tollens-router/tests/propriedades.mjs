@@ -22,9 +22,9 @@ function congelar(o) {
 
 export function verificar(n, semente, base) {
   const falhas = [];
-  const cobertura = { validas: 0, invalidas: 0, aplicadas: 0, ritmo_desce: 0, repeticao: 0, revisor: 0 };
+  const cobertura = { validas: 0, invalidas: 0, aplicadas: 0, ritmo_desce: 0, repeticao: 0, revisor: 0, oraculo: 0 };
   let contador = 0;
-  for (const { input, policy } of casos(n, semente, base)) {
+  for (const { input, policy, oraculo } of casos(n, semente, base)) {
     contador++;
     congelar(input);
     congelar(policy);
@@ -42,6 +42,10 @@ export function verificar(n, semente, base) {
     if (!plain(input) || !d.tier) continue;
     if (!T.includes(d.tier)) { falhas.push(`tier invalido ${d.tier}`); continue; }
     if (idx(d.tier) < idx(d.floor)) falhas.push('J1: tier < floor');
+    if (oraculo) {
+      cobertura.oraculo++;
+      if (idx(d.tier) < oraculo.minTier) falhas.push(`J1 (oraculo independente): tier ${d.tier} abaixo de T${oraculo.minTier}: ${oraculo.motivo}`);
+    }
     if (!['haiku', 'sonnet', 'opus'].includes(d.model) || /fable/i.test(d.model)) falhas.push(`J2: modelo ${d.model}`);
     if (!policy.model_allowlist.includes(d.model)) falhas.push('J2: fora da allowlist');
     if (d.aplicar !== (d.modo_efetivo === 'enforce')) falhas.push('J3: aplicar incoerente com modo_efetivo');

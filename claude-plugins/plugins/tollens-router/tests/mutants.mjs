@@ -15,7 +15,7 @@
 //
 // Uma linha por mutante: `MORTO | id | teste: <primeiro teste que falhou>`, `VIVO | id | ...` ou `EQUIVALENTE | id | ...`.
 //
-// Uso: node claude-plugins/plugins/tollens-router/tests/mutants.mjs [--lista] [--diferencial=N] [--so=id1,id2] [--fatia=i/n]
+// Uso: node claude-plugins/plugins/tollens-router/tests/mutants.mjs [--lista] [--diferencial=N] [--so=id1,id2] [--fatia=i/n] [--verificar]
 // Exit: 0 se todo mutante nao equivalente morreu e todo equivalente foi confirmado; 1 caso contrario.
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -37,13 +37,10 @@ const NDIFF = Number((process.argv.find((a) => a.startsWith('--diferencial=')) ?
 // [id, de, para, equivalente?]
 const M = [
   // rodada 3: janelas, dado puro, teto pegajoso, papel, qualidade com n minimo e emitivel
-  ['papel-sem-trim', ".replace(FORMATO_RE, '').trim()", ".replace(FORMATO_RE, '')"],
   ['papel-sem-nfkc', ".normalize('NFKC').replace(FORMATO_RE, '')", ".replace(FORMATO_RE, '')"],
-  ['papel-sem-formato', ".replace(FORMATO_RE, '').trim()", '.trim()'],
-  ['papel-sem-dobra', '? dobrar(s.normalize(', '? ((x) => x)(s.normalize('],
+  ['papel-sem-formato', ".replace(FORMATO_RE, '').replace(/\\s+/g, ' ')", ".replace(/\\s+/g, ' ')"],
+  ['papel-sem-trim', "return norm.slice(norm.lastIndexOf(':') + 1).trim();", "return norm.slice(norm.lastIndexOf(':') + 1);"],
   ['texto-sem-corte-de-trecho', "Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('')", 'limpo', 'o corte so limita custo: prefixos de ate 64 pontos de codigo no inicio do trecho casam igual'],
-  ['texto-corte-utf16-antes-nfkc', "const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').normalize('NFKC').toLowerCase();\n  const corte = Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('');",
-    "const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').slice(0, MAX_TOKEN_TEXTO).normalize('NFKC').toLowerCase();\n  const corte = limpo;"],
   ['risco-unicode-sem-fronteira', 'alvo.includes(` ${n}`)', 'alvo.includes(n)'],
   ['risco-ascii-sem-fronteira', '(?:^|[^a-z0-9])(?:', '(?:'],
   ['risco-ascii-sem-minuscula', 'risco.regexAscii.test(janela.toLowerCase())', 'risco.regexAscii.test(janela)'],
@@ -61,10 +58,6 @@ const M = [
   ['varredura-sem-saida-antecipada', 'if (riscoResolvido && caminhosResolvidos) break;', '', 'so poda trabalho: com risco e caminhos resolvidos o resto da varredura nao muda o resultado'],
   ['concede-sem-lista', 'h.concedidas.has(chave) || ', ''],
   ['concede-sem-falhas2', ' || falhas >= 2) return true;', ') return true;'],
-  ['concede-sem-contar-concedidas', 'if (n >= 2) jaConcedidas.add(k);', ''],
-  ['concede-conta-zeros', 'else if (n >= 1 && !h.concedidas.has(k)) novas.push(k);', 'else if (n >= 0 && !h.concedidas.has(k)) novas.push(k);'],
-  ['concede-sem-excluir-concedidas', 'else if (n >= 1 && !h.concedidas.has(k)) novas.push(k);', 'else if (n >= 1) novas.push(k);'],
-  ['concede-nao-numero', "if (typeof n !== 'number') continue;", ''],
   ['concede-sem-ordem-temporal', 'if (posicao(a) !== posicao(b)) return posicao(a) < posicao(b);', ''],
   ['concede-sem-criticidade', 'if (criticaDe(a) !== criticaDe(b)) return criticaDe(a);', ''],
   ['critica-sem-lista', 'criticas.has(k) || ', ''],
@@ -84,7 +77,6 @@ const M = [
   ['dado-puro-history-sem-corte', "profundidade === 0 && k === 'history'", 'false'],
   ['dado-puro-corte-maior', 'const MAX_HISTORY = 1000;', 'const MAX_HISTORY = 100000;'],
   ['dado-puro-lista-esparsa', 'if (lista) saida.length = Math.min(', 'if (false) saida.length = Math.min('],
-  ['dado-puro-entrada', "if (copiaDaEntrada === IMPURO) return semDecisao('entrada_invalida');", ''],
   ['dado-puro-teto-politica', 'const MAX_CHAVES_POLITICA = 10000;', 'const MAX_CHAVES_POLITICA = 100000000;'],
   ['qualidade-nao-sobe', "while (tier <= TOPO && (!emitivel(policyCopia, tier) || estadoDoNivel(policyCopia, nomes, tier) === 'reprovado')) {", 'while (false) {'],
   ['qualidade-colapsa-nao-medido', "|| estadoDoNivel(policyCopia, nomes, tier) === 'reprovado')) {", "|| estadoDoNivel(policyCopia, nomes, tier) !== 'medido_ok')) {"],
@@ -122,7 +114,6 @@ const M = [
   ['degrada-shadow-sem-enforce', "(policy.mode === 'enforce' && algumEmitivelNaoMedido(policy));", 'algumEmitivelNaoMedido(policy);'],
   ['degrada-nunca-por-medicao', "(policy.mode === 'enforce' && algumEmitivelNaoMedido(policy));", 'false;'],
   ['degrada-sem-aviso-de-medicao', "if (policyCopia.mode === 'enforce' && algumEmitivelNaoMedido(policyCopia)) add('nivel_nao_medido');", ''],
-  ['entrada-nao-objeto', 'isObj(input) ? copiar(input, 0, new Set(), ctx, false) : {}', 'copiar(input, 0, new Set(), ctx, false)', 'entrada que nao e objeto nao tem campo lido: o resultado e o de {}'],
   ['texto-com-linha-rota', 'const texto = stripRota(bruto);', 'const texto = bruto;'],
   ['ficha-so-complexidade', 'Math.max(tierIdx(policyCopia.ficha_tiers.complexidade[String(ficha.c)]), tierIdx(policyCopia.ficha_tiers.risco[ficha.r]))', 'tierIdx(policyCopia.ficha_tiers.complexidade[String(ficha.c)])'],
   ['ficha-so-risco', 'Math.max(tierIdx(policyCopia.ficha_tiers.complexidade[String(ficha.c)]), tierIdx(policyCopia.ficha_tiers.risco[ficha.r]))', 'tierIdx(policyCopia.ficha_tiers.risco[ficha.r])'],
@@ -134,7 +125,43 @@ const M = [
   ['revisor-maximo-sem-own', "autor < 0 && own(hist, 'autorTierMax')", 'autor < 0', 'a entrada e dado puro (so chaves proprias): tierIdx(undefined) vale -1 como a ausencia'],
   ['revisor-sem-piso-no-papel', "if (tierIdx(piso) < 2) erros.push(`role_floors.${r}: papel revisor sem piso em role_floors ou com piso abaixo de T2`);", 'if (false) erros.push();'],
   ['politica-revisor-piso-T2', 'if (tierIdx(piso) < 2) erros.push(`role_floors.${r}', 'if (tierIdx(piso) < 1) erros.push(`role_floors.${r}'],
-  ['politica-impura-segue', "validarCopia(copiar(policy, 0, new Set(), { truncado: false }, false), opts)", "validarCopia(policy, opts)"],
+  // rodada 4
+  ['relogio-minimo-zero', 'now >= AGORA_MIN', 'now >= 0'],
+  ['relogio-minimo-exclusivo', 'now >= AGORA_MIN', 'now > AGORA_MIN'],
+  ['relogio-sem-maximo', ' && now <= AGORA_MAX', ''],
+  ['relogio-nao-inteiro', 'Number.isInteger(now) && ', ''],
+  ['relogio-aceita-texto', "(Number.isInteger(now) && now >= AGORA_MIN && now <= AGORA_MAX ? now : NaN)", "(Number.isInteger(Number(now)) && Number(now) >= AGORA_MIN && Number(now) <= AGORA_MAX ? Number(now) : NaN)"],
+  ['iso-sem-ida-e-volta', 'return new Date(t).toISOString() === `${texto.slice(0, 19)}.000Z` ? t : NaN;', 'return t;'],
+  ['iso-sem-checar-nan', 'if (Number.isNaN(t)) return NaN;', ''],
+  ['concede-vagas-ignora-registradas', 'const vagas = max - h.concedidas.size;', 'const vagas = max;'],
+  ['concede-conta-zeros', 'n >= 1 && n < 2 && !h.concedidas.has(k)', 'n >= 0 && n < 2 && !h.concedidas.has(k)'],
+  ['concede-duas-falhas-competem', 'n >= 1 && n < 2 && !h.concedidas.has(k)', 'n >= 1 && !h.concedidas.has(k)'],
+  ['concede-sem-excluir-registradas', ' && !h.concedidas.has(k)) novas.push(k);', ') novas.push(k);'],
+  ['concede-nao-numero', "typeof n === 'number' && n >= 1 && n < 2", 'n >= 1 && n < 2'],
+  ['dado-puro-entrada', "if (inp === IMPURO) return semDecisao('entrada_invalida');", ''],
+  ['dado-puro-entrada-primitiva', 'if (isObj(input)) {', 'if (true) {'],
+  ['dado-puro-catch-politica', "return semDecisao('politica_invalida'); // Proxy que lanca ou revogado", "throw new Error('politica');"],
+  ['dado-puro-catch-entrada', "  } catch {\n    return semDecisao('entrada_invalida');\n  }", "  } catch (e) {\n    throw e;\n  }"],
+  ['dado-puro-catch-validate', "return { ok: false, erros: ['politica: leitura falhou (Proxy que lanca ou revogado)'] };", "throw new Error('validate');"],
+  ['dado-puro-sem-contador-nos', ' || ++ctx.nos > MAX_NOS', ''],
+  ['dado-puro-nos-maior', 'const MAX_NOS = 100000;', 'const MAX_NOS = 100000000;'],
+  ['dado-puro-sem-chave-direta-objeto', 'if (ctx.chave !== undefined && !lista && Object.hasOwn(v, ctx.chave) && chaves.indexOf(ctx.chave) >= teto) extra = ctx.chave;', ''],
+  ['dado-puro-sem-chave-direta-lista', 'if (ctx.chave !== undefined && lista && v.indexOf(ctx.chave) >= teto) extra = ctx.chave;', ''],
+  ['dado-puro-chave-longa-objeto', 'if (truncavel && !lista && k.length > MAX_CHAVE) continue;', ''],
+  ['dado-puro-chave-longa-lista', "if (truncavel && lista && typeof d.value === 'string' && d.value.length > MAX_CHAVE) continue;", ''],
+  ['politica-impura-segue', 'return validarCopia(copia, opts);', 'return validarCopia(policy, opts);'],
+  ['texto-corte-utf16-antes-nfkc', "const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').slice(0, PRE_CORTE_TRECHO).normalize('NFKC').toLowerCase();\n  const corte = Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('');",
+    "const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').slice(0, MAX_TOKEN_TEXTO).normalize('NFKC').toLowerCase();\n  const corte = limpo;"],
+  ['texto-sem-pre-corte', '.slice(0, PRE_CORTE_TRECHO)', ''],
+  ['texto-pre-corte-curto', 'const PRE_CORTE_TRECHO = 1024;', 'const PRE_CORTE_TRECHO = 8;'],
+  ['papel-sem-dobra', 'const norm = dobrar(s.normalize(', 'const norm = ((x) => x)(s.normalize('],
+  ['papel-sem-namespace', "return norm.slice(norm.lastIndexOf(':') + 1).trim();", 'return norm;'],
+  ['papel-sem-acento', "    .normalize('NFD').replace(MARCAS_RE, '');", '    ;'],
+  ['papeis-sem-maior', 'if (!m.has(n) || valor(v) > valor(m.get(n))) m.set(n, v);', 'm.set(n, v);'],
+  ['papeis-sem-cache', 'let m = PAPEIS.get(mapa);', 'let m;'],
+  ['janela-todo-acima-127-e-palavra', 'return (c >= 0xd800 && c <= 0xdfff) || LETRA_RE.test(texto[i]);', 'return true;'],
+  ['janela-so-ascii-letra', 'return (c >= 0xd800 && c <= 0xdfff) || LETRA_RE.test(texto[i]);', 'return c >= 0xd800 && c <= 0xdfff;'],
+  ['politica-size-caminhos-piso', 'if (tierIdx(policy.size.caminhos?.piso) < 2)', 'if (tierIdx(policy.size.caminhos?.piso) < 1)'],
   // ficha e parse
   ['ficha-teto-2049', 'const MAX_LINHA_BYTES = 2048;', 'const MAX_LINHA_BYTES = 4096;'],
   ['ficha-teto-2047', 'const MAX_LINHA_BYTES = 2048;', 'const MAX_LINHA_BYTES = 2047;'],
@@ -175,8 +202,8 @@ const M = [
   ['texto-sem-nfkc', ".normalize('NFKC').toLowerCase()", '.toLowerCase()'],
   ['texto-sem-minuscula', ".normalize('NFKC').toLowerCase()", ".normalize('NFKC')"],
   ['texto-sem-dobra', 'DOBRA.get(ch) ?? ch', 'ch'],
-  ['texto-sem-nfd', ".normalize('NFD').replace(MARCAS_RE, '')", ".replace(MARCAS_RE, '')"],
-  ['texto-sem-marcas-finais', ".normalize('NFD').replace(MARCAS_RE, '')", ".normalize('NFD')"],
+  ['texto-sem-nfd', "dobrar(corte).normalize('NFD').replace(MARCAS_RE, '')", "dobrar(corte).replace(MARCAS_RE, '')"],
+  ['texto-sem-marcas-finais', "dobrar(corte).normalize('NFD').replace(MARCAS_RE, '')", "dobrar(corte).normalize('NFD')"],
   ['texto-sem-limpar-formato', '/[\\p{Cf}\\p{M}]+/gu', '/[\\p{M}]+/gu'],
   ['texto-sem-limpar-marcas', '/[\\p{Cf}\\p{M}]+/gu', '/[\\p{Cf}]+/gu'],
   ['tokens-sem-cache', 'let n = cache.get(bruto);', 'let n;', 'o cache so evita renormalizar o mesmo trecho'],
@@ -234,15 +261,8 @@ const M = [
   ['validade-sem-relogio-vale', "if (Number.isNaN(agora)) return 'sem_relogio_valido';", ''],
   ['validade-sem-aviso-vencida', "if (situacao === 'vencida') add('politica_vencida');", ''],
   ['validade-sem-aviso-relogio', "if (situacao === 'sem_relogio_valido') add('sem_relogio_valido');", ''],
-  ['relogio-so-iso', "typeof now === 'number' ? now : instanteIso(now, AGORA_ISO_RE)", 'instanteIso(now, AGORA_ISO_RE)'],
-  ['relogio-minimo-zero', 'ms >= AGORA_MIN', 'ms >= 0'],
-  ['relogio-minimo-exclusivo', 'ms >= AGORA_MIN', 'ms > AGORA_MIN'],
-  ['relogio-sem-maximo', ' && ms <= AGORA_MAX', ''],
   ['relogio-minimo-menor', 'const AGORA_MIN = 1.6e12;', 'const AGORA_MIN = 1.5e12;'],
   ['relogio-maximo-maior', 'const AGORA_MAX = 4.1e12;', 'const AGORA_MAX = 4.2e12;'],
-  ['relogio-nao-inteiro', 'Number.isInteger(ms) && ', ''],
-  ['iso-sem-ida-e-volta', 'return new Date(t).toISOString() === canonico ? t : NaN;', 'return t;'],
-  ['iso-sem-checar-nan', 'if (Number.isNaN(t)) return NaN;', ''],
   ['horizonte-inclusivo', 'validUntil - agora > HORIZONTE_MS', 'validUntil - agora >= HORIZONTE_MS'],
   ['horizonte-maior', 'const HORIZONTE_MS = 400 * 86400000;', 'const HORIZONTE_MS = 401 * 86400000;'],
   // validador
@@ -261,7 +281,6 @@ const M = [
   ['politica-words-demais', ' || w.length > MAX_PALAVRAS', ''],
   ['politica-nota', 'if (!ehTexto(policy.risk_surface.nota, 400)) erros.push', 'if (false) erros.push'],
   ['politica-limiar-acima', 'if (!ehInteiroEm(l.acima_de, 1, Number.MAX_SAFE_INTEGER)) erros.push', 'if (false) erros.push'],
-  ['politica-limiar-piso', 'if (tierIdx(l.piso) < 0) erros.push', 'if (false) erros.push'],
   ['politica-pace-ordem', '|| !(a < b)', ''],
   ['politica-pace-numeros', '!ehNumeroEm(a, -1000, 1000) || !ehNumeroEm(b, -1000, 1000) || ', ''],
   ['politica-escalation', 'if (!ehInteiroEm(policy.escalation.max_por_fluxo, 0, 1000)) erros.push', 'if (false) erros.push'],
@@ -288,9 +307,9 @@ function copiaDe(trabalho, engineTexto) {
   return path.join(plug, 'engine.mjs');
 }
 
-// `completo` falso pula o teste de linearidade (lento); so os mutantes que sobrevivem sem ele rodam a suite inteira.
+// `completo` falso pula os testes de linearidade, de papeis e de validador x schema (lentos); so os mutantes que sobrevivem sem ele rodam a suite inteira.
 function roda(trabalho, completo = true) {
-  const pula = completo ? [] : ['--test-skip-pattern=J1 linearidade'];
+  const pula = completo ? [] : ['--test-skip-pattern=J1 linearidade', '--test-skip-pattern=J1 papeis normalizados', '--test-skip-pattern=J8 validador x schema'];
   const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...pula, '--experimental-test-isolation=none', path.join(trabalho, 'tests/unit/router-engine.test.mjs')],
     { encoding: 'utf8', timeout: 90_000, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 });
   const reprovados = [...(r.stdout ?? '').matchAll(/^not ok \d+ - (.*)$/gm)].map((m) => m[1]);
@@ -366,6 +385,11 @@ async function diferencial(arquivoMutante) {
   return { casosN, divergencias };
 }
 
+if (process.argv.includes('--verificar')) {
+  const ruins = M.filter(([, de]) => ENGINE.split(de).length - 1 !== 1).map(([id, de]) => `${id} (ocorrencias=${ENGINE.split(de).length - 1})`);
+  console.log(ruins.length ? `INSTRUMENTO: ${ruins.join(' ')}` : `ok: ${M.length} mutantes com trecho unico`);
+  process.exit(ruins.length ? 1 : 0);
+}
 if (process.argv.includes('--lista')) {
   for (const [id] of M) console.log(id);
   process.exit(0);
