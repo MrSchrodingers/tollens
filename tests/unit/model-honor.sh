@@ -400,8 +400,9 @@ t28 claude-opus-5-5 Claude-Opus-5-5
 t28 opus 'claude-opus-5-5[1m]'
 t28 claude-opus-5-5 'claude-opus-5-5[1m][x]'
 t28 claude-3-5-haiku-latest claude-3-5-haiku-20241022
+t28 x/opus claude-opus-5-5
 chk "28 sufixos [..], data, -latest, -vN:M e prefixos de regiao sao normalizados nos dois lados; versao diferente DIVERGE" \
-  "$R28" " honrado DIVERGE honrado honrado honrado honrado honrado DIVERGE honrado honrado honrado honrado honrado"
+  "$R28" " honrado DIVERGE honrado honrado honrado honrado honrado DIVERGE honrado honrado honrado honrado honrado pedido_desconhecido"
 
 echo "== 29. ID longo: compara o valor completo; acima de 256 e indeterminado =="
 LA="claude-opus-$(head -c 130 /dev/zero | tr '\0' a)"
@@ -558,11 +559,11 @@ chk "42 100% indeterminado e pedido_desconhecido: exit 3 com resumo; com DIVERGE
 
 echo "== 43. efetivo sem prefixo claude- e indeterminado, nao DIVERGE =="
 R43=""
-for par in "opus|arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc123xyz" "opus|opus-4-6" "sonnet|gpt-sonnet-9" "claude-opus-4-6|opus-4-6"; do
+for par in "opus|arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc123xyz" "opus|opus-4-6" "sonnet|gpt-sonnet-9" "opus|gpt-sonnet-9" "claude-opus-4-6|opus-4-6"; do
   mk "$PROJ" c43 "$(meta "${par%%|*}")" "${par#*|}"; run "$(payload "$PROJ/agent-c43.jsonl")"; R43="$R43 $ULT/$(campo .motivo)"
 done
 chk "43 ARN opaco, id sem prefixo, outro fornecedor sem token claude e ID completo contra id sem prefixo: indeterminado/efetivo_nao_reconhecido" \
-  "$R43" " indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido"
+  "$R43" " indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido"
 
 echo "== 44. tentativa de escape de caminho avisa; indeterminado comum fica mudo =="
 run "$(payload "$FORA/agent-abs.jsonl")"; R44="$(printf '%s' "$OUT" | jq -r '.systemMessage|test("fora")' 2>/dev/null)"
@@ -592,10 +593,11 @@ p47 opus 'arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.
 p47 opus 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6'
 p47 opus 'vertex/claude-sonnet-4-5@20250929'
 p47 opus 'bedrock-claude-opus-4-5'
+p47 opus 'bedrock-claude-sonnet-4-5'
 p47 claude-opus-4-5 'bedrock-claude-sonnet-4-5'
 p47 claude-opus-4-5 'anthropic/claude-opus-4.5'
 chk "47 sonnet/ARN de sonnet/vertex contra opus: DIVERGE; opus por prefixo e ARN: honrado; mesma familia sem prefixo: indeterminado" \
-  "$R47" " DIVERGE/familia_diferente honrado/familia_igual DIVERGE/familia_diferente honrado/familia_igual DIVERGE/familia_diferente indeterminado/efetivo_nao_reconhecido DIVERGE/familia_diferente honrado/id_igual"
+  "$R47" " DIVERGE/familia_diferente honrado/familia_igual DIVERGE/familia_diferente honrado/familia_igual DIVERGE/familia_diferente indeterminado/efetivo_nao_reconhecido DIVERGE/familia_diferente DIVERGE/familia_diferente honrado/id_igual"
 
 echo "== 48. --scan sem NENHUM julgado nao sai 0 =="
 S48="$T/scan48"
@@ -607,12 +609,22 @@ for alvo in a b; do
 done
 chk "48 so sem_pedido: exit 3 com NENHUM JULGADO; um honrado e o resto sem_pedido: exit 0" "$R48" " 3/1 0/0"
 
-echo "== 49. executor: mutante com sintaxe quebrada e inconclusivo, nunca morto =="
-printf 'if\n' > "$T/m_SYN.sh"; : > "$T/res49"
-bash tests/mutation/model-honor/um.sh "$T/m_SYN.sh" "$T/res49" >/dev/null 2>&1
-printf 'SYN\n' > "$T/eq49x"; : > "$T/eq49"
+echo "== 49. executor: sintaxe quebrada e inconclusivo; recusa de chamada aninhada; sem recursao =="
+printf 'if\n' > "$T/m_SYN.sh"; : > "$T/res49"; : > "$T/eq49"
+if [ "${MODEL_HONOR_NIVEL:-0}" -gt 0 ]; then
+  # Dentro de uma suite lancada pelo executor: NAO chama o executor de novo (evitaria recursao);
+  # confere so a classificacao do resumo sobre uma linha sintetica.
+  printf 'SYN rc=2 \n' > "$T/res49"; T49=0
+else
+  T0="$(date +%s%N)"
+  MODEL_HONOR_MUT_TIMEOUT=25 bash tests/mutation/model-honor/um.sh "$T/m_SYN.sh" "$T/res49" >/dev/null 2>&1
+  T49=$(( ($(date +%s%N) - T0) / 1000000 ))
+fi
 O49="$(bash tests/mutation/model-honor/resumo.sh "$T/res49" "$T/eq49" 2>/dev/null | awk '$1=="MUTANTE"{print $3}')"
-chk "49 SYN: linha rc!=0 sem caso e estado inconclusivo" "$(awk '{print ($2=="rc=0")?"rc0":"rcN"}' "$T/res49")/$O49" "rcN/inconclusivo"
+# recusa: chamado com NIVEL > 0 (de dentro de uma suite do executor), o executor sai 2 e nao grava linha
+: > "$T/res49b"; MODEL_HONOR_NIVEL=1 bash tests/mutation/model-honor/um.sh "$T/m_SYN.sh" "$T/res49b" >/dev/null 2>&1; RC49B=$?
+chk "49 SYN: rc != 0 sem caso, inconclusivo e rapido (< 8 s, sem rodar a suite); NIVEL > 0: exit 2 sem linha" \
+  "$(awk '{print ($2=="rc=0")?"rc0":"rcN"}' "$T/res49")/$O49/$([ "$T49" -lt 8000 ] && echo rapido)/$RC49B/$(wc -l < "$T/res49b" | tr -d ' ')" "rcN/inconclusivo/rapido/2/0"
 
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"

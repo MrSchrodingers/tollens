@@ -224,6 +224,9 @@ julga() {
 
   pl="${PEDIDO,,}"
   if [ -z "$pl" ] || [ "$pl" = inherit ]; then STATUS=sem_pedido; MOTIVO=pedido_ausente_ou_inherit; return 0; fi
+  # Pedido com `/`: so o prefixo `anthropic/` e aceito (a normalizacao toma o ultimo segmento, e um
+  # prefixo arbitrario como `x/opus` afrouxaria o vocabulario do pedido).
+  if [[ "$pl" == */* && "$pl" != anthropic/* ]]; then STATUS=pedido_desconhecido; MOTIVO=prefixo_do_pedido_desconhecido; return 0; fi
   if [ "${#PEDIDO}" -gt 256 ] || [ "${#EFETIVO}" -gt 256 ]; then STATUS=indeterminado; MOTIVO=id_longo; return 0; fi
   PN="$(norm_id "$PEDIDO")"
   EN="$(norm_id "$EFETIVO")"

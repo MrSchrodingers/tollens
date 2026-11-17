@@ -64,6 +64,7 @@ M = {
  'D2_segmento': ('v="${v##*/}"', ':'),
  'D2_pontos': ('printf \'%s\' "${v//./-}"', 'printf \'%s\' "$v"'),
  'D2_tokenclaude': ('[ "$tem_claude" -eq 1 ] || return 0', ':'),
+ 'R73_prefixo': ('if [[ "$pl" == */* && "$pl" != anthropic/* ]]; then', 'if false; then'),
  'D3_nenhum': ('if [ "$TOTAL" -gt 0 ] && [ $(( ${CNT[honrado]:-0} + ${CNT[DIVERGE]:-0} )) -eq 0 ]; then', 'if false; then'),
  'SYN_sintaxe': ('MODO=hook\n', 'MODO=hook\nif\n'),
  'M1_exit3': ('[ "$NJ" -gt 0 ] && return 3', ':'),

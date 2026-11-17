@@ -7,6 +7,11 @@ set -uo pipefail
 f="${1:?uso: um.sh <mutante.sh> <resultado>}"; res="${2:?uso: um.sh <mutante.sh> <resultado>}"
 n="$(basename "$f" .sh)"; n="${n#m_}"
 cd "$(dirname "$0")/../../.." || exit 1
+# Guarda de profundidade: este executor nao pode ser chamado de dentro de uma suite que ele mesmo
+# lancou (recursao de processos). Recusa com exit 2 e sem linha de resultado.
+nivel="${MODEL_HONOR_NIVEL:-0}"
+if [ "$nivel" -gt 0 ]; then echo "um.sh: chamado de dentro de uma suite do executor (nivel $nivel); recusado" >&2; exit 2; fi
+export MODEL_HONOR_NIVEL=$((nivel + 1))
 # Sintaxe quebrada nao pode contar como mutante morto: rc 2 sem caso nomeado (inconclusivo).
 if ! bash -n "$f" 2>/dev/null; then echo "$n rc=2 " | tee -a "$res"; exit 0; fi
 lk="$(dirname "$res")/lk-$n"

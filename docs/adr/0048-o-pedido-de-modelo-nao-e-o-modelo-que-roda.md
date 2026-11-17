@@ -175,6 +175,13 @@ p. O mutante `G4_trap` (remover o `trap 'exit 0' EXIT`) sobrevive. A razao e por
 q. Os achados m3 e m4 da quinta revisao independente foram entregues a esta mudanca so como
    "limites a registrar", sem o texto do achado; nao ha o que descrever aqui sem inventar: NAO
    VERIFICADO.
+s. Pedido com `/`: so o prefixo `anthropic/` e aceito; qualquer outro (`x/opus`) vira
+   `pedido_desconhecido/prefixo_do_pedido_desconhecido`, porque a normalizacao toma o ultimo
+   segmento e aceitaria um prefixo arbitrario no vocabulario do pedido. Prefixos de regiao
+   (`us.anthropic.`) nao usam `/` e seguem normalizados.
+t. Sufixos do efetivo como `@latest` e `:thinking` nao sao normalizados: com pedido de ID completo
+   dao `DIVERGE/id_diferente` (falso divergente). Nenhum meta real os usa; registrado como limite,
+   nao corrigido.
 r. Publicacao: as fixtures de `tests/fixtures/model-honor/` nos commits `c773ae4`, `1d33f83` e
    `77cba2b` guardam identificadores reais de sessao e de agente; a arvore final ja os trocou por
    sinteticos. Publicar exige squash para uma branch nova a partir da base com a arvore final;
@@ -240,8 +247,11 @@ conferir a suite. Sobre o hook de 2026-11-16 (commit 86d3190), `run-all.sh` deu 
 equivalentes; a declaracao de `W_roottranscript` (remover a guarda de raiz do transcript) estava
 ERRADA: com o transcript fora das raizes e o `.meta.json` como symlink para um meta dentro delas,
 o hook correto da `indeterminado/caminho_fora_da_raiz` e o mutante le o transcript de fora e da
-`DIVERGE`. O caso 46 da suite o mata, e o mutante deixou de ser equivalente. Restam dois
-sobreviventes declarados: o `trap 'exit 0' EXIT` (`G4_trap`; todo caminho do modo hook termina
+`DIVERGE`. O caso 46 da suite o mata, e o mutante deixou de ser equivalente. A revalidacao
+achou vivos `D2_derivada` e `D2_tokenclaude` (faltava caso); agora morrem nos casos 47 (par
+`opus` contra `bedrock-claude-sonnet-4-5`) e 43 (par `opus` contra `gpt-sonnet-9`), medido com
+`um.sh`, um mutante por vez (2026-11-17). Os sobreviventes DECLARADOS como equivalentes sao dois, e
+nenhum conjunto completo foi reexecutado desde: o `trap 'exit 0' EXIT` (`G4_trap`; todo caminho do modo hook termina
 com `exit 0` explicito e nao ha `set -e`, mas a equivalencia segue NAO VERIFICADA, limite p) e o
 teto de 300 caracteres do `systemMessage` (`U_msgcap`), que os tetos por campo (40 e 80) nao
 deixam atingir na pratica.
@@ -252,9 +262,11 @@ Sobre o hook de a98eb3f, os 5 mutantes acrescentados (`mx1_controle_efet`, `D1b_
 caso FAIL nomeado (`inconclusivo` para rc != 0 sem caso: timeout 124, contagem inesperada,
 dependencia ausente), gravando cada linha ao terminar. A execucao completa sobre o hook atual NAO
 foi concluida (carga da maquina): NAO VERIFICADO; nao se reemite "N de 81".
-Nesta rodada o gerador passou a 88 mutantes e o executor roda `bash -n` em cada um antes (sintaxe
+Nesta rodada o gerador passou a 89 mutantes e o executor roda `bash -n` em cada um antes (sintaxe
 quebrada e `inconclusivo`, nunca morto; controle `SYN_sintaxe`) e um baseline com o hook intacto
-(se falhar, o executor aborta com exit 2). A execucao completa dos 88 mutantes sobre o hook atual NAO foi feita nesta rodada: o load average ficou entre 21 e 52 (a regra era rodar so abaixo de 25) e o prazo nao cabia; NAO VERIFICADO, e nao se reemite "N de M".
+(se falhar, o executor aborta com exit 2). O `um.sh` recusa (exit 2, sem linha) ser chamado de
+dentro de uma suite que ele mesmo lancou (`MODEL_HONOR_NIVEL`), e o caso 49 nao o chama nesse
+caso: sem isso, uma regressao do `bash -n` transformava o caso 49 em recursao de processos. A execucao completa dos 89 mutantes sobre o hook atual NAO foi feita nesta rodada: o load average ficou entre 21 e 52 (a regra era rodar so abaixo de 25) e o prazo nao cabia; NAO VERIFICADO, e nao se reemite "N de M".
 Rotacao sob 150 hooks concorrentes com tres geracoes pre-existentes (2026-11-17 as 11:09):
 150 de 150 eventos distintos preservados e marcas A, B e C em `.1`, `.2` e `.3`.
 
