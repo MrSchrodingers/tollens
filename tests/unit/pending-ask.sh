@@ -110,7 +110,7 @@ roda "$(jq -nc --arg s "$SID" '{session_id:$s,transcript_path:"/nao/existe/t.jso
 head -c 4096 /dev/urandom > "$T/lixo.jsonl"
 roda "$(jq -nc --arg s "$SID" --arg tp "$T/lixo.jsonl" '{session_id:$s,transcript_path:$tp}')"; r="$r $RC"
 chk "I2 entrada vazia, nao-JSON, array, sem transcript, transcript ausente e corrompido: tudo exit 0" "${r# }" "0 0 0 0 0 0"
-chk "I2 cada falha deixa uma linha de erro com motivo no log" "$(jq -rs '[.[]|select(.evento=="erro")|.motivo]|sort|join(",")' "$LOG")" "payload_invalido,payload_invalido,stdin_vazio,transcript_ausente,transcript_ausente,transcript_ilegivel"
+chk "I2 cada falha deixa uma linha de erro com motivo no log" "$(jq -rs '[.[]|select(.evento=="erro")|.motivo]|sort|join(",")' "$LOG")" "payload_invalido,payload_invalido,stdin_vazio,transcript_ausente,transcript_ausente,transcript_sem_linhas"
 # jq ausente: PATH so com o minimo; o hook nao pode travar nem bloquear.
 mkdir -p "$T/nojq"; for c in date mkdir dirname head tr cut stat mv cat timeout; do ln -sf "$(command -v $c)" "$T/nojq/$c"; done
 tr_novo; tr_user "x"; tr_text "Aguardo sua confirmação."
@@ -133,6 +133,13 @@ chk "I3 AskUserQuestion de turno ANTERIOR nao vale: bloqueia" "$RC" "2"
 tr_novo; tr_user "x"; tr_use Bash tu_b; tr_result tu_b "ok"; tr_text "Aguardo sua confirmação."
 roda "$(payload)"
 chk "I3 tool_result sem pergunta nao e fala do usuario nem suprime: bloqueia" "$RC" "2"
+
+# Regressao medida em transcript real: turno sem NENHUM bloco de texto assistant (so tool_use)
+# derrubava o filtro com "Cannot iterate over null" e o hook registrava erro em vez de julgar.
+modo bloqueio; zera_log
+tr_novo; tr_user "x"; tr_use Bash tu_b; tr_result tu_b "ok"
+roda "$(payload)"
+chk "I2 turno sem texto assistant (so tool_use): julga sem erro, exit 0, log vazio" "$RC/$(wc -c < "$LOG")" "0/0"
 
 echo "== I4 contrato de subagente =="
 modo bloqueio; zera_log

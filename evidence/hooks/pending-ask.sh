@@ -148,12 +148,13 @@ RES="$(tail -c "$TAIL_BYTES" "$TP" 2>/dev/null | jq -Rn --arg msg "$MSG" --arg p
               | (.content | if type=="string" then . else (arrays | map(.text? // "") | join("\n")) end) // "")
      | map(split("\n") | map(select(test("^\\s*DECISAO_PENDENTE:\\s*[^|\\n]+\\|[^|\\n]*\\|"))) | length > 0) | any) as $dp
   | (if $msg != "" then $msg
-     else ($A | map(select([.message.content[]? | select(type=="object" and .type=="text")] | length > 0)) | last
-           | (.message.content | map(select(type=="object" and .type=="text") | .text) | join("\n"))) // "" end | norm) as $txt
+     else ($A | map(select([.message.content[]? | select(type=="object" and .type=="text")] | length > 0)) | (last // {})
+           | ((.message.content // []) | map(select(type=="object" and .type=="text") | .text) | join("\n"))) end | norm) as $txt
   | ([$pats | split("\n")[] | split("\t") | select(length==2) | select(. as $p | $txt | test($p[1]))] | first | .[0]) as $pad
-  | {ask:$ask, padrao:($pad // (if $dp then "decisao_pendente_subagente" else null end))}
+  | {n:($L|length), ask:$ask, padrao:($pad // (if $dp then "decisao_pendente_subagente" else null end))}
 ' 2>/dev/null)"
 [ -n "$RES" ] || erro transcript_ilegivel
+[ "$(printf '%s' "$RES" | jq -r '.n' 2>/dev/null)" -gt 0 ] 2>/dev/null || erro transcript_sem_linhas
 PADRAO="$(printf '%s' "$RES" | jq -r '.padrao // empty' 2>/dev/null)" || erro veredito_ilegivel
 ASK="$(printf '%s' "$RES" | jq -r '.ask' 2>/dev/null)" || erro veredito_ilegivel
 

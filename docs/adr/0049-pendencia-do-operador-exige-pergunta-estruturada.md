@@ -76,5 +76,5 @@ operador sobre a taxa observada; este ADR nao fixa limiar, porque nao ha medida 
 
 ## Reproducao
 
-    bash tests/unit/pending-ask.sh          # 17 casos, exit 0
+    bash tests/unit/pending-ask.sh          # 18 casos, exit 0
     PENDING_ASK_HOOK=<hook que sai 0> bash tests/unit/pending-ask.sh   # vermelho
