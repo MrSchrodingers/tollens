@@ -69,6 +69,7 @@ cat <<'JSON' | jq --arg b "$BASE" \
   ],
   "Stop": [{"hooks":[
       {"type":"command","command":"bash @BASE@/verify-gate.sh","timeout":200},
+      {"type":"command","command":"bash @BASE@/pending-ask.sh","timeout":10},
       {"type":"command","command":"bash @BASE@/ds4-notify.sh","timeout":5}]}],
   "SubagentStop": [
     {"hooks":[{"type":"command","command":"bash @BASE@/subagent-probe.sh"}]},

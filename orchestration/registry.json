@@ -630,6 +630,30 @@
       },
       "projection": "user"
     },
+    "pending-ask.sh": {
+      "kind": "hook_gate",
+      "source": "evidence/hooks/pending-ask.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "Stop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/pending-ask.sh"
+          },
+          "E_S": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/pending-ask.sh"
+          }
+        }
+      },
+      "projection": "user"
+    },
     "poka-yoke-lint.sh": {
       "kind": "hook_gate",
       "source": "execution/hooks/poka-yoke-lint.sh",
