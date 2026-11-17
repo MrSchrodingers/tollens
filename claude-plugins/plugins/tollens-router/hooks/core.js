@@ -87,16 +87,25 @@ export function autorTierMax(estado) {
 }
 
 // (f) p = percentual semanal usado menos fracao decorrida da semana, ambos em [0,1].
+// Leitura descartada (null): sem janela seven_day, percentUsed fora de [0,100] ou nao finito, resetsAt
+// ausente, ilegivel, no passado ou alem de 7 dias.
 export function calcularRitmo(rateLimits, agoraMs) {
   if (!Array.isArray(rateLimits)) return null;
   const w = rateLimits.find((r) => plain(r) && r.kind === 'seven_day');
-  if (!w || typeof w.percentUsed !== 'number' || !Number.isFinite(w.percentUsed)) return null;
+  if (!w || typeof w.percentUsed !== 'number' || !Number.isFinite(w.percentUsed) || w.percentUsed < 0 || w.percentUsed > 100) return null;
   if (typeof w.resetsAt !== 'string') return null;
   const reset = Date.parse(w.resetsAt);
-  if (!Number.isFinite(reset) || !Number.isFinite(agoraMs) || reset <= agoraMs) return null;
-  const decorrida = Math.min(1, Math.max(0, 1 - (reset - agoraMs) / SEMANA_MS));
-  const usado = Math.min(1, Math.max(0, w.percentUsed / 100));
-  return usado - decorrida;
+  if (!Number.isFinite(reset) || !Number.isFinite(agoraMs) || reset <= agoraMs || reset - agoraMs > SEMANA_MS) return null;
+  const decorrida = 1 - (reset - agoraMs) / SEMANA_MS;
+  return w.percentUsed / 100 - decorrida;
+}
+
+export const RITMO_VALIDADE_MS = 30 * 60000;
+// Leitura vigente: medida ha no maximo 30 min (e nao no futuro); senao `dentro`.
+export function ritmoVigente(ritmo, agoraMs) {
+  if (!plain(ritmo) || typeof ritmo.p !== 'number' || typeof ritmo.ts !== 'number') return null;
+  const idade = agoraMs - ritmo.ts;
+  return idade >= 0 && idade <= RITMO_VALIDADE_MS ? ritmo.p : null;
 }
 
 export function estadoDoRitmo(p, policy) {
@@ -107,21 +116,17 @@ export function estadoDoRitmo(p, policy) {
   return 'dentro';
 }
 
-// Sinais de falha pelo RESULTADO do Agent. Heuristica; devolve so um codigo, nunca texto.
-const SINAIS = [
-  [/n[aã]o verificado/i, 'nao_verificado'],
-  [/\brefutado\b/i, 'refutado'],
-  [/\bfalhou\b/i, 'falhou'],
-  [/contrato reprovado/i, 'contrato_reprovado'],
-];
+// Sinais de falha pelo RESULTADO do Agent, so de formato documentado: `isError` do resultado, `status`
+// do registro do Agent (`completed` e `async_launched` sao normais) e linha ESTRUTURADA no inicio de
+// linha. Texto solto no meio de uma frase nao conta. Devolve so um codigo, nunca texto.
+const LINHA_ESTRUTURADA = /^(Estado|Veredito|Resultado):[ \t]*(NAO VERIFICADO|N\u00c3O VERIFICADO|REFUTADO|REPROVADO)/im;
 export function sinalDeFalha(res) {
   if (!plain(res)) return null;
-  const r = plain(res.result) ? res.result : {};
-  const stop = r.stop_reason ?? r.stopReason ?? res.stop_reason ?? res.stopReason;
-  if (stop === 'max_tokens' || stop === 'refusal') return `stop_${stop}`;
-  const texto = typeof res.text === 'string' ? res.text : typeof res.result === 'string' ? res.result : '';
-  for (const [re, cod] of SINAIS) if (re.test(texto.slice(0, 200000))) return cod;
-  return null;
+  if (res.isError === true) return 'erro_ferramenta';
+  const st = plain(res.result) ? res.result.status : undefined;
+  if (typeof st === 'string' && st !== 'completed' && st !== 'async_launched') return 'status_nao_concluido';
+  const texto = typeof res.text === 'string' ? res.text.slice(0, 200000) : '';
+  return LINHA_ESTRUTURADA.test(texto) ? 'linha_estruturada' : null;
 }
 
 export const NOTA_FALHA = 'router: sinal de falha; a proxima tentativa desta tarefa sobe um nivel';
@@ -138,6 +143,9 @@ export function rankModelo(m) {
 
 const SEGURO_RE = /^[A-Za-z0-9._:-]{1,80}$/;
 const seguro = (s, padrao = null) => (typeof s === 'string' && SEGURO_RE.test(s) ? s : padrao);
+// Id de modelo como o Claude Code o escreve (`claude-sonnet-5-5[1m]`); texto livre vira null.
+const MODELO_RE = /^[A-Za-z0-9._:\/@\[\]-]{1,80}$/;
+const modeloSeguro = (s) => (typeof s === 'string' && MODELO_RE.test(s) ? s : null);
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
 // Ultimo segmento do namespace `plugin:nome`, restrito ao charset seguro (texto livre vira null).
@@ -159,7 +167,7 @@ export function linhaDeLedger(c) {
   const num = (n) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n * 1000) / 1000 : null);
   const obj = {
     ts: typeof c.ts === 'string' && ISO_RE.test(c.ts) ? c.ts : null,
-    evento: ['tool.call', 'agent.spawn', 'resultado'].includes(c.evento) ? c.evento : null,
+    evento: ['tool.call', 'agent.spawn', 'resultado', 'efetivo'].includes(c.evento) ? c.evento : null,
     session_id: seguro(c.session_id),
     tool_use_id: seguro(c.tool_use_id),
     agent_type: papelSeguro(c.agent_type),
@@ -177,6 +185,8 @@ export function linhaDeLedger(c) {
     capped: c.capped === true,
     subida_concedida: c.subida_concedida === true,
     reasons: Array.isArray(c.reasons) ? c.reasons.map((r) => seguro(r)).filter((r) => r !== null).slice(0, 40) : [],
+    efetivo: modeloSeguro(c.efetivo),
+    usados: Array.isArray(c.usados) ? c.usados.map(modeloSeguro).filter((m) => m !== null).slice(0, 4) : [],
     sinal: seguro(c.sinal),
     erro: seguro(c.erro),
   };
@@ -187,4 +197,78 @@ export function linhaDeLedger(c) {
 export function nomeDoErro(err) {
   const n = err && typeof err === 'object' && typeof err.name === 'string' ? err.name : 'Erro';
   return seguro(`excecao:${n}`.slice(0, 80), 'excecao');
+}
+
+// Campos que uma linha do ledger pode ter. Um arquivo so e tratado como do ledger se a primeira linha for
+// um objeto JSON com `evento` e so estes campos: o mod nunca anexa a (nem rotaciona sobre) arquivo alheio.
+export const CAMPOS_LEDGER = ['ts', 'evento', 'session_id', 'tool_use_id', 'agent_type', 'role', 'chave', 'ficha', 'floor', 'tier_base',
+  'tier', 'pedido', 'aplicado', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'efetivo', 'usados', 'sinal', 'erro'];
+export function ehDoLedger(texto) {
+  if (typeof texto !== 'string') return false;
+  if (texto === '') return true;
+  const linha = texto.slice(0, texto.indexOf('\n') === -1 ? texto.length : texto.indexOf('\n'));
+  let o;
+  try {
+    o = JSON.parse(linha);
+  } catch {
+    return false;
+  }
+  return plain(o) && Object.hasOwn(o, 'evento') && Object.keys(o).every((k) => CAMPOS_LEDGER.includes(k));
+}
+
+export async function hex16(texto) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(texto)));
+  return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ---------------------------------------------------------------- managed (somente leitura)
+
+const tokens = (s) => (typeof s === 'string' ? s.toLowerCase().split(/[^a-z]+/) : []);
+// `managed`: { available: string[]|null, denied: string[]|null } ou null (ilegivel: sem restricao conhecida).
+export function modeloPermitido(alias, managed) {
+  if (!plain(managed)) return true;
+  const casa = (lista) => Array.isArray(lista) && lista.some((x) => tokens(x).includes(alias));
+  if (casa(managed.denied)) return false;
+  if (Array.isArray(managed.available) && managed.available.length > 0 && !casa(managed.available)) return false;
+  return true;
+}
+
+export function lerManaged(texto) {
+  try {
+    const o = JSON.parse(texto);
+    if (!plain(o)) return null;
+    const lista = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : null);
+    return { available: lista(o.availableModels), denied: lista(o.deniedModels) };
+  } catch {
+    return null;
+  }
+}
+
+// Modelo a aplicar quando o desejado (decisao do motor) e negado pelo managed: o maior nivel EMITIVEL abaixo
+// do decidido cujo modelo e permitido e que nao fica abaixo do pedido original do orquestrador. Sem
+// candidato: null (a chamada fica como o orquestrador a fez).
+export function melhorPermitido(policy, tierDecidido, original, managed) {
+  const piso = Math.max(0, rankModelo(original));
+  for (let t = TIERS.indexOf(tierDecidido) - 1; t >= 0; t--) {
+    const c = plain(policy) && plain(policy.tiers) ? policy.tiers[TIERS[t]] : undefined;
+    if (!plain(c) || c.emitivel === false || !ALIASES.includes(c.model)) continue;
+    if (modeloPermitido(c.model, managed) && ALIASES.indexOf(c.model) >= piso) return { model: c.model, effort: c.effort, tier: TIERS[t] };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- indice de sessoes no store
+
+export const MAX_SESSOES = 50;
+export const IDADE_MAX_MS = 14 * 86400000;
+// Insere/atualiza a sessao e devolve { indice, remover }: sessoes com 14 dias ou mais e as mais antigas alem de 50.
+export function podarSessoes(indice, sid, agoraMs) {
+  const base = Array.isArray(indice) ? indice.filter((x) => Array.isArray(x) && typeof x[0] === 'string' && typeof x[1] === 'number' && x[0] !== sid) : [];
+  base.sort((a, b) => a[1] - b[1]);
+  base.push([sid, agoraMs]);
+  const remover = [];
+  const manter = [];
+  for (const x of base) (x[0] !== sid && agoraMs - x[1] >= IDADE_MAX_MS ? remover : manter).push(x);
+  while (manter.length > MAX_SESSOES) remover.push(manter.shift());
+  return { indice: manter, remover: remover.map((x) => x[0]) };
 }

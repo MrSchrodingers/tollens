@@ -2,7 +2,7 @@
 
 Escopo: o que o mod deve passar a `decide(input, policy)` e o que `decide` devolve. O motor e puro
 (`engine.mjs`): nao le relogio, arquivo, ambiente nem sentinela. Tudo isso e responsabilidade do mod.
-Nao existe ainda mod, ledger nem leitura de `session.measure`; este documento nao os promete.
+O mod (`hooks/register.js`, secao "O mod" abaixo) liga o motor ao Claude Code; este documento descreve o que ele passa ao motor e o que faz com a decisao.
 
 ## Dado puro
 
@@ -163,7 +163,60 @@ suite confere que o validador nunca aceita o que o schema recusa.
 
 Sentinela de root, ledger, leitura de `session.measure`, aplicacao de `model` e `effort` na chamada,
 leitura de `router-policy.json` (o motor recebe o objeto ja lido) e conferencia da allowlist contra
-as chaves managed (`availableModels`, `deniedModels`).
+as chaves managed (`availableModels`, `deniedModels`): tudo isso e do mod.
+
+## O mod (R2)
+
+- **Caminhos FIXOS em producao.** Politica `/etc/claude-code/router-policy.json`, sentinela
+  `/etc/claude-code/router-off` (presente = `off`, lida a cada decisao), managed-settings
+  `/etc/claude-code/managed-settings.json` (somente leitura), ledger sob `${HOME}/.claude/logs/`. Nenhum
+  caminho vem de variavel de ambiente nem de settings do repositorio. `criarMod(config)` (injecao explicita
+  de `politica`, `sentinela`, `managed`, `ledgerDir`) existe so para teste; o `register` instalado usa os
+  padroes. A sentinela padrao vale mesmo com outra sentinela injetada.
+- **Modos.** `shadow` e `off` nao alteram a chamada (a linha `@@ROTA` permanece); so `enforce` com
+  `aplicar: true` aplica `model` e `effort` e remove a primeira linha `@@ROTA`. Fork nao recebe `model` nem
+  `effort`. Fable nunca e escolhido.
+- **Hooks.** `tool.call` (Agent e Task); `agent.spawn` so para workflow e teammate sem `tool.call` anterior
+  (subagente comum, fork e retomada passam); `session.measure`. `claude plugin validate` avisa
+  `gating hook without .catch` nos dois primeiros: sem `.catch` o runtime pula o hook que lanca ou estoura
+  o prazo e a chamada segue sem o mod, que e o fail-open desejado. Nao se adiciona `.catch`.
+- **Variavel de ambiente.** O mod NAO altera nenhuma. Para agente de workflow define `model` em
+  `agent.spawn` (e so sobe: baseline desconhecido nunca e tocado). NAO VERIFICADO: se o runtime respeita o
+  `model` do hook quando `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` esta definida (o d.ts diz que o modelo
+  forcado pela sessao vence o do hook).
+- **Managed.** Lê `availableModels` e `deniedModels`. Se o modelo escolhido esta negado ou ausente, aplica o
+  maior nivel emitivel abaixo do decidido cujo modelo e permitido e que nao fica abaixo do `model` pedido
+  pelo orquestrador; sem candidato, mantem a chamada. Registra `managed_nega_modelo` (o modelo desejado fica
+  em `pedido`) e avisa com `$.ui.notice` uma vez por sessao. Arquivo ilegivel: sem restricao (falha aberta).
+  O nivel alternativo nao reconfere a medicao de qualidade da politica.
+- **Estado.** `$.store`, chave `router.estado.<session_id>` (falhasPorChave, subidasConcedidas, ordem,
+  autorTierPorChave, chavesCriticas), aparado a 1000 entradas por estrutura antes de `decide`; indice
+  `router.indice` com as ultimas 50 sessoes (sessao com 14 dias ou mais, e as excedentes, sao apagadas ao
+  escrever uma sessao nova). Falha de `store.set` nao derruba o roteamento: `persistencia_falhou` e aviso.
+  Sem `session_id` nada e persistido (`sem_sessao_id`).
+- **Ledger.** Um arquivo por SESSAO: `router-ledger-<16 hex do sha256 do session_id>.jsonl` (sem sessao:
+  `router-ledger-sem-sessao.jsonl`), rotacao em 3 geracoes por arquivo (`.1` a `.3`, acima de 2 MiB).
+  Consumidores (model-honor C5, painel) leem o glob `router-ledger-*.jsonl*`. So anexa a arquivo vazio ou
+  cuja primeira linha seja de ledger; nunca regrava arquivo alheio nem rotaciona sobre geracao alheia.
+  `$.fs` nao tem modo de arquivo: o ledger nao e 0600 (umask do usuario). A escrita e read+write nao atomica:
+  a fila serializa dentro do processo e o arquivo por sessao evita a corrida entre processos.
+  Campos: `ts, evento, session_id, tool_use_id, agent_type, role, chave (16 hex), ficha (c, r, v), floor,
+  tier_base, tier, pedido, aplicado, mode, modo_efetivo, pace, capped, subida_concedida, reasons, efetivo,
+  usados, sinal, erro`. `ficha.t` NAO vai ao ledger (texto livre do orquestrador). Eventos: `tool.call`,
+  `agent.spawn`, `efetivo` (apos o resultado: `resolvedModel` e `modelsUsed` do Agent, ou `null`; junta por
+  `tool_use_id` com o model-honor), `resultado` (sinal de falha).
+- **Sinais de falha.** So de formato documentado: `isError` do resultado, `status` do registro do Agent
+  diferente de `completed` e `async_launched`, e linha estruturada no inicio de linha
+  (`Estado|Veredito|Resultado: NAO VERIFICADO|REFUTADO|REPROVADO`). Texto solto nao conta. O mod nao
+  re-executa; em enforce acrescenta a nota ao resultado.
+- **Ritmo.** Leitura `seven_day` descartada (estado `dentro`) com `resetsAt` ausente, no passado ou alem de
+  7 dias, ou `percentUsed` fora de [0,100]; vale por 30 minutos desde a medicao.
+- **Codigos de reasons do mod:** `politica_ausente`, `politica_ilegivel`, `history_aparado`,
+  `modelo_fora_da_allowlist`, `sentinela_off`, `managed_nega_modelo`, `persistencia_falhou`,
+  `sem_sessao_id`.
+- **Nao verificado em runtime:** carregamento real (allowManagedHooksOnly), `{...res, context}` como nota,
+  nomes dos campos da chamada Agent, criacao do diretorio do ledger por `$.fs.write`, `\p{}` e `normalize`
+  no sandbox do mod.
 
 ## Limites conhecidos
 

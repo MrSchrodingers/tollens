@@ -11,12 +11,12 @@
 # PINO DE CONTAGEM: apagar um caso manteria `node --test` verde. A contagem esperada e literal; ao
 # acrescentar ou remover um caso, atualize CASOS_ESPERADOS na mesma mudanca.
 #
-# Mutantes do mod: nao ha arnes versionado; as mutacoes medidas na entrega estao descritas no relato da onda.
+# Mutantes do mod: python3 claude-plugins/plugins/tollens-router/tests/mutants-mod.py (uma linha por mutante; fora do agregador por custo).
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 . "$(dirname "$0")/../lib/lock.sh"
 
-CASOS_ESPERADOS=13
+CASOS_ESPERADOS=23
 
 if ! command -v node >/dev/null 2>&1; then
   echo "  DEPENDENCIA AUSENTE: node. Estado: NAO VERIFICADO - a suite nao rodou."

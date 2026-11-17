@@ -3,52 +3,57 @@
 //
 // Modos (da politica): `shadow` e `off` NAO alteram a chamada; so `enforce` aplica model e effort.
 // Falha aberta: qualquer excecao deixa a chamada inalterada e grava uma linha de erro sem conteudo.
-import { decide, parseRota, stripRota } from '../engine.mjs';
+// Sem `.catch` nos hooks de proposito: o runtime pula um hook que lanca ou estoura o prazo e a chamada
+// segue sem o mod, que e o fail-open desejado.
+//
+// CAMINHOS FIXOS em producao (politica, sentinela, managed-settings; ledger sob ~/.claude/logs): nenhum vem
+// de variavel de ambiente nem de settings do repositorio. `criarMod(config)` existe so para teste, com
+// injecao explicita; o `register` exportado usa apenas os padroes fixos.
+//
+// O mod NAO altera variavel de ambiente. Para agente de workflow ele define `model` em `agent.spawn`.
+// NAO VERIFICADO: se o runtime respeita o `model` do hook quando CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL esta
+// definida (o d.ts diz que o modelo forcado pela sessao vence o do hook).
+import { decide, normalizarPapel, parseRota, stripRota } from '../engine.mjs';
 import {
-  ALIASES, NOTA_FALHA, aparar, autorTierMax, calcularRitmo, derivarChave, estadoDoRitmo, linhaDeLedger,
-  nomeDoErro, normalizarEstado, rankModelo, sinalDeFalha,
+  ALIASES, NOTA_FALHA, aparar, autorTierMax, calcularRitmo, derivarChave, ehDoLedger, estadoDoRitmo, hex16, linhaDeLedger,
+  lerManaged, melhorPermitido, modeloPermitido, nomeDoErro, normalizarEstado, podarSessoes, rankModelo, ritmoVigente, sinalDeFalha,
 } from './core.js';
 
-const POLITICA_PADRAO = '/etc/claude-code/router-policy.json';
-const SENTINELA_PADRAO = '/etc/claude-code/router-off';
+const PADRAO = Object.freeze({
+  politica: '/etc/claude-code/router-policy.json',
+  sentinela: '/etc/claude-code/router-off',
+  managed: '/etc/claude-code/managed-settings.json',
+  ledgerDir: null, // null: ${HOME}/.claude/logs
+});
 const ROTACAO_BYTES = 2097152;
 const GERACOES = 3;
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
-// Estado de processo (reiniciado a cada reload): ultimo ritmo medido e chamadas ja decididas.
-let ritmo = null;
-const decididos = new Set();
-let filaEstado = Promise.resolve();
-let filaLedger = Promise.resolve();
+function novoEstado() {
+  return { ritmo: null, decididos: new Set(), avisos: new Set(), filaEstado: Promise.resolve(), filaLedger: Promise.resolve() };
+}
 
-function serializarEstado(fn) {
-  const p = filaEstado.then(fn);
-  filaEstado = p.then(() => undefined, () => undefined);
+function serializar(est, fila, fn) {
+  const p = est[fila].then(fn);
+  est[fila] = p.then(() => undefined, () => undefined);
   return p;
 }
 
-function serializarLedger(fn) {
-  const p = filaLedger.then(fn);
-  filaLedger = p.then(() => undefined, () => undefined);
-  return p;
-}
-
-function lembrar(id) {
+function lembrar(est, id) {
   if (typeof id !== 'string' || id === '') return;
-  decididos.add(id);
-  if (decididos.size > 500) decididos.delete(decididos.values().next().value);
+  est.decididos.add(id);
+  if (est.decididos.size > 500) est.decididos.delete(est.decididos.values().next().value);
 }
 
-async function caminhos($) {
-  const politica = await $.env.get('TOLLENS_ROUTER_POLICY');
-  const sentinela = await $.env.get('TOLLENS_ROUTER_SENTINEL');
-  const ledger = await $.env.get('TOLLENS_ROUTER_LEDGER');
-  const home = await $.env.get('HOME');
-  return {
-    politica: politica || POLITICA_PADRAO,
-    sentinela: sentinela || null,
-    ledger: ledger || (home ? `${home}/.claude/logs/router-ledger.jsonl` : null),
-  };
+// Aviso ao operador, uma vez por tipo e por instancia (sessao).
+function avisar($, est, tipo, id, texto) {
+  if (est.avisos.has(tipo)) return;
+  est.avisos.add(tipo);
+  try {
+    if (typeof id === 'string' && id !== '') $.ui.notice(id, texto);
+  } catch {
+    // aviso e cortesia: a chamada segue
+  }
 }
 
 async function lerPolitica($, caminho) {
@@ -66,90 +71,107 @@ async function lerPolitica($, caminho) {
   }
 }
 
-// Ledger JSONL append-only; rotacao em 3 geracoes (.1 mais nova). Nunca lanca.
-async function gravarLedger($, cfg, linha) {
-  if (!cfg || !cfg.ledger) return;
-  await serializarLedger(async () => {
-    try {
-      let atual = '';
-      try {
-        atual = await $.fs.read(cfg.ledger);
-      } catch {
-        atual = '';
-      }
-      if (typeof atual !== 'string') atual = '';
-      if (atual.length > ROTACAO_BYTES) {
-        for (let g = GERACOES; g >= 2; g--) {
-          let src = '';
-          try {
-            src = await $.fs.read(`${cfg.ledger}.${g - 1}`);
-          } catch {
-            src = '';
-          }
-          if (typeof src === 'string' && src !== '') await $.fs.write(`${cfg.ledger}.${g}`, src);
-        }
-        await $.fs.write(`${cfg.ledger}.1`, atual);
-        atual = '';
-      }
-      await $.fs.write(cfg.ledger, `${atual}${linha}\n`);
-    } catch {
-      // sem ledger nao ha o que registrar; a chamada segue
-    }
-  });
-}
-
-async function ledgerErro($, evento, ids, err) {
+async function lerManagedSettings($, caminho) {
   try {
-    const cfg = await caminhos($);
-    let ts = null;
-    try {
-      ts = new Date(await $.clock.now()).toISOString();
-    } catch {
-      ts = null;
-    }
-    let sess = null;
-    try {
-      sess = await $.session.id();
-    } catch {
-      sess = null;
-    }
-    await gravarLedger($, cfg, linhaDeLedger({
-      ts, evento, session_id: sess, tool_use_id: ids.tool_use_id, agent_type: ids.subagentType,
-      role: ids.subagentType, erro: nomeDoErro(err),
-    }));
+    return lerManaged(await $.fs.read(caminho));
   } catch {
-    // nada mais a fazer: a chamada segue inalterada
+    return null; // ilegivel: sem restricao conhecida (somente leitura, falha aberta)
   }
 }
 
+// Ledger por SESSAO: <dir>/router-ledger-<16 hex do sha256 do session_id>.jsonl, rotacao em 3 geracoes
+// (.1 a .3). So escreve em arquivo vazio ou cuja primeira linha seja de ledger; nunca regrava arquivo alheio.
+// $.fs nao tem modo de arquivo: o ledger nao e 0600 (umask do usuario). Nunca lanca.
+async function gravarLedger($, cfg, est, sess, linha) {
+  try {
+    let dir = cfg.ledgerDir;
+    if (!dir) {
+      const home = await $.env.get('HOME');
+      dir = typeof home === 'string' && home.startsWith('/') ? `${home}/.claude/logs` : null;
+    }
+    if (!dir) return;
+    const arq = `${dir}/router-ledger-${typeof sess === 'string' && sess !== '' ? await hex16(sess) : 'sem-sessao'}.jsonl`;
+    await serializar(est, 'filaLedger', async () => {
+      const ler = async (p) => {
+        try {
+          return await $.fs.read(p);
+        } catch {
+          return '';
+        }
+      };
+      let atual = await ler(arq);
+      if (!ehDoLedger(atual)) return;
+      if (atual.length > ROTACAO_BYTES) {
+        const geracoes = [];
+        for (let g = 1; g <= GERACOES; g++) geracoes.push(await ler(`${arq}.${g}`));
+        if (!geracoes.every(ehDoLedger)) return;
+        for (let g = GERACOES; g >= 2; g--) if (geracoes[g - 2] !== '') await $.fs.write(`${arq}.${g}`, geracoes[g - 2]);
+        await $.fs.write(`${arq}.1`, atual);
+        atual = '';
+      }
+      await $.fs.write(arq, `${atual}${linha}\n`);
+    });
+  } catch {
+    // sem ledger nao ha o que registrar; a chamada segue
+  }
+}
+
+async function sessaoDe($) {
+  try {
+    const id = await $.session.id();
+    return typeof id === 'string' && id !== '' ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function ledgerErro($, cfg, est, evento, ids, err) {
+  let ts = null;
+  try {
+    ts = new Date(await $.clock.now()).toISOString();
+  } catch {
+    ts = null;
+  }
+  const sess = await sessaoDe($);
+  await gravarLedger($, cfg, est, sess, linhaDeLedger({
+    ts, evento, session_id: sess, tool_use_id: ids.tool_use_id, agent_type: ids.subagentType, role: ids.subagentType, erro: nomeDoErro(err),
+  }));
+}
+
 const ehRevisor = (policy, papel) => {
-  const alvo = typeof papel === 'string' ? papel.split(':').pop().trim().toLowerCase() : '';
-  return Array.isArray(policy && policy.reviewer_roles) && policy.reviewer_roles.some((r) => typeof r === 'string' && r.trim().toLowerCase() === alvo);
+  const alvo = normalizarPapel(papel);
+  return alvo !== '' && Array.isArray(policy && policy.reviewer_roles) && policy.reviewer_roles.some((r) => normalizarPapel(r) === alvo);
 };
 
-// Decide uma delegacao. Persiste o estado ANTES de devolver (protocolo d), em qualquer modo.
-async function decidir($, c) {
-  const cfg = await caminhos($);
+// Indice das ultimas 50 sessoes no store; sessao nova poda as de 14 dias ou mais e as excedentes.
+async function registrarSessao($, sess, agora) {
+  const indice = await $.store.get('router.indice');
+  if (Array.isArray(indice) && indice.some((x) => Array.isArray(x) && x[0] === sess)) return;
+  const { indice: novo, remover } = podarSessoes(indice, sess, agora);
+  await $.store.set('router.indice', novo);
+  for (const s of remover) await $.store.delete(`router.estado.${s}`);
+}
+
+// Decide uma delegacao. Persiste o estado ANTES de devolver (protocolo d), em qualquer modo. Falha de
+// store.set nao derruba o roteamento: vira o motivo `persistencia_falhou`.
+async function decidir($, cfg, est, c) {
   const agora = await $.clock.now();
-  const sess = await $.session.id();
+  const sess = await sessaoDe($);
   const base = {
     ts: new Date(agora).toISOString(), evento: c.evento, session_id: sess, tool_use_id: c.tool_use_id,
     agent_type: c.subagentType, role: c.subagentType,
   };
-  const sentinelas = [SENTINELA_PADRAO];
-  if (cfg.sentinela && cfg.sentinela !== SENTINELA_PADRAO) sentinelas.push(cfg.sentinela);
-  for (const s of sentinelas) {
-    if (await $.fs.exists(s)) {
-      return { cfg, off: true, linha: { ...base, mode: 'off', modo_efetivo: 'off', reasons: ['sentinela_off'] } };
-    }
+  if (await $.fs.exists(PADRAO.sentinela) || (cfg.sentinela !== PADRAO.sentinela && await $.fs.exists(cfg.sentinela))) {
+    return { off: true, sess, linha: { ...base, mode: 'off', modo_efetivo: 'off', reasons: ['sentinela_off'] } };
   }
   const { policy, motivo } = await lerPolitica($, cfg.politica);
+  const managed = await lerManagedSettings($, cfg.managed);
   const chave = await derivarChave(c.subagentType, c.descricao);
-  const estadoRitmo = estadoDoRitmo(ritmo ? ritmo.p : null, policy);
+  const estadoRitmo = estadoDoRitmo(ritmoVigente(est.ritmo, agora), policy);
 
-  return serializarEstado(async () => {
+  return serializar(est, 'filaEstado', async () => {
     const key = `router.estado.${sess}`;
-    const estado = normalizarEstado(await $.store.get(key));
+    const estado = normalizarEstado(sess === null ? undefined : await $.store.get(key));
     const { history, aparado } = aparar(estado, chave);
     const max = autorTierMax(estado);
     if (max !== undefined) history.autorTierMax = max;
@@ -162,37 +184,50 @@ async function decidir($, c) {
     const reasons = [...d.reasons];
     if (motivo) reasons.push(motivo);
     if (aparado) reasons.push('history_aparado');
+    if (sess === null) reasons.push('sem_sessao_id');
 
-    if (chave !== undefined && d.tier !== null) {
+    if (sess !== null && chave !== undefined && d.tier !== null) {
       const antes = JSON.stringify(estado);
       if (d.subida_concedida && !estado.subidasConcedidas.includes(chave)) estado.subidasConcedidas.push(chave);
       if (!ehRevisor(policy, c.subagentType)) estado.autorTierPorChave[chave] = d.tier;
       const critica = reasons.includes('piso_superficie_de_risco') || ehRevisor(policy, c.subagentType);
       if (critica && !estado.chavesCriticas.includes(chave)) estado.chavesCriticas.push(chave);
-      if (JSON.stringify(estado) !== antes) await $.store.set(key, aparar(estado, chave).history);
+      if (JSON.stringify(estado) !== antes) {
+        try {
+          await registrarSessao($, sess, agora);
+          await $.store.set(key, aparar(estado, chave).history);
+        } catch {
+          reasons.push('persistencia_falhou');
+          avisar($, est, 'persistencia', c.tool_use_id, 'router: falha ao gravar o estado; a decisao foi aplicada sem persistir');
+        }
+      }
     }
-    const pace = { estado: estadoRitmo, p: ritmo ? ritmo.p : null };
-    return { cfg, off: false, policy, d, reasons, chave, base, pace, sess };
+    const pace = { estado: estadoRitmo, p: ritmoVigente(est.ritmo, agora) };
+    return { off: false, sess, policy, managed, d, reasons, chave, base, pace };
   });
 }
 
-function linhaDaDecisao(r, aplicado, extra) {
-  const f = extra && extra.ficha ? extra.ficha : null;
+function linhaDaDecisao(r, aplicado, ficha) {
   return {
-    ...r.base, chave: r.chave, ficha: f, floor: r.d.floor, tier_base: r.d.tier_base, tier: r.d.tier,
+    ...r.base, chave: r.chave, ficha, floor: r.d.floor, tier_base: r.d.tier_base, tier: r.d.tier,
     pedido: { model: r.d.model, effort: r.d.effort }, aplicado, mode: r.d.mode, modo_efetivo: r.d.modo_efetivo,
     pace: r.pace, capped: r.d.capped, subida_concedida: r.d.subida_concedida, reasons: r.reasons,
-    ...(extra && extra.sinal ? { sinal: extra.sinal } : {}),
   };
 }
 
-function modeloAplicavel(r) {
+// Modelo/effort a aplicar numa decisao com `aplicar`: o do motor se a allowlist da politica e o managed o
+// permitem; senao o melhor nivel permitido (registra managed_nega_modelo); senao nada.
+function escolherAplicacao(r, original) {
   const al = r.policy && Array.isArray(r.policy.model_allowlist) ? r.policy.model_allowlist : [];
-  return r.d.aplicar === true && ALIASES.includes(r.d.model) && al.includes(r.d.model);
+  if (r.d.aplicar !== true || !ALIASES.includes(r.d.model) || !al.includes(r.d.model)) return { alvo: null, negado: false, fora: true };
+  if (modeloPermitido(r.d.model, r.managed)) return { alvo: { model: r.d.model, effort: r.d.effort }, negado: false, fora: false };
+  const alt = melhorPermitido(r.policy, r.d.tier, original, r.managed);
+  return { alvo: alt && al.includes(alt.model) ? { model: alt.model, effort: alt.effort } : null, negado: true, fora: false };
 }
 
-async function registrarFalha($, r) {
-  return serializarEstado(async () => {
+async function registrarFalha($, est, r) {
+  if (r.sess === null) return;
+  await serializar(est, 'filaEstado', async () => {
     const key = `router.estado.${r.sess}`;
     const estado = normalizarEstado(await $.store.get(key));
     estado.falhasPorChave[r.chave] = (estado.falhasPorChave[r.chave] || 0) + 1;
@@ -206,86 +241,103 @@ function fichaDe(prompt) {
   return p.ok ? { c: p.ficha.c, r: p.ficha.r, v: p.ficha.v } : null;
 }
 
-export function register(on) {
+function instalar(on, cfg) {
+  const est = novoEstado();
+
   on('tool.call', { tool: ['Agent', 'Task'] }, async ($, e, next) => {
+    if (e === null || typeof e !== 'object') return next(e);
     const ids = { tool_use_id: e.tool_use_id, subagentType: e.subagent_type };
     let r;
     try {
-      r = await decidir($, { evento: 'tool.call', subagentType: e.subagent_type, descricao: e.description, prompt: e.prompt, tool_use_id: e.tool_use_id });
+      r = await decidir($, cfg, est, { evento: 'tool.call', subagentType: e.subagent_type, descricao: e.description, prompt: e.prompt, tool_use_id: e.tool_use_id });
     } catch (err) {
-      await ledgerErro($, 'tool.call', ids, err);
+      await ledgerErro($, cfg, est, 'tool.call', ids, err);
       return next(e);
     }
     if (r.off) {
-      await gravarLedger($, r.cfg, linhaDeLedger(r.linha));
+      await gravarLedger($, cfg, est, r.sess, linhaDeLedger(r.linha));
       return next(e);
     }
-    lembrar(e.tool_use_id);
+    lembrar(est, e.tool_use_id);
     let chamada = e;
     let aplicado = null;
     try {
-      if (r.d.aplicar && typeof e.prompt === 'string') {
-        if (modeloAplicavel(r)) {
-          const efetivo = EFFORTS.includes(r.d.effort) ? r.d.effort : undefined;
-          chamada = { ...e, model: r.d.model, prompt: stripRota(e.prompt) };
-          if (efetivo !== undefined) chamada.effort = efetivo;
-          aplicado = { model: r.d.model, effort: efetivo ?? null };
-        } else {
-          r.reasons.push('modelo_fora_da_allowlist');
+      const ehFork = typeof e.subagent_type === 'string' && e.subagent_type.toLowerCase() === 'fork';
+      if (r.d.aplicar && typeof e.prompt === 'string' && !ehFork) {
+        const { alvo, negado, fora } = escolherAplicacao(r, e.model);
+        if (fora) r.reasons.push('modelo_fora_da_allowlist');
+        if (negado) {
+          r.reasons.push('managed_nega_modelo');
+          avisar($, est, 'managed', e.tool_use_id, `router: o managed nega o modelo ${r.d.model}; aplicado o melhor nivel permitido`);
+        }
+        chamada = { ...e, prompt: stripRota(e.prompt) };
+        if (alvo !== null) {
+          chamada.model = alvo.model;
+          if (EFFORTS.includes(alvo.effort)) chamada.effort = alvo.effort;
+          aplicado = { model: alvo.model, effort: EFFORTS.includes(alvo.effort) ? alvo.effort : null };
         }
       }
-      await gravarLedger($, r.cfg, linhaDeLedger(linhaDaDecisao(r, aplicado, { ficha: fichaDe(e.prompt) })));
+      await gravarLedger($, cfg, est, r.sess, linhaDeLedger(linhaDaDecisao(r, aplicado, fichaDe(e.prompt))));
     } catch (err) {
-      await ledgerErro($, 'tool.call', ids, err);
+      await ledgerErro($, cfg, est, 'tool.call', ids, err);
       chamada = e;
     }
     const res = await next(chamada);
     try {
+      const rr = res !== null && typeof res === 'object' && res.result !== null && typeof res.result === 'object' ? res.result : {};
+      await gravarLedger($, cfg, est, r.sess, linhaDeLedger({
+        ...r.base, evento: 'efetivo', chave: r.chave, tier: r.d.tier, mode: r.d.mode, modo_efetivo: r.d.modo_efetivo,
+        efetivo: rr.resolvedModel ?? null, usados: rr.modelsUsed,
+      }));
       const sinal = sinalDeFalha(res);
       if (sinal && r.chave !== undefined) {
-        await registrarFalha($, r);
-        await gravarLedger($, r.cfg, linhaDeLedger({ ...r.base, evento: 'resultado', chave: r.chave, tier: r.d.tier, mode: r.d.mode, modo_efetivo: r.d.modo_efetivo, sinal }));
+        await registrarFalha($, est, r);
+        await gravarLedger($, cfg, est, r.sess, linhaDeLedger({ ...r.base, evento: 'resultado', chave: r.chave, tier: r.d.tier, mode: r.d.mode, modo_efetivo: r.d.modo_efetivo, sinal }));
         if (r.d.aplicar) return { ...res, context: [...(Array.isArray(res.context) ? res.context : []), NOTA_FALHA] };
       }
     } catch (err) {
-      await ledgerErro($, 'tool.call', ids, err);
+      await ledgerErro($, cfg, est, 'tool.call', ids, err);
     }
     return res;
   });
 
   on('agent.spawn', async ($, e, next) => {
-    // Subagente comum e fork: decididos no tool.call. Aqui so workflow, teammate (sem tool.call
-    // anterior) e retomada (ignorada: so pode ser recusada).
+    // Subagente comum e fork: decididos no tool.call. Aqui so workflow, teammate (sem tool.call anterior) e
+    // retomada (ignorada: so pode ser recusada). O mod define `model`; nao altera variavel de ambiente.
+    if (e === null || typeof e !== 'object') return next(e);
     if (e.resume || e.fork || !(e.workflow || e.isTeammate)) return next(e);
-    if (!e.workflow && decididos.has(e.tool_use_id)) return next(e);
+    if (!e.workflow && est.decididos.has(e.tool_use_id)) return next(e);
     const ids = { tool_use_id: e.tool_use_id, subagentType: e.subagentType };
     let r;
     try {
-      r = await decidir($, { evento: 'agent.spawn', subagentType: e.subagentType, descricao: e.description, prompt: e.prompt, tool_use_id: e.tool_use_id });
+      r = await decidir($, cfg, est, { evento: 'agent.spawn', subagentType: e.subagentType, descricao: e.description, prompt: e.prompt, tool_use_id: e.tool_use_id });
     } catch (err) {
-      await ledgerErro($, 'agent.spawn', ids, err);
+      await ledgerErro($, cfg, est, 'agent.spawn', ids, err);
       return next(e);
     }
     if (r.off) {
-      await gravarLedger($, r.cfg, linhaDeLedger(r.linha));
+      await gravarLedger($, cfg, est, r.sess, linhaDeLedger(r.linha));
       return next(e);
     }
     let chamada = e;
     let aplicado = null;
     try {
-      if (modeloAplicavel(r)) {
-        const envModelo = await $.env.get('CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL');
-        const atual = e.model ?? envModelo ?? e.parentModel;
-        const rAtual = rankModelo(atual);
-        // so SOBE: baseline desconhecido (fable, id fora da familia) nunca e tocado
-        if (rAtual >= 0 && rankModelo(r.d.model) > rAtual) {
-          chamada = { ...e, model: r.d.model };
-          aplicado = { model: r.d.model, effort: null };
-        }
+      const atual = e.model ?? (await $.env.get('CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL')) ?? e.parentModel;
+      const rAtual = rankModelo(atual);
+      const { alvo, negado, fora } = escolherAplicacao(r, atual);
+      if (fora && r.d.aplicar) r.reasons.push('modelo_fora_da_allowlist');
+      if (negado) {
+        r.reasons.push('managed_nega_modelo');
+        avisar($, est, 'managed', e.tool_use_id, `router: o managed nega o modelo ${r.d.model}; aplicado o melhor nivel permitido`);
       }
-      await gravarLedger($, r.cfg, linhaDeLedger(linhaDaDecisao(r, aplicado, {})));
+      // so SOBE: baseline desconhecido (fable, id fora da familia) nunca e tocado
+      if (alvo !== null && rAtual >= 0 && rankModelo(alvo.model) > rAtual) {
+        chamada = { ...e, model: alvo.model };
+        aplicado = { model: alvo.model, effort: null };
+      }
+      await gravarLedger($, cfg, est, r.sess, linhaDeLedger(linhaDaDecisao(r, aplicado, null)));
     } catch (err) {
-      await ledgerErro($, 'agent.spawn', ids, err);
+      await ledgerErro($, cfg, est, 'agent.spawn', ids, err);
       chamada = e;
     }
     return next(chamada);
@@ -295,10 +347,20 @@ export function register(on) {
     try {
       const agora = await $.clock.now();
       const p = calcularRitmo(e.rateLimits, agora);
-      ritmo = p === null ? null : { p, ts: agora };
+      est.ritmo = p === null ? null : { p, ts: agora };
     } catch {
-      ritmo = null;
+      est.ritmo = null;
     }
     return next(e);
   });
+}
+
+export function register(on) {
+  instalar(on, PADRAO);
+}
+
+// Fabrica para teste: injecao explicita de caminhos. NAO e usada pelo Claude Code.
+export function criarMod(config) {
+  const cfg = { ...PADRAO, ...(config || {}) };
+  return (on) => instalar(on, cfg);
 }

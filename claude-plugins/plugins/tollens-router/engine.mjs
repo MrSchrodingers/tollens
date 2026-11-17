@@ -96,6 +96,9 @@ const papel = (s) => {
   return norm.slice(norm.lastIndexOf(':') + 1).trim();
 };
 
+// Exportado para o mod comparar papeis com a MESMA normalizacao do motor (nao reimplementar).
+export const normalizarPapel = papel;
+
 // Mapa de papeis normalizado UMA vez por objeto (as copias sao novas a cada decisao e nunca mudam);
 // nomes que colidem depois de normalizados ficam com o maior valor.
 const PAPEIS = new WeakMap();

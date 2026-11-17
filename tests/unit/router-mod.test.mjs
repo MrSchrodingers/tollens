@@ -15,14 +15,18 @@
 //   I10 o ritmo so desce onde a ficha permite (v sim, acima do piso)
 //   L1  sinal de falha registra por chave, nao re-executa e so avisa em enforce
 //   L2  ledger: chamadas paralelas nao perdem linha; rotacao em 3 geracoes
+//   C1  caminhos fixos: TOLLENS_ROUTER_* no ambiente nao mudam nada; o ledger nunca regrava arquivo alheio
+//   A1  managed nega o modelo: melhor permitido, sem baixar do pedido, aviso uma vez; A2 efetivo no ledger; A3 ledger por sessao
+//   A4  store.set falho nao derruba, poda do store; A5 sinais so de formato documentado; A6 ritmo invalido/vencido
+//   M1/M2 evento nulo, fork, normalizacao de papel do motor, chave hostil no ledger
 // Os `aprovacao_medida` das politicas sao FIXTURES SINTETICAS; nao sao medicao.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { register } from '../../claude-plugins/plugins/tollens-router/hooks/register.js';
-import { aparar, derivarChave, estadoVazio } from '../../claude-plugins/plugins/tollens-router/hooks/core.js';
+import { criarMod, register } from '../../claude-plugins/plugins/tollens-router/hooks/register.js';
+import { aparar, derivarChave, estadoVazio, hex16, linhaDeLedger, sinalDeFalha } from '../../claude-plugins/plugins/tollens-router/hooks/core.js';
 import { validatePolicy } from '../../claude-plugins/plugins/tollens-router/engine.mjs';
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../claude-plugins/plugins/tollens-router');
@@ -31,7 +35,10 @@ const NOW = Date.parse('2026-11-16T00:00:00Z');
 const DIA = 86400000;
 const TIERS = ['T0', 'T1', 'T2', 'T3', 'T4'];
 const POL = '/root-fake/router-policy.json';
-const LED = '/home-fake/.claude/logs/router-ledger.jsonl';
+const LEDDIR = '/home-fake/.claude/logs';
+const MAN = '/root-fake/managed-settings.json';
+const LINHA0 = '{"evento":"tool.call","ts":null}';
+const ledPath = async (sid = 'sess-1') => `${LEDDIR}/router-ledger-${await hex16(sid)}.jsonl`;
 const SENT_PADRAO = '/etc/claude-code/router-off';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const ROTA = (c, r, v, t = 'tarefa-x') => `@@ROTA ${JSON.stringify({ c, r, v, t })}`;
@@ -58,32 +65,46 @@ function politica(modo, mutate) {
 }
 
 // Mundo simulado: arquivos, store, relogio, env e o registro de eventos (ordem das chamadas).
-function mundo({ pol, sentinela = false, env = {}, agora = NOW, falha = {} } = {}) {
+// `real: true` carrega o `register` instalado (caminhos fixos); o padrao usa `criarMod` com injecao.
+function mundo({ pol, sentinela = false, cfg = {}, env = {}, agora = NOW, falha = {}, managed, sid = 'sess-1', real = false } = {}) {
   const arq = new Map();
   const st = new Map();
   const eventos = [];
-  if (pol !== undefined) arq.set(POL, typeof pol === 'string' ? pol : JSON.stringify(pol));
+  const avisos = [];
+  let relogio = agora;
+  if (pol !== undefined) arq.set(real ? '/etc/claude-code/router-policy.json' : POL, typeof pol === 'string' ? pol : JSON.stringify(pol));
+  if (managed !== undefined) arq.set(real ? '/etc/claude-code/managed-settings.json' : MAN, typeof managed === 'string' ? managed : JSON.stringify(managed));
   if (sentinela === true) arq.set(SENT_PADRAO, '');
   else if (typeof sentinela === 'string') arq.set(sentinela, '');
-  const ambiente = { TOLLENS_ROUTER_POLICY: POL, TOLLENS_ROUTER_LEDGER: LED, HOME: '/home-fake', ...env };
+  const ambiente = { HOME: '/home-fake', ...env };
   const quebra = (nome) => { if (falha[nome]) throw new Error(`CANARIO-ERRO-${nome}`); };
   const $ = {
-    clock: { now: async () => { quebra('clock'); return typeof falha.agora === 'number' || falha.agora === 'x' ? falha.agora : agora; } },
+    clock: { now: async () => { quebra('clock'); return typeof falha.agora === 'number' || falha.agora === 'x' ? falha.agora : relogio; } },
     env: { get: async (n) => ambiente[n] },
     fs: {
       read: async (p) => { await new Promise((r) => setImmediate(r)); if (!arq.has(p)) throw new Error('ENOENT'); return arq.get(p); },
-      write: async (p, t) => { await new Promise((r) => setImmediate(r)); eventos.push(`fs.write:${p === LED ? 'ledger' : p}`); arq.set(p, t); },
+      write: async (p, t) => { await new Promise((r) => setImmediate(r)); eventos.push(`fs.write:${p}`); arq.set(p, t); },
       exists: async (p) => { quebra('exists'); return arq.has(p); },
     },
-    session: { id: async () => 'sess-1' },
+    session: { id: async () => sid },
     store: {
       get: async (k) => { quebra('store'); return st.has(k) ? clone(st.get(k)) : undefined; },
-      set: async (k, v) => { eventos.push('store.set'); st.set(k, clone(v)); },
+      set: async (k, v) => { quebra('set'); eventos.push('store.set'); st.set(k, clone(v)); },
+      delete: async (k) => { eventos.push(`store.delete:${k}`); st.delete(k); },
     },
+    ui: { notice: (id, texto) => { avisos.push({ id, texto }); } },
   };
   const hooks = [];
-  register((ev, a, b) => { hooks.push({ ev, m: typeof a === 'function' ? null : a, fn: typeof a === 'function' ? a : b }); return { catch() {} }; });
-  return { $, arq, st, eventos, hooks, ledger: () => (arq.get(LED) || '').split('\n').filter(Boolean).map((l) => JSON.parse(l)) };
+  const reg = real ? register : criarMod({ politica: POL, managed: MAN, ledgerDir: LEDDIR, ...cfg });
+  reg((ev, a, b) => { hooks.push({ ev, m: typeof a === 'function' ? null : a, fn: typeof a === 'function' ? a : b }); return { catch() {} }; });
+  const ledger = (evento) => {
+    const linhas = [];
+    for (const [k, v] of arq) if (/\/router-ledger-[^/]*\.jsonl$/.test(k)) for (const l of v.split('\n').filter(Boolean)) linhas.push(JSON.parse(l));
+    if (evento === '*') return linhas;
+    return linhas.filter((l) => (evento ? l.evento === evento : l.evento === 'tool.call' || l.evento === 'agent.spawn'));
+  };
+  const textoLedger = () => [...arq].filter(([k]) => /router-ledger-/.test(k)).map(([, v]) => v).join('\n');
+  return { $, arq, st, eventos, avisos, hooks, ledger, textoLedger, setAgora: (x) => { relogio = x; } };
 }
 
 async function agent(w, e, resultado = { result: {}, text: 'concluido' }) {
@@ -164,7 +185,7 @@ test('I3 excecao interna: chamada intacta e linha de erro sem conteudo', async (
     const e = chamada({ prompt: `${ROTA(2, 'normal', 'sim')}\nCANARIO-PROMPT-I3` });
     const { recebido } = await agent(w, e);
     assert.deepEqual(recebido, e, `${JSON.stringify(falha)}: chamada alterada`);
-    const bruto = w.arq.get(LED) || '';
+    const bruto = w.textoLedger();
     assert.ok(!bruto.includes('CANARIO'), 'mensagem da excecao ou prompt vazou para o ledger');
     const linhas = w.ledger();
     assert.equal(linhas.length, 1);
@@ -176,7 +197,7 @@ test('I3 excecao interna: chamada intacta e linha de erro sem conteudo', async (
 
 test('I4 ledger sem prompt, descricao, resultado, ficha.t nem tipo livre (canario), em shadow e enforce', async () => {
   const campos = ['ts', 'evento', 'session_id', 'tool_use_id', 'agent_type', 'role', 'chave', 'ficha', 'floor', 'tier_base', 'tier',
-    'pedido', 'aplicado', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'sinal', 'erro'];
+    'pedido', 'aplicado', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'efetivo', 'usados', 'sinal', 'erro'];
   for (const modo of ['shadow', 'enforce']) {
     const w = mundo({ pol: politica(modo) });
     const e = chamada({
@@ -184,7 +205,7 @@ test('I4 ledger sem prompt, descricao, resultado, ficha.t nem tipo livre (canari
       prompt: `${ROTA(3, 'medio', 'nao', 'CANARIO-T')}\nCANARIO-PROMPT-7731 deploy do /etc/senha`,
     });
     await agent(w, e, { result: {}, text: 'CANARIO-RES-7731 NAO VERIFICADO' });
-    const bruto = w.arq.get(LED);
+    const bruto = w.textoLedger();
     assert.ok(bruto && !bruto.includes('CANARIO'), `canario no ledger (${modo})`);
     for (const l of w.ledger()) for (const k of Object.keys(l)) assert.ok(campos.includes(k), `campo fora da lista: ${k}`);
     for (const [k, v] of w.st) assert.ok(!JSON.stringify(v).includes('CANARIO'), `canario no store ${k}`);
@@ -223,9 +244,9 @@ test('I5 persistencia antes de aplicar (shadow e enforce) e subida pegajosa entr
 
 // ------------------------------------------------------------------ I6
 
-test('I6 sentinela de root vence enforce: chamada intacta, nada persistido; vale tambem a sentinela da variavel', async () => {
+test('I6 sentinela de root vence enforce: chamada intacta, nada persistido; a sentinela da config de teste tambem vale', async () => {
   for (const sentinela of [true, '/outro/router-off']) {
-    const w = mundo({ pol: politica('enforce'), sentinela, env: typeof sentinela === 'string' ? { TOLLENS_ROUTER_SENTINEL: sentinela } : {} });
+    const w = mundo({ pol: politica('enforce'), sentinela, cfg: typeof sentinela === 'string' ? { sentinela } : {} });
     const e = chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
     const { recebido } = await agent(w, e);
     assert.deepEqual(recebido, e);
@@ -233,8 +254,8 @@ test('I6 sentinela de root vence enforce: chamada intacta, nada persistido; vale
     assert.deepEqual(w.ledger()[0].reasons, ['sentinela_off']);
     assert.equal(w.ledger()[0].mode, 'off');
   }
-  // a variavel de teste nao desarma a sentinela padrao
-  const w = mundo({ pol: politica('enforce'), sentinela: true, env: { TOLLENS_ROUTER_SENTINEL: '/nao/existe' } });
+  // a config de teste nao desarma a sentinela padrao
+  const w = mundo({ pol: politica('enforce'), sentinela: true, cfg: { sentinela: '/nao/existe' } });
   const e = chamada({});
   assert.deepEqual((await agent(w, e)).recebido, e);
 });
@@ -256,7 +277,7 @@ test('I7 @@ROTA: removida so em enforce e so a primeira linha; no meio do prompt
 
 // ------------------------------------------------------------------ I8
 
-test('I8 agent.spawn de workflow: sobrepoe a variavel haiku so em enforce, so para cima; ignora resume, fork e subagente comum', async () => {
+test('I8 agent.spawn de workflow: define model acima do da variavel haiku (sem tocar o ambiente) so em enforce, so para cima; ignora resume, fork e subagente comum', async () => {
   const wf = { tool_use_id: 'toolu_wf', prompt: 'p', description: 'revisar', subagentType: 'revisor-codigo', provider: {}, parentModel: 'claude-opus-4', background: true, fork: false, workflow: { runId: 'wf_1', agentIndex: 1 } };
   const env = { CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL: 'haiku' };
   const enf = mundo({ pol: politica('enforce'), env });
@@ -357,11 +378,11 @@ test('L1 sinal de falha: registra por chave, nao re-executa, avisa so em enforce
     assert.equal(ok.chamadasNext, 1);
     assert.deepEqual(ok.saida.context, undefined);
     assert.ok(!(w.st.get('router.estado.sess-1') || {}).falhasPorChave?.[chave]);
-    for (const [res, cod] of [[{ result: {}, text: 'Estado: NAO VERIFICADO' }, 'nao_verificado'], [{ result: { stop_reason: 'max_tokens' }, text: 'cortado' }, 'stop_max_tokens']]) {
+    for (const [res, cod] of [[{ result: {}, text: 'Resumo\nEstado: NAO VERIFICADO' }, 'linha_estruturada'], [{ isError: true, result: {}, text: 'cortado' }, 'erro_ferramenta']]) {
       const r = await agent(w, e, res);
       assert.equal(r.chamadasNext, 1, 're-executou');
       assert.deepEqual(r.saida.context ?? [], avisa ? ['router: sinal de falha; a proxima tentativa desta tarefa sobe um nivel'] : []);
-      assert.equal(w.ledger().at(-1).sinal, cod);
+      assert.equal(w.ledger('resultado').at(-1).sinal, cod);
     }
     const salvo = w.st.get('router.estado.sess-1');
     assert.equal(salvo.falhasPorChave[chave], 2);
@@ -376,12 +397,187 @@ test('L2 ledger: 25 chamadas paralelas gravam 25 linhas; acima de 2 MiB rotacion
   await Promise.all(Array.from({ length: 25 }, (_, i) => agent(w, chamada({ description: `paralela ${i}` }))));
   assert.equal(w.ledger().length, 25);
   const r = mundo({ pol: politica('shadow') });
-  r.arq.set(LED, `${'a'.repeat(2097153)}\n`);
-  r.arq.set(`${LED}.1`, 'G1\n');
-  r.arq.set(`${LED}.2`, 'G2\n');
+  const L = await ledPath();
+  const grande = `${LINHA0}\n${'a'.repeat(2097153)}\n`;
+  r.arq.set(L, grande);
+  r.arq.set(`${L}.1`, `${LINHA0}\nG1\n`);
+  r.arq.set(`${L}.2`, `${LINHA0}\nG2\n`);
   await agent(r, chamada({}));
-  assert.equal(r.arq.get(`${LED}.1`), `${'a'.repeat(2097153)}\n`);
-  assert.equal(r.arq.get(`${LED}.2`), 'G1\n');
-  assert.equal(r.arq.get(`${LED}.3`), 'G2\n');
-  assert.equal(r.ledger().length, 1);
+  assert.equal(r.arq.get(`${L}.1`), grande);
+  assert.equal(r.arq.get(`${L}.2`), `${LINHA0}\nG1\n`);
+  assert.equal(r.arq.get(`${L}.3`), `${LINHA0}\nG2\n`);
+  assert.equal(r.ledger().filter((l) => l.evento !== null && l.reasons).length >= 1, true);
+});
+
+// ------------------------------------------------------------------ rodada 2
+
+test('C1 modulo instalado: variaveis TOLLENS_ROUTER_* no ambiente nao mudam politica, sentinela nem ledger', async () => {
+  const env = { TOLLENS_ROUTER_POLICY: '/evil/politica.json', TOLLENS_ROUTER_SENTINEL: '/evil/sentinela', TOLLENS_ROUTER_LEDGER: '/home-fake/.bashrc' };
+  // politica fixa ausente: o modulo real nao le a do ambiente e nada e alterado
+  const w = mundo({ real: true, env });
+  w.arq.set('/evil/politica.json', JSON.stringify(politica('enforce')));
+  const e = chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
+  assert.deepEqual((await agent(w, e)).recebido, e);
+  assert.ok(![...w.arq.keys()].some((k) => k.includes('.bashrc') && k !== '/home-fake/.bashrc'), 'escreveu no caminho do ambiente');
+  assert.ok(![...w.eventos].includes('fs.write:/home-fake/.bashrc'));
+  for (const k of w.arq.keys()) if (w.eventos.includes(`fs.write:${k}`)) assert.match(k, /^\/home-fake\/\.claude\/logs\/router-ledger-[0-9a-f]{16}\.jsonl$/);
+  // politica fixa presente em enforce: aplica; o ambiente nao a desarma
+  const w2 = mundo({ real: true, env, pol: politica('enforce') });
+  assert.equal((await agent(w2, e)).recebido.model, 'opus');
+});
+
+test('C1 ledger nunca regrava arquivo alheio: nem o do proprio nome, nem as geracoes na rotacao', async () => {
+  const alheio = '# ~/.bashrc\nexport PATH=$PATH:/x\n';
+  const L = await ledPath();
+  for (const outro of [alheio, '{"name":"pacote"}\n', '{"evento":"x","campo_alheio":1}\n']) {
+    const w = mundo({ pol: politica('shadow') });
+    w.arq.set(L, outro);
+    await agent(w, chamada({}));
+    assert.equal(w.arq.get(L), outro);
+  }
+  const r = mundo({ pol: politica('shadow') });
+  r.arq.set(L, `${LINHA0}\n${'a'.repeat(2097153)}\n`);
+  r.arq.set(`${L}.2`, alheio);
+  await agent(r, chamada({}));
+  assert.equal(r.arq.get(`${L}.2`), alheio);
+  assert.ok(!r.arq.has(`${L}.1`) && !r.arq.has(`${L}.3`), 'rotacionou sobre arquivo alheio');
+});
+
+test('A1 managed nega o modelo: aplica o melhor permitido sem baixar do pedido, registra, avisa uma vez; managed ilegivel nao restringe', async () => {
+  const managed = { availableModels: ['sonnet', 'haiku'], deniedModels: ['opus', 'fable'] };
+  const w = mundo({ pol: politica('enforce'), managed });
+  const e = chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
+  const a = await agent(w, e);
+  assert.equal(a.recebido.model, 'sonnet');
+  const l = w.ledger()[0];
+  assert.equal(l.pedido.model, 'opus');
+  assert.equal(l.aplicado.model, 'sonnet');
+  assert.ok(l.reasons.includes('managed_nega_modelo'));
+  await agent(w, chamada({ subagent_type: 'revisor-codigo', model: 'haiku' }));
+  assert.equal(w.avisos.length, 1);
+  // o orquestrador pediu opus: nenhum nivel permitido fica a altura, o model dele nao e rebaixado
+  const w2 = mundo({ pol: politica('enforce'), managed });
+  const pedido = chamada({ subagent_type: 'revisor-codigo', model: 'opus' });
+  assert.equal((await agent(w2, pedido)).recebido.model, 'opus');
+  // agent.spawn de workflow: sobe so ate o permitido
+  const wf = { tool_use_id: 'toolu_wfm', prompt: 'p', description: 'revisar', subagentType: 'revisor-codigo', provider: {}, parentModel: 'claude-opus-4', background: true, fork: false, workflow: { runId: 'wf_1', agentIndex: 1 } };
+  const w3 = mundo({ pol: politica('enforce'), managed, env: { CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL: 'haiku' } });
+  assert.equal((await spawn(w3, wf)).model, 'sonnet');
+  // managed ilegivel ou ausente: falha aberta, sem restricao conhecida
+  for (const m of ['{nao json', undefined]) {
+    const w4 = mundo({ pol: politica('enforce'), managed: m });
+    assert.equal((await agent(w4, chamada({ subagent_type: 'revisor-codigo' }))).recebido.model, 'opus');
+  }
+});
+
+test('A2 efetivo: linha `efetivo` ligada ao tool_use_id com resolvedModel e modelsUsed; sem o campo, null', async () => {
+  const w = mundo({ pol: politica('shadow') });
+  const e = chamada({ tool_use_id: 'toolu_ef' });
+  await agent(w, e, { result: { resolvedModel: 'claude-sonnet-5-5', modelsUsed: ['claude-sonnet-5-5', 'claude-haiku-4-5'] }, text: 'ok' });
+  await agent(w, chamada({ tool_use_id: 'toolu_ef2' }), { result: {}, text: 'ok' });
+  const ef = w.ledger('efetivo');
+  assert.deepEqual([ef[0].tool_use_id, ef[0].efetivo, ef[0].usados], ['toolu_ef', 'claude-sonnet-5-5', ['claude-sonnet-5-5', 'claude-haiku-4-5']]);
+  assert.deepEqual([ef[1].tool_use_id, ef[1].efetivo], ['toolu_ef2', null]);
+});
+
+test('A3 ledger por sessao (nome com 16 hex do sha256 do session_id); sem session_id nao persiste nada e registra', async () => {
+  const a = mundo({ pol: politica('shadow'), sid: 'sess-1' });
+  const b = mundo({ pol: politica('shadow'), sid: 'sess-2' });
+  await agent(a, chamada({}));
+  await agent(b, chamada({}));
+  assert.ok(a.arq.has(await ledPath('sess-1')) && b.arq.has(await ledPath('sess-2')));
+  assert.notEqual(await ledPath('sess-1'), await ledPath('sess-2'));
+  for (const sid of [null, '']) {
+    const w = mundo({ pol: politica('shadow'), sid });
+    await agent(w, chamada({}));
+    assert.ok(!w.eventos.includes('store.set'), 'gravou em chave compartilhada');
+    assert.ok(![...w.st.keys()].length);
+    assert.ok(w.ledger()[0].reasons.includes('sem_sessao_id'));
+  }
+});
+
+test('A4 falha de store.set nao derruba o roteamento (aplica, registra, avisa uma vez); o store guarda so as ultimas 50 sessoes e expira 14 dias', async () => {
+  const w = mundo({ pol: politica('enforce'), falha: { set: true } });
+  const e = chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
+  assert.equal((await agent(w, e)).recebido.model, 'opus');
+  await agent(w, chamada({ subagent_type: 'revisor-codigo', model: 'haiku' }));
+  assert.ok(w.ledger()[0].reasons.includes('persistencia_falhou'));
+  assert.equal(w.avisos.length, 1);
+  const p = mundo({ pol: politica('shadow'), sid: 'atual' });
+  const indice = [];
+  for (let i = 0; i < 60; i++) { indice.push([`s${i}`, NOW - (60 - i) * 60000]); p.st.set(`router.estado.s${i}`, estadoVazio()); }
+  indice.push(['velha', NOW - 15 * DIA]);
+  p.st.set('router.estado.velha', estadoVazio());
+  p.st.set('router.indice', indice);
+  await agent(p, chamada({}));
+  const restantes = [...p.st.keys()].filter((k) => k.startsWith('router.estado.'));
+  assert.ok(restantes.length <= 50, `${restantes.length} sessoes no store`);
+  assert.ok(restantes.includes('router.estado.atual') && !restantes.includes('router.estado.velha') && !restantes.includes('router.estado.s0'));
+});
+
+test('A5 sinais de falha: so campos documentados e linha estruturada; texto solto nao conta (corpus)', () => {
+  const nega = [
+    { result: {}, text: 'RISCOS: NAO VERIFICADO: carga real' },
+    { result: {}, text: 'segue o Estado: NAO VERIFICADO do item anterior' },
+    { result: {}, text: 'o teste que falhou antes agora passa' },
+    { result: {}, text: 'nada refutado; o contrato reprovado antes foi corrigido' },
+    { result: { stop_reason: 'max_tokens' }, text: 'fim' },
+    { result: { status: 'async_launched' }, text: 'lancado' },
+    { result: { status: 'completed' }, text: 'Estado do repositorio: limpo' },
+    { result: 'REFUTADO', text: '' },
+    null,
+  ];
+  for (const r of nega) assert.equal(sinalDeFalha(r), null, JSON.stringify(r));
+  const positivos = [
+    [{ result: {}, text: 'Resumo\nEstado: NAO VERIFICADO' }, 'linha_estruturada'],
+    [{ result: {}, text: 'veredito: REFUTADO' }, 'linha_estruturada'],
+    [{ result: {}, text: 'x\nResultado: REPROVADO (3 falhas)' }, 'linha_estruturada'],
+    [{ result: {}, text: 'Estado: NÃO VERIFICADO' }, 'linha_estruturada'],
+    [{ isError: true, result: {}, text: '' }, 'erro_ferramenta'],
+    [{ result: { status: 'failed' }, text: '' }, 'status_nao_concluido'],
+  ];
+  for (const [r, cod] of positivos) assert.equal(sinalDeFalha(r), cod);
+});
+
+test('A6 ritmo: leitura invalida (alem de 7 dias, passado, ausente, percentual fora de [0,100]) vale dentro; a leitura expira em 30 min', async () => {
+  const w = mundo({ pol: politica('shadow') });
+  const valida = (usado) => [{ kind: 'seven_day', percentUsed: usado, resetsAt: new Date(NOW + 0.7 * 7 * DIA).toISOString() }];
+  const estado = async () => { await agent(w, chamada({})); return w.ledger().at(-1).pace.estado; };
+  await medir(w, valida(80));
+  assert.equal(await estado(), 'acima');
+  const invalidas = [
+    [{ kind: 'seven_day', percentUsed: 80, resetsAt: new Date(NOW + 8 * DIA).toISOString() }],
+    [{ kind: 'seven_day', percentUsed: 80, resetsAt: new Date(NOW - 1000).toISOString() }],
+    [{ kind: 'seven_day', percentUsed: 80 }],
+    valida(120), valida(-5), valida(Number.NaN), valida('80'),
+  ];
+  for (const rl of invalidas) {
+    await medir(w, valida(80));
+    await medir(w, rl);
+    assert.equal(await estado(), 'dentro', JSON.stringify(rl));
+  }
+  await medir(w, valida(80));
+  w.setAgora(NOW + 31 * 60000);
+  assert.equal(await estado(), 'dentro', 'leitura vencida ainda vale');
+});
+
+test('M1 evento nulo nao derruba; fork nao recebe model nem effort; papel de revisor usa a normalizacao do motor (homoglifo)', async () => {
+  const w = mundo({ pol: politica('enforce') });
+  for (const ev of ['tool.call', 'agent.spawn']) {
+    const h = w.hooks.find((x) => x.ev === ev);
+    assert.equal(await h.fn(w.$, null, async (x) => x), null);
+  }
+  const fork = chamada({ subagent_type: 'fork' });
+  assert.deepEqual((await agent(w, fork)).recebido, fork);
+  const hostil = chamada({ subagent_type: 'revisоr-codigo', description: 'critica por homoglifo' });
+  await agent(w, hostil);
+  assert.equal(w.st.get('router.estado.sess-1').chavesCriticas.length, 1);
+});
+
+test('M2 linha de ledger: chave hostil vira so 16 hex ou null; texto livre em modelo efetivo vira null', () => {
+  const l = (c) => JSON.parse(linhaDeLedger(c));
+  assert.equal(l({ chave: `${'a'.repeat(64)}`, evento: 'tool.call' }).chave, 'a'.repeat(16));
+  assert.equal(l({ chave: 'CANARIO-descricao-livre', evento: 'tool.call' }).chave, null);
+  assert.equal(l({ chave: `${'a'.repeat(63)} `, evento: 'tool.call' }).chave, null);
+  assert.equal(l({ efetivo: 'texto do resultado com espacos', evento: 'efetivo' }).efetivo, null);
 });
