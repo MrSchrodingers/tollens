@@ -566,6 +566,7 @@ test('J8 politica ausente ou invalida: validatePolicy ok:false e engine em off s
     ['risk_surface.piso T0', medida((p) => { p.risk_surface.piso = 'T0'; })],
     ['size.prompt_chars.piso T0', medida((p) => { p.size.prompt_chars.piso = 'T0'; })],
     ['size.prompt_chars.piso T1', medida((p) => { p.size.prompt_chars.piso = 'T1'; })],
+    ['acima_do_teto abaixo do piso de caminhos', medida((p) => { p.size.caminhos.piso = 'T4'; p.size.acima_do_teto.piso = 'T3'; })],
     ['size.acima_do_teto.piso T2', medida((p) => { p.size.acima_do_teto.piso = 'T2'; })],
     ['acima_do_teto abaixo do piso de risco', medida((p) => { p.risk_surface.piso = 'T4'; p.size.acima_do_teto.piso = 'T3'; })],
     ['valid_until 2099 sem relogio', medida((p) => { p.valid_until = '2099-01-01T00:00:00Z'; })],
@@ -639,6 +640,7 @@ test('J8 politica ausente ou invalida: validatePolicy ok:false e engine em off s
   assert.equal(validatePolicy(medida((p) => { p.valid_until = '2027-12-22T00:00:00Z'; }), { now: NOW }).ok, false, '401 dias nao');
   assert.deepEqual(validatePolicy(medida((p) => { p.role_floors['revisor-codigo'] = 'T2'; }), { now: NOW }), { ok: true }, 'piso T2 vale para revisor-codigo');
   assert.deepEqual(validatePolicy(medida((p) => { p.limites = {}; }), { now: NOW }), { ok: true }, 'limites vazio usa os padroes');
+  assert.deepEqual(validatePolicy(medida((p) => { p.size.caminhos.piso = 'T4'; p.size.acima_do_teto.piso = 'T4'; }), { now: NOW }), { ok: true }, 'caminhos T4 com acima_do_teto T4 vale');
   assert.equal(validatePolicy(medida((p) => { p.valid_until = '2099-01-01T00:00:00Z'; })).ok, false, 'valid_until 2099 e recusado mesmo sem now (teto absoluto)');
   assert.equal(validatePolicy(medida((p) => { p.valid_until = '2029-12-31T00:00:00Z'; })).ok, true, 'valid_until de 2029 sem now: o horizonte relativo nao se aplica, o teto absoluto sim');
   assert.deepEqual(validatePolicy(medida((p) => { p.role_floors.REFUTADOR = 'T2'; p.role_floors['plugin:Refutador'] = 'T1'; }), { now: NOW }), { ok: true }, 'nomes que colidem depois de normalizados ficam com o maior piso');
@@ -693,7 +695,8 @@ test('J6 falha registrada sobe um nivel, uma vez por chave; a chave vem do chama
   const truncada = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: muitas, autorTierPorChave: {} } }), policy);
   assert.ok(truncada.reasons.includes('history_truncado'), 'historico acima de 1000 entradas e cortado');
   assert.equal(truncada.tier, 'T1', 'historico truncado: sem nova concessao');
-  assert.ok(truncada.reasons.includes('teto_por_fluxo'));
+  assert.ok(!truncada.reasons.includes('teto_por_fluxo'), 'historico cortado nao usa o codigo do teto');
+  assert.equal(truncada.capped, true);
   const sticky = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: { ...muitas, k1: 2 }, autorTierPorChave: {} } }), policy);
   assert.equal(sticky.tier, 'T2', 'historico truncado nao revoga concessao');
   const zeros = { k1: 1, a1: 0, a2: 0, a3: 0, a4: 0 };
@@ -1055,6 +1058,19 @@ test('J6 history cortado em 1000 entradas nao perde a falha nem revoga a concess
   assert.equal(registrada.tier, 'T2', 'subidasConcedidas alem de 1000 itens: a chave registrada continua subida');
   const naoRegistrada = com({ ...numericas, 'z-chave': 1 }, 'z-chave', { subidasConcedidas: lista });
   assert.equal(naoRegistrada.tier, 'T1', 'historico truncado: sem nova concessao');
+  // C3: lista acima de 1000 entradas nega a concessao com history_truncado_lista, nunca com teto_por_fluxo
+  const ordemLonga = Array.from({ length: 1500 }, (_, i) => `o${i}`);
+  const listaCortada = com({ k1: 1 }, 'k1', { ordem: ordemLonga });
+  assert.ok(listaCortada.reasons.includes('history_truncado_lista'), `reasons ${listaCortada.reasons}`);
+  assert.ok(listaCortada.reasons.includes('history_truncado'));
+  assert.ok(!listaCortada.reasons.includes('teto_por_fluxo'), 'o codigo do teto seria enganoso');
+  assert.equal(listaCortada.tier, 'T1');
+  assert.equal(listaCortada.capped, true);
+  const mapaCortado = com({ k1: 1 }, 'k1', { autorTierPorChave: Object.fromEntries(ordemLonga.map((k) => [k, 'T1'])) });
+  assert.ok(mapaCortado.reasons.includes('history_truncado') && !mapaCortado.reasons.includes('history_truncado_lista'), 'mapa cortado: so history_truncado');
+  assert.ok(!mapaCortado.reasons.includes('teto_por_fluxo'));
+  const registradaNaLista = com({ k1: 1 }, 'k1', { ordem: ordemLonga, subidasConcedidas: ['k1'] });
+  assert.equal(registradaNaLista.tier, 'T2', 'chave registrada continua subida mesmo com lista cortada');
   const longa = 'a'.repeat(300);
   const um = medida((p) => { p.escalation.max_por_fluxo = 1; });
   const r = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: { [longa]: 1, k1: 1 }, autorTierPorChave: {} } }), um);
@@ -1166,6 +1182,10 @@ test('R2 contrato: subida_concedida e capped simultaneos, persistencia em qualqu
   }
   const motor = readFileSync(path.join(DIR, 'engine.mjs'), 'utf8');
   const contrato = readFileSync(path.join(DIR, 'CONTRATO.md'), 'utf8');
+  assert.match(contrato, /Derivacao de `chave`: sha256 em hex[\s\S]{0,260}NUNCA da ficha/, 'item (a): a chave vem do chamador, nunca da ficha');
+  assert.doesNotMatch(contrato, /Derivacao de `chave`: `ficha\.t`/, 'item (a) nao pode mandar usar ficha.t');
+  assert.match(contrato, /chamadas paralelas/, 'limite de atomicidade do R2 registrado');
+  assert.match(contrato, /@@ROTA` permanece no prompt do subagente \(J3 vence J10\)/, 'decisao J3 x J10 registrada');
   const codigos = new Set([...motor.matchAll(/add\('([a-z_]+)'\)/g)].map((m) => m[1]));
   for (const m of motor.matchAll(/subir\([^,]+, ['`]([a-z_]+)[:'`]/g)) codigos.add(m[1]);
   for (const m of motor.matchAll(/(?:rota\.motivo === 'ausente' \? |semDecisao\()'([a-z_]+)'/g)) codigos.add(m[1]);

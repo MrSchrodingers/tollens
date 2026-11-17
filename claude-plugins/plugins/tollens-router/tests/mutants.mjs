@@ -154,19 +154,26 @@ const M = [
   ['busca-com-fronteira-final', 'regex: new RegExp(` (?:${normais.join(\'|\')})`)', 'regex: new RegExp(` (?:${normais.join(\'|\')}) `)'],
   ['caminhos-igual-vale', 'contaCaminhos(analise, caminhos.acima_de) > caminhos.acima_de', 'contaCaminhos(analise, caminhos.acima_de) >= caminhos.acima_de'],
   ['caminho-sem-parada', 'if (vistos.size > limite) break;', '', 'so poda trabalho: a contagem acima do limiar ja decide'],
-  ['analise-sem-corte', 'const analise = texto.length > teto ? texto.slice(0, teto) : texto;', 'const analise = texto;', 'acima do teto o piso de tamanho ja cobre risco e caminhos: nada e varrido'],
+  ['analise-sem-corte', 'const analise = texto.length > teto ? texto.slice(0, teto) : texto;', 'const analise = texto;', 'equivalente SO depois da correcao do validador (acima_do_teto.piso >= caminhos.piso): acima do teto o piso ja cobre risco e caminhos; prova diferencial com politica caminhos T4/acima T4 e 20 caminhos depois do teto'],
   ['critica-sem-nome', ' || temRisco(k, risco)', ''],
   ['teto-padrao-menor', 'const PROMPT_MAX_PADRAO = 262144;', 'const PROMPT_MAX_PADRAO = 524288;'],
   ['teto-maximo-maior', 'const PROMPT_MAX_TETO = 1048576;', 'const PROMPT_MAX_TETO = 4194304;'],
   ['politica-limites-faixa', 'ehInteiroEm(teto, 1024, PROMPT_MAX_TETO)', 'ehInteiroEm(teto, 0, Number.MAX_SAFE_INTEGER)'],
-  ['politica-acima-teto-t3', 'tierIdx(policy.size.acima_do_teto.piso) < Math.max(3, tierIdx(policy.risk_surface?.piso))', 'tierIdx(policy.size.acima_do_teto.piso) < 2'],
-  ['politica-acima-teto-risco', 'Math.max(3, tierIdx(policy.risk_surface?.piso))', '3'],
   ['valid-until-teto-absoluto', 'if (validUntil > VALID_UNTIL_TETO) erros.push', 'if (false) erros.push'],
   ['valid-until-teto-2100', "const VALID_UNTIL_TETO = Date.parse('2030-01-01T00:00:00Z');", "const VALID_UNTIL_TETO = Date.parse('2100-01-01T00:00:00Z');"],
   ['concede-vagas-ignora-registradas', 'const vagas = max - consumo;', 'const vagas = max;'],
   ['concede-consumo-conta-2falhas', "if (!(typeof h.falhasPorChave[k] === 'number' && h.falhasPorChave[k] >= 2)) consumo++;", 'consumo++;'],
   ['repeticao-so-depois-de-2', "(typeof falhas === 'number' && falhas >= 1)", "(typeof falhas === 'number' && falhas > 1)"],
   ['registrada-sem-falha-nao-sobe', '(chave !== null && concedidas.has(chave)) || ', ''],
+
+  // rodada 6
+  ['politica-acima-teto-t3', 'tierIdx(policy.size.acima_do_teto.piso) < Math.max(3, tierIdx(policy.risk_surface?.piso), tierIdx(policy.size.caminhos?.piso))', 'tierIdx(policy.size.acima_do_teto.piso) < 2'],
+  ['politica-acima-teto-risco', 'Math.max(3, tierIdx(policy.risk_surface?.piso), tierIdx(policy.size.caminhos?.piso))', 'Math.max(3, tierIdx(policy.size.caminhos?.piso))'],
+  ['politica-acima-teto-caminhos', 'Math.max(3, tierIdx(policy.risk_surface?.piso), tierIdx(policy.size.caminhos?.piso))', 'Math.max(3, tierIdx(policy.risk_surface?.piso))'],
+  ['capped-sem-teto', "      capped = true;\n      if (!ctx.truncado) add('teto_por_fluxo');", "      if (!ctx.truncado) add('teto_por_fluxo');"],
+  ['teto-por-fluxo-com-truncado', "if (!ctx.truncado) add('teto_por_fluxo');", "add('teto_por_fluxo');"],
+  ['truncado-lista-sem-aviso', "if (ctx.truncadoLista) add('history_truncado_lista');", ''],
+  ['truncado-lista-sempre', 'if (lista) ctx.truncadoLista = true;', 'ctx.truncadoLista = true;'],
   // ficha e parse
   ['ficha-teto-2049', 'const MAX_LINHA_BYTES = 2048;', 'const MAX_LINHA_BYTES = 4096;'],
   ['ficha-teto-2047', 'const MAX_LINHA_BYTES = 2048;', 'const MAX_LINHA_BYTES = 2047;'],
@@ -222,7 +229,6 @@ const M = [
   // repeticao e teto
   ['capped-sem-repeticao-multipla', 'if (tier >= TOPO || falhas >= 2) capped = true;', 'if (tier >= TOPO) capped = true;'],
   ['capped-sem-topo', 'if (tier >= TOPO || falhas >= 2) capped = true;', 'if (falhas >= 2) capped = true;'],
-  ['capped-sem-teto', '      capped = true;\n      add(\'teto_por_fluxo\');', '      add(\'teto_por_fluxo\');'],
   ['repeticao-sem-teto-topo', 'tier = Math.min(TOPO, tier + 1);', 'tier = tier + 1;'],
   ['repeticao-nao-sobe', 'tier = Math.min(TOPO, tier + 1);', 'tier = tier;'],
   ['repeticao-piso-fixo', 'floor = Math.min(TOPO, floor + 1);', 'floor = Math.min(TOPO, floor);'],
@@ -332,6 +338,7 @@ const EXTRAS = [
   `@@ROTA {"c":null,"r":"trivial","v":"sim","t":"k"}\nresto`,
   `@@ROTA {"c":[1],"r":"trivial","v":"sim","t":"k"}\nresto`,
   `${'palavra '.repeat(200)}deployed ${'x'.repeat(100)}`,
+  `${'a '.repeat(131080)}${Array.from({ length: 20 }, (_, i) => `/p${i}/f.js`).join(' ')} fim`, // 20 caminhos so depois do teto de 256 KiB
   `${'z'.repeat(70)} producao ${'\u200b'.repeat(80)}token`,
 ];
 
@@ -368,7 +375,10 @@ async function diferencial(arquivoMutante) {
     for (const [fa, fb] of pares) if (resultado(fa) !== resultado(fb)) divergencias++;
   }
   for (const extra of EXTRAS) {
-    for (const politica of [POLITICA, { ...structuredClone(POLITICA), mode: 'enforce' }]) {
+    const t4 = structuredClone(POLITICA);
+    t4.size.caminhos.piso = 'T4';
+    t4.size.acima_do_teto.piso = 'T4';
+    for (const politica of [POLITICA, { ...structuredClone(POLITICA), mode: 'enforce' }, t4]) {
       for (const [fo, fm] of [
         [() => orig.decide({ prompt: extra, now: 1794787200000 }, politica), () => mut.decide({ prompt: extra, now: 1794787200000 }, politica)],
         [() => orig.parseRota(extra), () => mut.parseRota(extra)],

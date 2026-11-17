@@ -76,17 +76,25 @@ concessao. O motor e funcao pura de um historico CONSISTENTE.
 
 Respostas escritas, sem inventar alem disto; dois implementadores devem chegar ao mesmo mod.
 
-- (a) Derivacao de `chave`: `ficha.t` se a primeira linha do prompt tiver uma ficha valida; senao o
-  sha256 em hex dos primeiros 200 caracteres do texto normalizado (NFKC, minuscula, espacos colapsados)
-  de `subagentType` mais a descricao da chamada.
+- (a) Derivacao de `chave`: sha256 em hex dos primeiros 200 caracteres do texto normalizado (NFKC,
+  minuscula, espacos colapsados) de `subagentType + '\n' + descricao` (a descricao da chamada Agent),
+  NUNCA da ficha. `ficha.t` e so informativa (vai ao ledger). Limite: o orquestrador controla a
+  descricao e pode reiniciar a contagem de falhas mudando-a; isso so faz perder o beneficio da subida por
+  repeticao, nunca baixa o piso.
 - (b) `ordem`: lista de chaves, a mais antiga primeiro, sem duplicatas, na ordem em que cada chave teve a
   primeira falha registrada; as vagas novas sao dadas nessa ordem.
-- (c) Aparar `falhasPorChave`: manter as chaves com 1 ou mais falhas mais a chave atual, no maximo 1000,
-  escolhendo as de maior contagem; a chave atual entra sempre.
+- (c) Aparar TODAS as estruturas de `history` a no maximo 1000 entradas ANTES de chamar `decide`
+  (`falhasPorChave`, `autorTierPorChave`, `subidasConcedidas`, `ordem`, `chavesCriticas`), preservando a
+  chave atual e as chaves de `subidasConcedidas`: `falhasPorChave` mantem as chaves com 1 ou mais falhas
+  mais a chave atual, escolhendo as de maior contagem. O motor sinaliza `history_truncado` quando algum
+  mapa ou lista passa de 1000 e `history_truncado_lista` quando e uma lista; nesse caso nega novas
+  concessoes sem o codigo `teto_por_fluxo`.
 - (d) Persistir `subidasConcedidas`: sempre que `decision.subida_concedida` for `true`, em qualquer modo
   (shadow incluso) e ANTES de aplicar a decisao. Invariante do R2: com persistencia atrasada o motor
   pode revogar a concessao (uma chave nova que vem antes por ordem ocupa a vaga); o motor so garante o
-  comportamento com historico consistente.
+  comportamento com historico consistente. Limite do R2: o protocolo nao torna atomica a sequencia
+  leitura do historico, decisao e persistencia entre chamadas paralelas; o teto de novas concessoes
+  pode ser excedido em ate o numero de chamadas concorrentes.
 - (e) `autorTierMax`: o mod passa o tier DECIDIDO (`decision.tier`) do autor da mesma chave; o maior
   entre os autores do fluxo.
 - (f) `pace.estado`: seja `p` = percentual semanal usado menos a fracao decorrida da semana (ambos em
@@ -95,6 +103,7 @@ Respostas escritas, sem inventar alem disto; dois implementadores devem chegar a
 - (g) `parseRota(prompt)` e `stripRota(prompt)` sao exportados, puros, e olham apenas a primeira linha
   (J10). J3 x J10: em `shadow` e `off` a chamada NAO e alterada (a linha `@@ROTA` permanece no prompt);
   so em `enforce` (`aplicar: true`) o mod aplica `model` e `effort` e passa o prompt de `stripRota`.
+  DECISAO: em `shadow` a linha `@@ROTA` permanece no prompt do subagente (J3 vence J10).
 - (h) `capped` e `subida_concedida` juntos: `subida_concedida` diz que a chave recebeu concessao
   registravel (persistir); `capped` diz que nao ha mais subida a conceder. Concessao nova abaixo do
   topo: `true` e `false`. Chave com 2 ou mais falhas: `true` e `true`. Concessao no topo (sem nivel
@@ -106,7 +115,8 @@ Respostas escritas, sem inventar alem disto; dois implementadores devem chegar a
 - `politica_invalida`, `entrada_invalida`: politica ou entrada que nao e dado puro ou politica invalida.
 - `politica_vencida`, `sem_relogio_valido`: validade da politica e relogio.
 - `sem_ficha`, `ficha_invalida`, `ficha_abaixo_do_piso`: ficha ausente, recusada ou abaixo do piso.
-- `sem_chave`, `history_truncado`: chave ausente e historico cortado em 1000 entradas.
+- `sem_chave`, `history_truncado`, `history_truncado_lista`: chave ausente, historico cortado em 1000
+  entradas e corte de uma lista.
 - `piso_papel:<nome>`, `piso_superficie_de_risco`, `piso_tamanho`, `piso_tamanho_acima_do_teto`,
   `piso_caminhos`, `prompt_acima_do_teto`, `revisor_nao_abaixo_do_autor`: componentes do piso.
 - `repeticao`, `teto_por_fluxo`: subida por falha e teto de novas concessoes.
@@ -142,7 +152,7 @@ emitiveis acima): `tier` volta a `tier_base`, `aplicar` falso (`sem_nivel_elegiv
 Alem da forma, o validador exige: custo estritamente crescente entre niveis (modelo, depois effort),
 ao menos um nivel emitivel, aliases somente `haiku`, `sonnet`, `opus`, `risk_surface.piso` >= T3,
 `size.prompt_chars.piso` e `size.caminhos.piso` >= T2, `size.acima_do_teto.piso` >= T3 e nunca abaixo
-do piso de risco, pisos de papel para `refutador` e `auditor-seguranca` (>= T3) e `revisor-codigo`
+do piso de risco nem de `size.caminhos.piso`, pisos de papel para `refutador` e `auditor-seguranca` (>= T3) e `revisor-codigo`
 (>= T2), `reviewer_roles` contido em `role_floors` com piso >= T2, os 16 prefixos de risco minimos,
 palavras com 3 ou mais caracteres apos normalizacao, `piso_aprovacao` >= 0,5 e por papel >= o default,
 `valid_until` com ida e volta, no maximo 400 dias a frente de `now` e nunca depois de 2030-01-01 (teto
@@ -160,9 +170,12 @@ as chaves managed (`availableModels`, `deniedModels`).
 - Homoglifo fora do mapa cirilico e grego do motor continua sem cobertura.
 - Letras que o NFKC nao converte para letras comuns (por exemplo grafias decorativas fora das
   compatibilidades Unicode) nao sao reconhecidas.
-- 19 caracteres cuja expansao no NFKC passa de 4 (ligaduras arabes como U+FDFA, que expande 18 vezes, e
-  unidades katakana e `rad/s`) valem como separador, para limitar o custo da normalizacao a 4 vezes o
-  tamanho do texto.
+- 28 pontos de codigo expandem mais de 4 no NFKC. 19 do BMP (ligaduras arabes como U+FDFA, que expande
+  18 vezes, unidades katakana e `rad/s`) valem como separador, o que evita custo de segundos; os 9
+  simbolos musicais astrais (U+1D160-1D164, U+1D1BD-1D1C0) nao sao tratados (custo medido: cerca de
+  270 ms para 256 KiB).
+- U+2800 (braille em branco) e outros simbolos invisiveis que nao sao ignoraveis separam palavras: uma
+  palavra de risco com U+2800 no meio nao e reconhecida (piso T2 em vez de T3).
 - Prefixos amplos de palavra de risco elevam por excesso (por exemplo `secretaria`, `product`).
 - Um caractere ignoravel colado entre duas palavras as une (`a` + zero-width + `b` vira `ab`).
 - `Date.parse`, `String.prototype.normalize` e `\p{...}` nao tem verificacao no runtime de mods.

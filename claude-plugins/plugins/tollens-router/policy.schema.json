@@ -265,7 +265,7 @@
               ]
             }
           },
-          "description": "Piso quando o prompt passa de limites.prompt_max_bytes; T3 ou acima e nunca abaixo de risk_surface.piso (o texto depois do teto nao e varrido)."
+          "description": "Piso quando o prompt passa de limites.prompt_max_bytes; T3 ou acima e nunca abaixo de risk_surface.piso nem de size.caminhos.piso (o texto depois do teto nao e varrido; conferido pelo validador)."
         }
       }
     },

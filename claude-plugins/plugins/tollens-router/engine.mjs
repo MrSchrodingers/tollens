@@ -57,8 +57,10 @@ const INSTANTE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const CHARSET_CAMINHO_RE = /^[A-Za-z0-9_.~/-]+$/;
 const EXTENSAO_RE = /\.[A-Za-z0-9]{1,8}$/;
 const IGNORAVEL_RE = /[\p{Cf}\p{M}\p{Default_Ignorable_Code_Point}]+/gu;
-// Caracteres cuja expansao no NFKC passa de 4 (U+FDFA expande 18x; sao ligaduras e unidades sem letras latinas
-// de palavra de risco): tratados como separador, o que limita o custo da normalizacao a 4x o tamanho do texto.
+// 28 pontos de codigo expandem mais de 4 no NFKC (U+FDFA expande 18x): 19 do BMP (ligaduras arabes e unidades
+// katakana, sem letras latinas de palavra de risco), tratados aqui como separador, e 9 simbolos musicais
+// astrais (U+1D160-1D164, U+1D1BD-1D1C0), NAO tratados. Medido: 256 KiB de simbolo musical custa cerca de
+// 270 ms (6x o texto comum); sem o tratamento dos 19, U+FDFA custaria cerca de 2,6 s.
 const EXPANSIVO_RE = /[\u3307\u3315\u3316\u3317\u3319\u331a\u3320\u332b\u332e\u3332\u3334\u3336\u3347\u334a\u3356\u33ae\u33af\ufdfa\ufdfb]/g;
 const HOMOGLIFO_RE = /[\u0370-\u03ff\u0400-\u052f]/g;
 const NAO_ALFANUM_RE = /[^\p{L}\p{N}]+/gu;
@@ -141,6 +143,7 @@ function copiar(v, profundidade, pilha, ctx, truncavel) {
   if (chaves.length > teto) {
     if (!truncavel) return IMPURO;
     ctx.truncado = true;
+    if (lista) ctx.truncadoLista = true;
     if (ctx.chave !== undefined && lista && v.indexOf(ctx.chave) >= teto) extra = ctx.chave;
     if (ctx.chave !== undefined && !lista && Object.hasOwn(v, ctx.chave) && chaves.indexOf(ctx.chave) >= teto) extra = ctx.chave;
     chaves = chaves.slice(0, teto);
@@ -418,8 +421,8 @@ function validarCopia(policy, opts) {
     if (tierIdx(policy.size.caminhos?.piso) < 2) erros.push('size.caminhos.piso: T2 ou acima');
     if (tierIdx(policy.size.prompt_chars?.piso) < 2) erros.push('size.prompt_chars.piso: T2 ou acima');
     if (exato(policy.size.acima_do_teto, ['piso'], 'size.acima_do_teto', erros)
-      && tierIdx(policy.size.acima_do_teto.piso) < Math.max(3, tierIdx(policy.risk_surface?.piso))) {
-      erros.push('size.acima_do_teto.piso: T3 ou acima, e nunca abaixo do piso de risco (o texto depois do teto nao e varrido)');
+      && tierIdx(policy.size.acima_do_teto.piso) < Math.max(3, tierIdx(policy.risk_surface?.piso), tierIdx(policy.size.caminhos?.piso))) {
+      erros.push('size.acima_do_teto.piso: T3 ou acima, e nunca abaixo do piso de risco nem de size.caminhos.piso (o texto depois do teto nao e varrido)');
     }
   }
 
@@ -573,6 +576,7 @@ export function decide(input, policy) {
   const chave = typeof inp.chave === 'string' && inp.chave.length >= 1 && inp.chave.length <= MAX_CHAVE ? inp.chave : null;
   if (chave === null) add('sem_chave');
   if (ctx.truncado) add('history_truncado');
+  if (ctx.truncadoLista) add('history_truncado_lista');
 
   const nomes = [papel(inp.role), papel(inp.subagentType)];
   const revisores = new Set(policyCopia.reviewer_roles.map(papel));
@@ -647,7 +651,7 @@ export function decide(input, policy) {
       add('repeticao');
     } else {
       capped = true;
-      add('teto_por_fluxo');
+      if (!ctx.truncado) add('teto_por_fluxo'); // historico cortado nega a concessao com os codigos history_truncado*
     }
   }
   const tierBase = tier;
