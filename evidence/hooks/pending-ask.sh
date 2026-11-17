@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hook Stop - DECISAO PENDENTE SEM PERGUNTA ESTRUTURADA. ADR 0049.
+# Hook Stop - DECISAO PENDENTE SEM PERGUNTA ESTRUTURADA. ADR 0050.
 #
 # DEFEITO MEDIDO: sessoes e agentes encerram o turno com texto do tipo "suas pendencias",
 # "decisao sua", "aguardo sua confirmacao" em vez de chamar AskUserQuestion. O operador fica sem
@@ -28,6 +28,11 @@
 # acento, minusculas, espaco colapsado). Sem palavra solta: cada padrao e uma locucao. Mudar a
 # lista exige subir PADROES_V, para o log separar as populacoes.
 #
+# ANTES DE CASAR (PADROES_V=2): o texto perde bloco de codigo, codigo inline, linhas `>` e trechos
+# entre aspas (fala citada nao e fala) e passa por normalizacao tipo NFKC (zero-width, NFD, espacos
+# Unicode, largura total). Sessao headless (entrypoint sdk-cli no transcript) nunca bloqueia: nao ha
+# quem responda AskUserQuestion. Detalhes e limites: ADR 0050.
+#
 # MODO: arquivo ${PENDING_ASK_POLICY:-$HOME/.claude/pending-ask.mode}, primeira palavra
 # `off|aviso|bloqueio`. Ausente: `aviso`. Valor invalido: `aviso` e linha de erro no log.
 #   off      sai sem ler nada.
@@ -45,7 +50,7 @@
 # ANTI-LACO (I1): stop_hook_active=true sai 0 sem bloquear, e evento ilegivel nao bloqueia.
 set -o pipefail
 
-PADROES_V=1
+PADROES_V=2
 LOG="${PENDING_ASK_LOG:-${HOME:-/nonexistent}/.claude/logs/pending-ask.jsonl}"
 POLICY="${PENDING_ASK_POLICY:-${HOME:-/nonexistent}/.claude/pending-ask.mode}"
 BLOQUEIA=0
@@ -62,30 +67,41 @@ aguardo_sua	\baguard(o|ando|amos) (a |o )?(sua|seu)\b
 aguardo_operador	\baguard(o|ando|amos) (a )?(decisao|confirmacao|aprovacao|autorizacao) do operador\b
 voce_decide	\bvoce decide\b
 se_preferir_posso	\bse (voce )?(preferir|quiser),? (eu )?posso\b
-confirma_pergunta	\bconfirma ?\?
+confirma_pergunta	(^|[.!?:;] )confirma ?\?
 qual_das_opcoes	\bqual das (opcoes|alternativas|abordagens)\b
 qual_prefere	\bqual (opcao|alternativa|abordagem) (voce )?prefere\b
 precisa_da_sua	\bprecis(o|a|amos) da sua (decisao|confirmacao|aprovacao|autorizacao|resposta)\b
-quer_que_eu	\bquer que eu (siga|prossiga|continue|faca|execute|aplique|implemente|rode|corrija)\b'
+quer_que_eu	\bquer que eu (siga|prossiga|continue|faca|execute|aplique|implemente|rode|corrija)\b
+fico_no_aguardo	\bfico (no aguardo|aguardando)\b
+pendencias_para_voce	\bpendencias (para|pra) (voce|o operador)\b
+posso_prosseguir	\bposso (prosseguir|continuar|seguir|avancar|aplicar)\?'
 
 agora(){ date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown; }
 
 # Grava uma linha no log. Argumentos: evento padrao bloqueou motivo. Qualquer falha e engolida:
 # o log e instrumento, nunca motivo para travar a parada.
 grava(){
-  local ev="$1" pad="$2" blq="$3" mot="${4:-}" linha
+  local ev="$1" pad="$2" blq="$3" mot="${4:-}" auq="${5:-}" linha
   command -v jq >/dev/null 2>&1 || return 0
   linha="$(jq -cn --arg ts "$(agora)" --arg s "${SESSAO:-}" --arg ev "$ev" --arg m "${MODO:-aviso}" \
-    --arg p "$pad" --argjson b "$blq" --argjson v "$PADROES_V" --arg mot "$mot" \
+    --arg p "$pad" --argjson b "$blq" --argjson v "$PADROES_V" --arg mot "$mot" --arg auq "$auq" \
     '{ts:$ts,session_id:($s|.[0:64]),evento:$ev,modo:$m,padrao_casado:(if $p=="" then null else $p end),bloqueou:$b,padroes_v:$v}
-     + (if $mot=="" then {} else {motivo:($mot|.[0:128])} end)' 2>/dev/null)" || return 0
+     + (if $mot=="" then {} else {motivo:($mot|.[0:128])} end)
+     + (if $auq=="" then {} else {auq_disponivel:($auq=="true")} end)' 2>/dev/null)" || return 0
   [ -n "$linha" ] || return 0
+  # Rotacao so sob flock (dois hooks concorrentes sem trava faziam o segundo `mv` sobrescrever
+  # o .1 com o log novo e perder 2 MiB de historico). Sem flock, ou sem a trava em 5 s, grava sem
+  # rotacionar: nada e descartado, o log apenas passa do teto ate a proxima rotacao.
   ( umask 077
     mkdir -p "$(dirname "$LOG")" 2>/dev/null || exit 0
-    if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 2097152 ]; then
-      mv -f "$LOG" "$LOG.1" 2>/dev/null
-    fi
-    printf '%s\n' "$linha" >> "$LOG" 2>/dev/null ) 2>/dev/null
+    if command -v flock >/dev/null 2>&1 && exec 9>"$LOG.lock" 2>/dev/null && flock -w 5 9 2>/dev/null; then
+      if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 2097152 ]; then
+        mv -f "$LOG" "$LOG.1" 2>/dev/null
+      fi
+      printf '%s\n' "$linha" >> "$LOG" 2>/dev/null
+    else
+      printf '%s\n' "$linha" >> "$LOG" 2>/dev/null
+    fi ) 2>/dev/null
   return 0
 }
 
@@ -107,7 +123,8 @@ fi
 # Modo antes de qualquer outra coisa: `off` e inercia total.
 MODO=aviso
 if [ -f "$POLICY" ]; then
-  _m="$(head -c 64 "$POLICY" 2>/dev/null | tr -s '[:space:]' ' ' | cut -d' ' -f1 | tr 'A-Z' 'a-z')"
+  # primeira palavra nao vazia (espaco e linhas em branco na frente sao ignorados), em minusculas
+  _m="$(head -c 256 "$POLICY" 2>/dev/null | tr -s '[:space:]' '\n' | sed -n '/./{p;q}' | tr 'A-Z' 'a-z')"
   case "$_m" in
     off|aviso|bloqueio) MODO="$_m" ;;
     *) MODO=aviso; _modo_invalido=1 ;;
@@ -130,13 +147,28 @@ MSG="$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // empty | strings'
 # Um unico jq sobre o transcript. Tail com teto: a primeira linha do corte pode vir partida, e
 # `fromjson?` a descarta. O texto da mensagem nunca sai deste filtro: so o veredito.
 RES="$(tail -c "$TAIL_BYTES" "$TP" 2>/dev/null | jq -Rn --arg msg "$MSG" --arg pats "$PADROES" '
+  # NFKC aproximado sem dependencia: zero-width e controles de direcao somem, marcas combinantes
+  # somem (cobre NFD), espacos Unicode viram espaco, ASCII de largura total volta a ASCII.
+  def limpa: gsub("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u00ad\u180e]";"")
+           | gsub("[\u0300-\u036f]";"")
+           | gsub("[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]";" ")
+           | explode | map(if . >= 65281 and . <= 65374 then . - 65248 else . end) | implode;
+  # Fala citada nao e fala: bloco de codigo, codigo inline, linha de citacao (>) e trecho entre
+  # aspas duplas, curvas ou angulares (ate 160 caracteres, uma linha) saem antes do casamento.
+  def sem_citacao: gsub("(```|~~~)[\\s\\S]*?(```|~~~)";" ") | gsub("(```|~~~)[\\s\\S]*$";" ")
+           | gsub("`[^`\\n]*`";" ")
+           | split("\n") | map(select(test("^\\s*>")|not)) | join("\n")
+           | gsub("\"[^\"\\n]{0,160}\"";" ") | gsub("“[^”\\n]{0,160}”";" ") | gsub("«[^»\\n]{0,160}»";" ");
   def norm: gsub("[ÁÀÂÃÄáàâãä]";"a") | gsub("[ÉÈÊËéèêë]";"e") | gsub("[ÍÌÎÏíìîï]";"i")
           | gsub("[ÓÒÔÕÖóòôõö]";"o") | gsub("[ÚÙÛÜúùûü]";"u") | gsub("[Çç]";"c") | gsub("[Ññ]";"n")
-          | ascii_downcase | gsub("\\s+";" ");
+          | ascii_downcase | gsub("[\\r\\n]+";" . ") | gsub("\\s+";" ");
   def realuser: .type=="user" and (.isSidechain != true) and (.isMeta != true)
     and ((.message.content|type)=="string"
          or ((.message.content|type)=="array" and ([.message.content[]? | .type] | (length>0 and all(. != "tool_result")))));
-  [inputs | fromjson? | select(type=="object")] as $L
+  [inputs] as $R
+  | [$R[] | fromjson? | select(type=="object")] as $L
+  | (($R | map(select(test("\\S"))) | last // "") | (try fromjson catch null) | type != "object") as $trunc
+  | ($L | map(select(.type=="user") | .entrypoint | strings) | last) as $ep
   | (($L | to_entries | map(select(.value|realuser)) | last) // {key:-1}).key as $u
   | $L[($u+1):] as $T
   | ($T | map(select(.type=="assistant" and .isSidechain != true))) as $A
@@ -149,13 +181,20 @@ RES="$(tail -c "$TAIL_BYTES" "$TP" 2>/dev/null | jq -Rn --arg msg "$MSG" --arg p
      | map(split("\n") | map(select(test("^\\s*DECISAO_PENDENTE:\\s*[^|\\n]+\\|[^|\\n]*\\|"))) | length > 0) | any) as $dp
   | (if $msg != "" then $msg
      else ($A | map(select([.message.content[]? | select(type=="object" and .type=="text")] | length > 0)) | (last // {})
-           | ((.message.content // []) | map(select(type=="object" and .type=="text") | .text) | join("\n"))) end | norm) as $txt
+           | ((.message.content // []) | map(select(type=="object" and .type=="text") | .text) | join("\n"))) end | limpa | sem_citacao | norm) as $txt
   | ([$pats | split("\n")[] | split("\t") | select(length==2) | select(. as $p | $txt | test($p[1]))] | first | .[0]) as $pad
-  | {n:($L|length), ask:$ask, padrao:($pad // (if $dp then "decisao_pendente_subagente" else null end))}
+  | {n:($L|length), trunc:$trunc, ep:$ep, ask:$ask, padrao:($pad // (if $dp then "decisao_pendente_subagente" else null end))}
 ' 2>/dev/null)"
 [ -n "$RES" ] || erro transcript_ilegivel
 [ "$(printf '%s' "$RES" | jq -r '.n' 2>/dev/null)" -gt 0 ] 2>/dev/null || erro transcript_sem_linhas
+# Ultima linha do transcript partida (gravacao em curso): o texto avaliado seria um texto ANTIGO
+# do turno. Sem `last_assistant_message` para suprir, nao ha veredito.
+if [ -z "$MSG" ] && [ "$(printf '%s' "$RES" | jq -r '.trunc' 2>/dev/null)" = true ]; then erro ultima_linha_truncada; fi
 PADRAO="$(printf '%s' "$RES" | jq -r '.padrao // empty' 2>/dev/null)" || erro veredito_ilegivel
+# Sessao headless (`claude -p` grava entrypoint=sdk-cli): AskUserQuestion nao ha como ser
+# respondida, entao bloquear forcaria um turno impossivel. Proxy medido, nao garantia: ver ADR 0050.
+EP="$(printf '%s' "$RES" | jq -r '.ep // empty' 2>/dev/null)"
+AUQ_DISP=true; [ "$EP" = sdk-cli ] && AUQ_DISP=false
 ASK="$(printf '%s' "$RES" | jq -r '.ask' 2>/dev/null)" || erro veredito_ilegivel
 
 [ -n "$PADRAO" ] || exit 0
@@ -163,11 +202,11 @@ ASK="$(printf '%s' "$RES" | jq -r '.ask' 2>/dev/null)" || erro veredito_ilegivel
 # I3: pergunta estruturada no turno suprime o disparo.
 if [ "$ASK" = true ]; then grava suprimido "$PADRAO" false; exit 0; fi
 
-if [ "$MODO" = bloqueio ]; then
-  grava disparo "$PADRAO" true
+if [ "$MODO" = bloqueio ] && [ "$AUQ_DISP" = true ]; then
+  grava disparo "$PADRAO" true "" "$AUQ_DISP"
   printf '%s\n' "$MOTIVO_BLOQUEIO" >&2
   BLOQUEIA=1
   exit 2
 fi
-grava disparo "$PADRAO" false
+grava disparo "$PADRAO" false "" "$AUQ_DISP"
 exit 0

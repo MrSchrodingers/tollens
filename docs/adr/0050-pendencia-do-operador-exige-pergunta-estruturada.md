@@ -1,11 +1,11 @@
-# ADR 0049 - Pendencia do operador exige pergunta estruturada
+# ADR 0050 - Pendencia do operador exige pergunta estruturada
 
 Data: 2026-11-17
 Estado: aceito. O hook esta INERTE ate a instalacao managed (apply-managed.sh, a cargo do
 operador); em 2026-11-17 ele nao consta de nenhum settings. `installed: true` no registry
 significa "presente no manifesto", nao "ativo no runtime" (mesma ressalva do ADR 0048).
-Numeracao: 0049 era o proximo numero livre em todas as worktrees lidas (main, base, s0, r1) em
-2026-11-17; se outra frente (R3 do roteador) reivindicar 0049 antes do merge, renumerar este.
+Numeracao: 0050. O numero 0049 esta reservado ao R3 do roteador (router-modelos-spec.md); este ADR
+foi emitido como 0049 no primeiro commit e renumerado na rodada 2.
 Relaciona: ADR 0021 (canais que entregam: exit 2 bloqueia), ADR 0022 (Stop nao e fronteira de
 confianca), ADR 0014 (contrato de subagente, transcript do pai x do subagente), ADR 0048
 (modelo de log JSONL sem conteudo)
@@ -51,12 +51,43 @@ tem, ainda, a contagem de ocorrencias: o modo `aviso` existe para produzi-la.
   Nunca conteudo de mensagem, transcript ou retorno de subagente. Resposta sem padrao nao deixa
   rastro; `suprimido` registra o caso em que o padrao casou e havia AskUserQuestion.
 
+## Rodada 2 (PADROES_V=2): citacao, borda e minimos
+
+Revisao independente apontou falso positivo por citacao e falsos negativos de borda. Mudancas:
+- Antes de casar, o texto perde bloco de codigo (``` e ~~~), codigo inline, linhas iniciadas por `>`
+  e trechos entre aspas duplas, curvas ou angulares (ate 160 caracteres, uma linha). Aspas simples
+  nao sao tratadas (apostrofo). Efeito colateral aceito: duas aspas soltas na mesma linha escondem o
+  que ha entre elas.
+- Normalizacao: NFKC aproximado em jq, sem dependencia nova: zero-width e controles de direcao
+  somem, marcas combinantes somem (cobre NFD), espacos Unicode viram espaco, ASCII de largura total
+  volta a ASCII. Nao e NFKC completo.
+- `confirma_pergunta` so casa no inicio de frase (`Confirma?`), nao no meio (`O teste confirma?`).
+- Padroes novos: `fico_no_aguardo`, `pendencias_para_voce`, `posso_prosseguir` (exige `?`).
+  `se_preferir_posso` segue cobrindo `Se quiser, posso ...`: e o que a regra proibe quando o passo e
+  do agente.
+- Decisao sobre AskUserQuestion: ele suprime em QUALQUER ponto do turno (depois da ultima fala real
+  do usuario). A alternativa, exigi-lo posterior a ultima fala com padrao, nunca suprimiria nada,
+  porque o turno termina na fala final. Custo aceito: pendencia nova depois de um AskUserQuestion ja
+  respondido no mesmo turno nao e pega. E o erro barato para um hook que, em `bloqueio`, forca turno.
+- Ultima linha do transcript partida (gravacao em curso) e sem `last_assistant_message`: sem
+  veredito, `erro/ultima_linha_truncada`, em vez de julgar texto antigo do turno.
+- Arquivo de modo: branco e linhas vazias na frente sao ignorados; caixa e irrelevante.
+- Rotacao do log (2 MiB, uma geracao) sob `flock`; sem `flock` ou sem a trava em 5 s grava sem
+  rotacionar. Nao ha teste de corrida (nao e deterministico); so o de rotacao simples.
+- Sessao headless: AskUserQuestion nao pode ser respondido, e bloquear forcaria turno impossivel. O
+  hook nunca bloqueia quando o transcript traz `entrypoint: "sdk-cli"` (log com
+  `auq_disponivel: false`). Medido em 2026-11-17 sobre os 40 transcripts mais recentes: 23 `sdk-cli` e
+  17 `cli`, nenhum com os dois. A disponibilidade do AskUserQuestion NAO e observavel no transcript
+  (o registro de ferramentas diferidas nao o lista; a palavra aparece em arquivos de instrucao, ate
+  em sessoes `sdk-cli`). O entrypoint e proxy: nao verificado que `claude -p` implica `sdk-cli` em
+  todas as versoes, nem que todo `sdk-cli` e sem AskUserQuestion (programas do Agent SDK podem tê-lo).
+
 ## Plano de medicao (1 semana em `aviso`)
 
 Antes de ligar `bloqueio`: contar `disparo` por `padrao_casado` e revisar uma amostra por padrao
 contra a conversa de origem (o log nao guarda texto; a revisao e pelo `session_id` e `ts`).
 Padrao com falso positivo recorrente sai da lista (subindo `PADROES_V`). `quer_que_eu` e
-`confirma_pergunta` sao os candidatos mais fracos. Criterio de virada para `bloqueio`: decisao do
+`posso_prosseguir` sao os candidatos mais fracos. Linhas do log de versoes diferentes nao se somam. Criterio de virada para `bloqueio`: decisao do
 operador sobre a taxa observada; este ADR nao fixa limiar, porque nao ha medida que o sustente.
 
 ## Limites declarados
@@ -76,5 +107,5 @@ operador sobre a taxa observada; este ADR nao fixa limiar, porque nao ha medida 
 
 ## Reproducao
 
-    bash tests/unit/pending-ask.sh          # 18 casos, exit 0
+    bash tests/unit/pending-ask.sh          # 26 casos, exit 0
     PENDING_ASK_HOOK=<hook que sai 0> bash tests/unit/pending-ask.sh   # vermelho

@@ -1,7 +1,7 @@
 # Proposta: regra de pendencia do operador (CLAUDE.md global)
 
 Status: PROPOSTA. Nao aplicada. O texto abaixo e para o operador aplicar em
-`~/.claude/CLAUDE.md`, na secao "Fluxo e iniciativa". Contexto e hook: ADR 0049.
+`~/.claude/CLAUDE.md`, na secao "Fluxo e iniciativa". Contexto e hook: ADR 0050.
 
 ## Texto proposto
 
