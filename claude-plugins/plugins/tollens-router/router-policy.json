@@ -11,11 +11,13 @@
   "tiers": {
     "T0": {
       "model": "haiku",
-      "effort": "low"
+      "effort": "low",
+      "emitivel": false
     },
     "T1": {
       "model": "sonnet",
-      "effort": "medium"
+      "effort": "medium",
+      "emitivel": false
     },
     "T2": {
       "model": "sonnet",
@@ -48,7 +50,8 @@
   "role_floors": {
     "refutador": "T3",
     "revisor-codigo": "T3",
-    "auditor-seguranca": "T3"
+    "auditor-seguranca": "T3",
+    "revisor": "T3"
   },
   "reviewer_roles": [
     "revisor",
@@ -77,7 +80,7 @@
       "pessoal",
       "pessoais"
     ],
-    "nota": "Casamento por prefixo no inicio de palavra (hifen e sublinhado separam), apos NFKC, remocao de caracteres de formato e marcas e dobra de homoglifos cirilicos e gregos comuns para latino. Homoglifo fora do mapa continua sem cobertura. Prefixos amplos elevam por excesso (ex.: secretaria, product): custo aceito."
+    "nota": "Casamento por prefixo no inicio de palavra (hifen e sublinhado separam), apos NFKC, remocao de formato e marcas e dobra de homoglifos cirilicos e gregos comuns para latino. Homoglifo fora do mapa continua sem cobertura. Prefixos amplos elevam por excesso (ex.: secretaria, product): custo aceito."
   },
   "size": {
     "prompt_chars": {
@@ -87,6 +90,9 @@
     "caminhos": {
       "acima_de": 12,
       "piso": "T2"
+    },
+    "acima_do_teto": {
+      "piso": "T3"
     }
   },
   "pace": {
@@ -97,7 +103,8 @@
     "max_por_fluxo": 3
   },
   "limites": {
-    "prompt_max_bytes": 65536
+    "prompt_max_bytes": 1048576,
+    "n_minimo": 8
   },
   "quality": {
     "piso_aprovacao": {

@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as E from '../../claude-plugins/plugins/tollens-router/engine.mjs';
-import { casos } from '../../claude-plugins/plugins/tollens-router/tests/corpus.mjs';
+import { verificar } from '../../claude-plugins/plugins/tollens-router/tests/propriedades.mjs';
 
 const { decide, parseRota, stripRota, validatePolicy } = E;
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../claude-plugins/plugins/tollens-router');
@@ -41,9 +41,56 @@ function medida(mutate) {
   const p = clone(SHIPPED);
   p.mode = 'enforce';
   p.valid_until = '2027-06-30T00:00:00Z';
-  for (const t of TIERS) p.quality.por_nivel[t] = { aprovacao_medida: 0.95, n: 10, fonte: 'fixture sintetica de teste' };
+  for (const t of TIERS) {
+    p.quality.por_nivel[t] = { aprovacao_medida: 0.95, n: 10, fonte: 'fixture sintetica de teste' };
+    delete p.tiers[t].emitivel;
+  }
   if (mutate) mutate(p);
   return p;
+}
+
+const isObjeto = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+// Subconjunto de JSON Schema usado por policy.schema.json: type, enum, const, required, properties,
+// patternProperties, additionalProperties, items, minItems, maxItems, minimum, maximum, minLength,
+// maxLength, pattern e $ref local.
+function valida(schema, v, raiz) {
+  if (schema.$ref) return valida(schema.$ref.split('/').slice(1).reduce((o, k) => o[k], raiz), v, raiz);
+  if ('const' in schema && v !== schema.const) return false;
+  if (schema.enum && !schema.enum.includes(v)) return false;
+  if (schema.type) {
+    const tipos = Array.isArray(schema.type) ? schema.type : [schema.type];
+    const tipoDe = (x) => (x === null ? 'null' : Array.isArray(x) ? 'array' : Number.isInteger(x) ? 'integer' : typeof x);
+    const t = tipoDe(v);
+    if (!tipos.some((x) => x === t || (x === 'number' && t === 'integer'))) return false;
+  }
+  if (typeof v === 'number') {
+    if (schema.minimum !== undefined && v < schema.minimum) return false;
+    if (schema.maximum !== undefined && v > schema.maximum) return false;
+  }
+  if (typeof v === 'string') {
+    if (schema.minLength !== undefined && v.length < schema.minLength) return false;
+    if (schema.maxLength !== undefined && v.length > schema.maxLength) return false;
+    if (schema.pattern && !new RegExp(schema.pattern).test(v)) return false;
+  }
+  if (Array.isArray(v)) {
+    if (schema.minItems !== undefined && v.length < schema.minItems) return false;
+    if (schema.maxItems !== undefined && v.length > schema.maxItems) return false;
+    if (schema.items && !v.every((x) => valida(schema.items, x, raiz))) return false;
+  }
+  if (isObjeto(v)) {
+    for (const k of schema.required ?? []) if (!Object.hasOwn(v, k)) return false;
+    for (const [k, x] of Object.entries(v)) {
+      const alvos = [];
+      if (schema.properties && Object.hasOwn(schema.properties, k)) alvos.push(schema.properties[k]);
+      for (const [re, sub] of Object.entries(schema.patternProperties ?? {})) if (new RegExp(re).test(k)) alvos.push(sub);
+      if (alvos.length === 0) {
+        if (schema.additionalProperties === false) return false;
+        if (isObjeto(schema.additionalProperties) && !valida(schema.additionalProperties, x, raiz)) return false;
+      }
+      if (!alvos.every((sub) => valida(sub, x, raiz))) return false;
+    }
+  }
+  return true;
 }
 
 const HIST = () => ({ falhasPorChave: {}, autorTierPorChave: {} });
@@ -88,7 +135,7 @@ test('J1 ficha adversarial nunca derruba o piso nem escolhe modelo (corpus)', ()
     ['ficha parseada como ausente', { ficha: { ok: false, motivo: 'ausente' }, prompt: RISCO }, 'sem_ficha'],
     ['ficha parseada como invalida', { ficha: { ok: false, motivo: 'raro' }, prompt: RISCO }, 'ficha_invalida'],
     ['ficha crua com model', { ficha: { c: 1, r: 'trivial', v: 'sim', t: 'k', model: 'fable' }, prompt: RISCO }, 'ficha_invalida'],
-    ['ficha crua com t herdado do prototipo', { ficha: crua, prompt: RISCO }, 'ficha_invalida'],
+    ['ficha crua com t herdado do prototipo: entrada que nao e dado puro', { ficha: crua, prompt: RISCO }, 'entrada_invalida'],
     ['ficha crua valida baixa', { ficha: FICHA(), prompt: RISCO }, null],
     ['ficha objeto fora do enum', { ficha: { ok: true, ficha: { c: 99, r: 'trivial', v: 'sim', t: 'k' } }, prompt: RISCO }, 'ficha_invalida'],
     ['ficha objeto com model', { ficha: { ok: true, ficha: { c: 1, r: 'trivial', v: 'sim', t: 'k', model: 'fable' } }, prompt: RISCO }, 'ficha_invalida'],
@@ -98,6 +145,12 @@ test('J1 ficha adversarial nunca derruba o piso nem escolhe modelo (corpus)', ()
   for (const [nome, entrada, motivo] of corpus) {
     const input = typeof entrada === 'string' ? IN({ prompt: entrada }) : IN(entrada);
     const r = decide(input, policy);
+    if (motivo === 'entrada_invalida') {
+      assert.equal(r.tier, null, `${nome}: tier`);
+      assert.equal(r.aplicar, false, `${nome}: aplicar`);
+      assert.ok(r.reasons.includes(motivo), `${nome}: reasons ${r.reasons}`);
+      continue;
+    }
     assert.equal(r.floor, 'T3', `${nome}: floor`);
     assert.equal(r.tier, 'T3', `${nome}: tier`);
     assert.notEqual(r.model, 'fable', `${nome}: model`);
@@ -135,13 +188,18 @@ test('J1 parseRota nunca lanca, respeita o teto de 2 KiB, classifica ausente x i
 
 test('J1 piso por papel: refutador, revisor-codigo e auditor-seguranca no minimo T3, sem caixa e sem espacos extras', () => {
   const policy = medida();
-  for (const nome of ['refutador', 'revisor-codigo', 'auditor-seguranca', 'Refutador', ' REFUTADOR\t', 'Revisor-Codigo ']) {
+  for (const nome of ['refutador', 'revisor-codigo', 'auditor-seguranca', 'Refutador', ' REFUTADOR\t', 'Revisor-Codigo ', 'refutador\u200b', 'refut\u0430dor', 'ref\u00adutador', '\uff52\uff45\uff46utador']) {
     for (const campo of ['role', 'subagentType']) {
       const r = decide(comFicha(FICHA(), 'revise', { [campo]: nome }), policy);
       assert.equal(r.tier, 'T3', `${campo}=${JSON.stringify(nome)}`);
       assert.equal(r.floor, 'T3', `${campo}=${JSON.stringify(nome)} floor`);
     }
   }
+  const pulada = decide(comFicha(FICHA(), 'rodar em producao', { role: 'refutador' }), policy);
+  assert.equal(pulada.tier, 'T3');
+  assert.ok(!pulada.reasons.includes('piso_superficie_de_risco'), 'o texto so e varrido para o que ainda pode elevar o piso');
+  const treze = Array.from({ length: 13 }, (_, i) => `src/mod${i}/arquivo.js`).join(' ');
+  assert.ok(!decide(comFicha(FICHA(), treze, { role: 'refutador' }), policy).reasons.includes('piso_caminhos'), 'idem para caminhos');
   const comEspaco = medida((p) => { p.role_floors['Revisor de  Codigo'] = 'T3'; });
   assert.equal(decide(comFicha(FICHA(), 'revise', { role: 'revisor   DE codigo' }), comEspaco).tier, 'T3', 'espacos internos colapsam, dos dois lados');
   const ctl = decide(comFicha(FICHA(), 'implemente'), policy);
@@ -164,6 +222,14 @@ test('J1 superficie de risco: prefixo de palavra, NFKC, zero-width, homoglifos, 
   for (const p of negativos) assert.equal(decide(IN({ prompt: p }), policy).tier, 'T0', `negativo: ${p}`);
   assert.equal(decide(comFicha(FICHA({ t: 'producao' }), 'texto inocuo'), policy).tier, 'T0', 'a linha da ficha nao e prompt');
   assert.match(SHIPPED.risk_surface.nota, /homoglifo/i, 'a politica documenta o que nao cobre');
+  const hangul = '\uac00'.repeat(33);
+  const jamo = hangul.normalize('NFD');
+  assert.equal(jamo.length, 66);
+  assert.equal(decide(IN({ prompt: jamo }), medida((p) => { p.risk_surface.words.push(hangul); })).floor, 'T3', 'corte por pontos de codigo depois do NFKC: jamo');
+  const astral = '\u{1d41a}'.repeat(40);
+  assert.equal(decide(IN({ prompt: astral }), medida((p) => { p.risk_surface.words.push('a'.repeat(40)); })).floor, 'T3', 'corte por pontos de codigo depois do NFKC: par substituto');
+  const longo = medida((p) => { p.risk_surface.words.push('\uff9e'.repeat(3)); });
+  assert.equal(validatePolicy(longo, { now: NOW }).ok, false, 'palavra que normaliza para vazio e recusada');
 });
 
 test('J1 tamanho do prompt e numero de caminhos distintos elevam o piso; limiar exato nao eleva; recorte marcado', () => {
@@ -181,43 +247,77 @@ test('J1 tamanho do prompt e numero de caminhos distintos elevam o piso; limiar 
   assert.equal(decide(IN({ prompt: doze((i) => `pk${i}/f.js`) }), policy).tier, 'T2', 'uma barra com extensao');
   assert.equal(decide(IN({ prompt: doze((i) => `opcao${i}/alt${i}`) }), policy).tier, 'T0', 'e/ou nao e caminho');
   assert.equal(decide(IN({ prompt: doze((i) => `${'a/'.repeat(300)}${i}.js`) }), policy).tier, 'T0', 'token acima de 512 caracteres nao e caminho');
-  const grande = (extra) => `${extra} ` + 'a '.repeat(100000);
-  const cab = decide(IN({ prompt: grande('migracao') }), policy);
-  assert.equal(cab.tier, 'T3', 'palavra de risco na cabeca de prompt grande');
-  assert.ok(cab.reasons.includes('prompt_truncado'));
-  assert.equal(decide(IN({ prompt: 'a '.repeat(100000) + ' producao' }), policy).tier, 'T3', 'palavra de risco na cauda');
-  assert.ok(!decide(IN({ prompt: 'a '.repeat(100) }), policy).reasons.includes('prompt_truncado'));
-  const meio = ' producao ';
-  const lado = 'a'.repeat((65536 - meio.length) / 2);
-  const exato = decide(IN({ prompt: lado + meio + lado }), policy);
-  assert.equal(exato.tier, 'T3', 'exatamente no limite nao recorta');
-  assert.ok(!exato.reasons.includes('prompt_truncado'));
-  const alem = decide(IN({ prompt: `${lado}a${meio}${lado}` }), policy);
-  assert.ok(alem.reasons.includes('prompt_truncado'), 'um acima do limite recorta');
-  assert.equal(alem.tier, 'T2', 'limite documentado: palavra so no meio de prompt recortado nao e vista (vale so o piso de tamanho)');
-  const curto = medida((p) => { p.limites.prompt_max_bytes = 1024; });
-  const meioCurto = `${'a '.repeat(400)}producao${' a'.repeat(400)}`;
-  assert.equal(decide(IN({ prompt: meioCurto }), curto).tier, 'T0', 'limite da politica de 1024 recorta o meio');
-  assert.equal(decide(IN({ prompt: meioCurto }), policy).tier, 'T3', 'limite padrao de 65536 nao recorta');
-  const semLimites = medida((p) => { delete p.limites; });
-  const cinquentaMil = `${'a '.repeat(12500)}producao${' a'.repeat(12500)}`;
-  const padrao = decide(IN({ prompt: cinquentaMil }), semLimites);
-  assert.equal(padrao.tier, 'T3', 'sem limites na politica vale o padrao de 65536');
-  assert.ok(!padrao.reasons.includes('prompt_truncado'));
+  assert.ok(!decide(IN({ prompt: 'a '.repeat(100) }), policy).reasons.includes('prompt_acima_do_teto'));
 });
 
-test('J1 tempo: prompt patologico de 1 MiB abaixo de 300 ms e 10 MiB de texto comum abaixo de 1 s', () => {
+test('J1 varredura completa: palavra de risco em qualquer posicao de prompt grande eleva igual; acima do teto vale o piso de tamanho', () => {
   const policy = medida();
-  const medir = (prompt) => { const t0 = performance.now(); const r = decide(IN({ prompt }), policy); return [performance.now() - t0, r]; };
-  const [msPat, rPat] = medir('a' + '\u0316\u0301'.repeat(524288));
-  assert.ok(msPat < 300, `combinantes 1 MiB levou ${msPat.toFixed(0)} ms`);
-  assert.ok(rPat.reasons.includes('prompt_truncado'));
-  const [msComum] = medir('palavra comum de teste '.repeat(Math.ceil((10 * 1024 * 1024) / 23)));
-  assert.ok(msComum < 1000, `10 MiB comum levou ${msComum.toFixed(0)} ms`);
-  for (const p of ['@@ROTA ' + 'x'.repeat(400_000), 'a/'.repeat(100_000), 'x\u200b'.repeat(400_000), '\u00e9'.repeat(400_000)]) {
-    const [ms] = medir(p);
-    assert.ok(ms < 1000, `${p.slice(0, 10)}: ${ms.toFixed(0)} ms`);
+  const miolo = (n) => 'lorem ipsum dolor sit amet '.repeat(Math.ceil(n / 27)).slice(0, n);
+  const com = (total, pos, palavra = ' producao ') => miolo(total).slice(0, pos) + palavra + miolo(total).slice(pos + palavra.length);
+  const T = (prompt, pol = policy) => decide(IN({ prompt }), pol);
+  for (const pos of [30000, 51200, 80000, 65530, 65536, 65600, 131000]) {
+    const r = T(com(102400, pos));
+    assert.equal(r.tier, 'T3', `posicao ${pos} de 102400`);
+    assert.ok(r.reasons.includes('piso_superficie_de_risco'), `posicao ${pos}: razao`);
   }
+  assert.equal(T(com(1048576, 524288)).tier, 'T3', 'meio de 1 MiB');
+  assert.ok(T(com(1048576, 524288)).reasons.includes('piso_superficie_de_risco'));
+  const sem = T(miolo(102400));
+  assert.equal(sem.tier, 'T2', 'controle sem palavra: so o piso de tamanho');
+  assert.ok(!sem.reasons.includes('piso_superficie_de_risco'));
+  // inicio de palavra falso na fronteira da janela nao eleva; palavra partida pela fronteira eleva
+  const falsoInicio = `${'a '.repeat(32767)}xxdeployxx ${miolo(2000)}`;
+  assert.equal(falsoInicio.indexOf('deploy'), 65536, 'a fronteira cai exatamente antes de deploy, no meio do trecho xxdeployxx');
+  assert.ok(!T(falsoInicio).reasons.includes('piso_superficie_de_risco'), 'xxdeploy atravessando a janela nao e palavra de risco');
+  const partida = `${'a '.repeat(32766)}deploy ${miolo(2000)}`;
+  assert.ok(partida.indexOf('deploy') < 65536 && partida.indexOf('deploy') + 6 > 65536, 'deploy atravessa a fronteira');
+  assert.ok(T(partida).reasons.includes('piso_superficie_de_risco'), 'deploy atravessando a janela eleva');
+  // caminho rapido ASCII e caminho completo dao o mesmo resultado
+  for (const base of ['rodar em producao', 'migrar o banco', 'tarefa simples', 'imigracao e produtor', 'um deployment qualquer']) {
+    assert.equal(T(base).tier, T(`${base} \u00e9`).tier, `paridade ASCII x unicode: ${base}`);
+  }
+  // acima de prompt_max_bytes: sinaliza e vale o piso de tamanho; a varredura para no teto
+  const curto = medida((p) => { p.limites.prompt_max_bytes = 1024; });
+  const acima = T(`${'a '.repeat(600)}`, curto);
+  assert.ok(acima.reasons.includes('prompt_acima_do_teto'));
+  assert.equal(acima.tier, 'T3', 'piso de tamanho acima do teto: T3');
+  const noTeto = T('a'.repeat(1024), curto);
+  assert.ok(!noTeto.reasons.includes('prompt_acima_do_teto'), 'exatamente no teto nao sinaliza');
+  assert.equal(T(`${'a '.repeat(520)}producao${' a'.repeat(100)}`, curto).tier, 'T3');
+  const baixo = medida((p) => { p.limites.prompt_max_bytes = 1024; p.size.acima_do_teto.piso = 'T2'; });
+  const alemDoTeto = T(`${'a '.repeat(600)}producao`, baixo);
+  assert.equal(alemDoTeto.tier, 'T2', 'palavra depois do teto nao e varrida: vale so o piso de tamanho acima do teto');
+  assert.ok(alemDoTeto.reasons.includes('prompt_acima_do_teto'));
+  assert.equal(T(`producao ${'a '.repeat(600)}`, baixo).tier, 'T3', 'palavra antes do teto e varrida');
+  const padrao = medida((p) => { delete p.limites; });
+  assert.ok(T(com(1048577, 100), padrao).reasons.includes('prompt_acima_do_teto'), 'padrao de 1 MiB sem limites na politica');
+  assert.ok(!T(com(1048576, 100), padrao).reasons.includes('prompt_acima_do_teto'));
+});
+
+test('J1 linearidade: o custo cresce por razao, sem limite absoluto de tempo', () => {
+  const policy = medida();
+  const mediana = (prompt) => {
+    const t = [];
+    for (let i = 0; i < 5; i++) { const t0 = performance.now(); decide(IN({ prompt }), policy); t.push(performance.now() - t0); }
+    return t.sort((a, b) => a - b)[2];
+  };
+  const KIB = 1024;
+  const padroes = {
+    comum: (n) => 'palavra comum de teste '.repeat(Math.ceil(n / 23)).slice(0, n),
+    combinantes: (n) => `a${'\u0316\u0301'.repeat(Math.ceil(n / 2))}`.slice(0, n),
+    cirilico: (n) => '\u0430\u0431\u0432 '.repeat(Math.ceil(n / 4)).slice(0, n),
+    zerowidth: (n) => 'x\u200b'.repeat(Math.ceil(n / 2)).slice(0, n),
+    caminhos: (n) => 'a/'.repeat(Math.ceil(n / 2)).slice(0, n),
+  };
+  for (const [nome, gera] of Object.entries(padroes)) {
+    const pequeno = mediana(gera(128 * KIB));
+    const grande = mediana(gera(1024 * KIB));
+    const razao = grande / Math.max(pequeno, 0.05);
+    assert.ok(razao < 40, `${nome}: 1 MiB sobre 128 KiB = ${razao.toFixed(1)} (linear ~8; quadratico ~64)`);
+  }
+  const um = mediana(padroes.comum(1024 * KIB));
+  const dez = mediana(padroes.comum(10 * 1024 * KIB));
+  assert.ok(dez / Math.max(um, 0.05) < 30, `10 MiB sobre 1 MiB = ${(dez / um).toFixed(1)}: a varredura para no teto`);
 });
 
 test('J1 tier = max(ficha, piso): mapeamento de complexidade e risco, e a ficha pode subir', () => {
@@ -312,6 +412,59 @@ test('J3 off e shadow carregam a decisao mas nao aplicam; entrada e politica nao
   }
 });
 
+test('J3 politica e entrada sao copiadas para dado puro e validadas na copia: getter, funcao, classe e ciclo nao passam; Proxy da copia consistente', () => {
+  const sem = (x, motivo) => {
+    assert.equal(x.tier, null);
+    assert.equal(x.mode, 'off');
+    assert.equal(x.aplicar, false);
+    assert.ok(x.reasons.includes(motivo), `reasons ${x.reasons}`);
+  };
+  let leituras = 0;
+  const comGetter = medida();
+  Object.defineProperty(comGetter, 'mode', { get() { return leituras++ === 0 ? 'shadow' : 'enforce'; }, enumerable: true, configurable: true });
+  assert.doesNotThrow(() => sem(decide(comFicha(FICHA()), comGetter), 'politica_invalida'));
+  assert.equal(validatePolicy(comGetter, { now: NOW }).ok, false);
+  const alvo = medida();
+  let lidas = 0;
+  const proxy = new Proxy(alvo, { get(t, k, r) { return k === 'mode' ? (lidas++ === 0 ? 'shadow' : 'enforce') : Reflect.get(t, k, r); } });
+  assert.deepEqual(decide(comFicha(FICHA()), proxy), decide(comFicha(FICHA()), alvo), 'Proxy: decide sobre a copia, sem intervalo entre validar e usar');
+  const ruins = [
+    ['funcao no campo', (p) => { p.version = () => 'x'; }],
+    ['simbolo', (p) => { p.version = Symbol('x'); }],
+    ['bigint', (p) => { p.version = 10n; }],
+    ['classe', (p) => { p.pace = new (class Faixa { constructor() { this.abaixo_de = -0.1; this.acima_de = 0.1; } })(); }],
+    ['Date', (p) => { p.version = new Date(0); }],
+    ['ciclo', (p) => { p.self = p; }],
+    ['prototipo alterado', (p) => { Object.setPrototypeOf(p.tiers, { T9: 1 }); }],
+  ];
+  for (const [nome, mut] of ruins) {
+    const p = medida();
+    mut(p);
+    let x;
+    assert.doesNotThrow(() => { x = decide(comFicha(FICHA()), p); }, nome);
+    sem(x, 'politica_invalida');
+    assert.equal(validatePolicy(p, { now: NOW }).ok, false, nome);
+  }
+  const ent = [
+    ['getter na entrada', () => { const i = comFicha(FICHA()); Object.defineProperty(i, 'role', { get() { return 'autor'; }, enumerable: true }); return i; }],
+    ['funcao na entrada', () => comFicha(FICHA(), 'x', { role: () => 'autor' })],
+    ['ciclo no historico', () => { const h = HIST(); h.falhasPorChave.self = h; return comFicha(FICHA(), 'x', { history: h }); }],
+    ['Map no historico', () => comFicha(FICHA(), 'x', { history: { falhasPorChave: new Map(), autorTierPorChave: {} } })],
+    ['prototipo herdado no historico', () => comFicha(FICHA(), 'x', { history: { falhasPorChave: Object.create({ k1: 5 }), autorTierPorChave: {} } })],
+    ['profundidade excessiva', () => { let o = {}; const raiz = o; for (let i = 0; i < 40; i++) { o.x = {}; o = o.x; } return comFicha(FICHA(), 'x', { history: raiz }); }],
+  ];
+  for (const [nome, monta] of ent) {
+    let x;
+    assert.doesNotThrow(() => { x = decide(monta(), medida()); }, nome);
+    sem(x, 'entrada_invalida');
+  }
+  const json = JSON.parse('{"prompt":"tarefa","__proto__":{"admin":true},"now":' + NOW + '}');
+  const ok = decide(json, medida());
+  assert.ok(ok.tier !== null, 'chave __proto__ de JSON e dado, nao prototipo');
+  assert.equal(({}).admin, undefined, 'sem poluicao de prototipo');
+  assert.equal(decide(deepFreeze(comFicha(FICHA())), deepFreeze(medida())).mode, 'enforce', 'entrada e politica congeladas passam');
+});
+
 // ---------------------------------------------------------------- J8
 
 test('J8 politica vencida degrada para shadow; nunca promove off; fronteira exata vence', () => {
@@ -339,6 +492,10 @@ test('J8 relogio: so ms inteiros em [1.6e12, 4.1e12] ou ISO estrito; todo o rest
     new Date(NOW), NOW + 0.5, '2026-11-16', 'ontem', '2026-02-31T00:00:00Z', '2026-11-16T24:00:00Z', '2026-11-16 00:00:00Z', '2026-11-16T00:00:00+00:00', '2026-11-16T00:00:00.1234Z'];
   for (const now of ruins) {
     assert.deepEqual(validatePolicy(p, { now }), { ok: true, degradaPara: 'shadow' }, `now=${String(now)}`);
+    if (now instanceof Date) {
+      assert.ok(decide(comFicha(FICHA(), 'tarefa', { now }), p).reasons.includes('entrada_invalida'), 'Date na entrada nao e dado puro');
+      continue;
+    }
     const x = decide(comFicha(FICHA(), 'tarefa', { now }), p);
     assert.equal(x.aplicar, false, `now=${String(now)}`);
     assert.equal(x.mode, 'shadow', `now=${String(now)}`);
@@ -377,12 +534,40 @@ test('J8 politica ausente ou invalida: validatePolicy ok:false e engine em off s
     ['chave extra no topo', medida((p) => { p.extra = 1; })],
     ['piso aponta T9', medida((p) => { p.role_floors.refutador = 'T9'; })],
     ['piso de papel comum com nivel invalido', medida((p) => { p.role_floors.outro = 'T9'; })],
-    ['piso de revisor abaixo de T2', medida((p) => { p.role_floors.refutador = 'T1'; })],
     ['reviewer_roles vazio', medida((p) => { p.reviewer_roles = []; })],
     ['ficha_tiers aponta T9', medida((p) => { p.ficha_tiers.risco.alto = 'T9'; })],
     ['pace invertido', medida((p) => { p.pace.abaixo_de = 0.5; p.pace.acima_de = 0.1; })],
     ['palavras vazias', medida((p) => { p.risk_surface.words = []; })],
-    ['palavras demais', medida((p) => { p.risk_surface.words = Array.from({ length: 257 }, (_, i) => `palavra${i}`); })],
+    ['palavras demais', medida((p) => { p.risk_surface.words = [...p.risk_surface.words, ...Array.from({ length: 257 - p.risk_surface.words.length }, (_, i) => `palavra${i}`)]; })],
+    ['prefixo obrigatorio ausente', medida((p) => { p.risk_surface.words = p.risk_surface.words.filter((w) => w !== 'deploy'); })],
+    ['palavra que normaliza para vazio', medida((p) => { p.risk_surface.words.push('\uff9e'); })],
+    ['palavra curta', medida((p) => { p.risk_surface.words.push('ab'); })],
+    ['risk_surface.piso T2', medida((p) => { p.risk_surface.piso = 'T2'; })],
+    ['risk_surface.piso T0', medida((p) => { p.risk_surface.piso = 'T0'; })],
+    ['size.prompt_chars.piso T0', medida((p) => { p.size.prompt_chars.piso = 'T0'; })],
+    ['size.prompt_chars.piso T1', medida((p) => { p.size.prompt_chars.piso = 'T1'; })],
+    ['size.acima_do_teto.piso T1', medida((p) => { p.size.acima_do_teto.piso = 'T1'; })],
+    ['size.acima_do_teto.piso T0', medida((p) => { p.size.acima_do_teto.piso = 'T0'; })],
+    ['size sem acima_do_teto', medida((p) => { delete p.size.acima_do_teto; })],
+    ['role_floors vazio', medida((p) => { p.role_floors = {}; })],
+    ['role_floors sem revisor-codigo', medida((p) => { delete p.role_floors['revisor-codigo']; })],
+    ['role_floors sem auditor-seguranca', medida((p) => { delete p.role_floors['auditor-seguranca']; })],
+    ['refutador T2', medida((p) => { p.role_floors.refutador = 'T2'; })],
+    ['auditor T2', medida((p) => { p.role_floors['auditor-seguranca'] = 'T2'; })],
+    ['revisor-codigo T1', medida((p) => { p.role_floors['revisor-codigo'] = 'T1'; })],
+    ['revisor generico com piso T1', medida((p) => { p.role_floors.revisor = 'T1'; })],
+    ['role_floors com 10001 papeis', medida((p) => { for (let i = 0; i < 10001; i++) p.role_floors[`papel${i}`] = 'T3'; })],
+    ['reviewer_roles so zzz', medida((p) => { p.reviewer_roles = ['zzz']; })],
+    ['reviewer_roles fora de role_floors', medida((p) => { p.reviewer_roles.push('zzz'); })],
+    ['piso_aprovacao default 0 com n 1', medida((p) => { p.quality.piso_aprovacao.default = 0; p.quality.por_nivel.T1 = { aprovacao_medida: 0.99, n: 1, fonte: 'x' }; })],
+    ['piso_aprovacao default 0.4', medida((p) => { p.quality.piso_aprovacao.default = 0.4; })],
+    ['por_papel abaixo do default', medida((p) => { p.quality.piso_aprovacao.por_papel.refutador = 0.6; })],
+    ['tiers iguais', medida((p) => { for (const t of TIERS) p.tiers[t] = { model: 'sonnet', effort: 'high' }; })],
+    ['dois tiers iguais', medida((p) => { p.tiers.T2 = { ...p.tiers.T1 }; })],
+    ['n_minimo zero', medida((p) => { p.limites.n_minimo = 0; })],
+    ['n_minimo enorme', medida((p) => { p.limites.n_minimo = 2000; })],
+    ['emitivel texto', medida((p) => { p.tiers.T0.emitivel = 'nao'; })],
+    ['nenhum nivel emitivel', medida((p) => { for (const t of TIERS) p.tiers[t].emitivel = false; })],
     ['nota ausente', medida((p) => { delete p.risk_surface.nota; })],
     ['limites com valor ruim', medida((p) => { p.limites.prompt_max_bytes = 10; })],
     ['limites com chave extra', medida((p) => { p.limites.outro = 1; })],
@@ -429,9 +614,15 @@ test('J8 politica ausente ou invalida: validatePolicy ok:false e engine em off s
   const p400 = medida((p) => { p.valid_until = '2027-12-21T00:00:00Z'; });
   assert.deepEqual(validatePolicy(p400, { now: NOW }), { ok: true }, '400 dias exatos valem');
   assert.equal(validatePolicy(medida((p) => { p.valid_until = '2027-12-22T00:00:00Z'; }), { now: NOW }).ok, false, '401 dias nao');
-  assert.deepEqual(validatePolicy(medida((p) => { p.role_floors.refutador = 'T2'; }), { now: NOW }), { ok: true }, 'piso de papel revisor T2 vale');
-  const igual = medida((p) => { p.tiers.T2 = { ...p.tiers.T1 }; });
-  assert.deepEqual(validatePolicy(igual, { now: NOW }), { ok: true }, 'custo igual entre niveis e nao decrescente');
+  assert.deepEqual(validatePolicy(medida((p) => { p.role_floors['revisor-codigo'] = 'T2'; }), { now: NOW }), { ok: true }, 'piso T2 vale para revisor-codigo');
+  assert.deepEqual(validatePolicy(medida((p) => { p.limites = {}; }), { now: NOW }), { ok: true }, 'limites vazio usa os padroes');
+  assert.deepEqual(validatePolicy(medida((p) => { p.tiers.T0.emitivel = false; p.tiers.T1.emitivel = false; p.quality.por_nivel.T0 = { aprovacao_medida: null, n: null, fonte: 'x' }; p.quality.por_nivel.T1 = { aprovacao_medida: null, n: null, fonte: 'x' }; }), { now: NOW }), { ok: true },
+  'enforce exige apenas os niveis emitiveis medidos');
+  // paridade com o schema documental: o validador nunca aceita o que o schema recusa
+  for (const [nome, p] of corpus) if (isObjeto(p) && validatePolicy(p, { now: NOW }).ok) assert.ok(valida(SCHEMA, p, SCHEMA), `${nome}: validador aceita, schema recusa`);
+  for (const p of [medida(), SHIPPED]) assert.ok(valida(SCHEMA, p, SCHEMA), 'politica valida tambem passa no schema');
+  assert.ok(!valida(SCHEMA, medida((p) => { p.tiers.T4.model = 'fable'; }), SCHEMA), 'controle: o schema recusa fable');
+  assert.ok(!valida(SCHEMA, medida((p) => { p.extra = 1; }), SCHEMA), 'controle: o schema recusa chave extra');
 });
 
 test('J8 mode off da politica vence: decisao carregada, nada aplicado', () => {
@@ -465,8 +656,20 @@ test('J6 falha registrada sobe um nivel, uma vez por chave; a chave vem do chama
     assert.equal(decide(comFicha(f, 'x', { chave }), policy).tier, 'T1', `chave ${chave} com historico vazio`);
   }
   const herdada = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: Object.create({ k1: 5 }), autorTierPorChave: {} } }), policy);
-  assert.ok(!herdada.reasons.includes('repeticao'), 'falha herdada do prototipo nao conta');
-  assert.equal(herdada.tier, 'T1');
+  assert.ok(herdada.reasons.includes('entrada_invalida'), 'falha herdada do prototipo: entrada que nao e dado puro');
+  assert.ok(!herdada.reasons.includes('repeticao'));
+  assert.equal(herdada.tier, null);
+  const vazia = decide(comFicha(f, 'x', { chave: '', history: { falhasPorChave: { '': 1 }, autorTierPorChave: {} } }), policy);
+  assert.equal(vazia.tier, 'T1', 'chave vazia nao tem historico');
+  assert.ok(vazia.reasons.includes('sem_chave'));
+  assert.ok(um.subida_concedida && !zero.subida_concedida, 'o motor informa a concessao para o mod persistir');
+  const muitas = { k1: 1, ...Object.fromEntries(Array.from({ length: 5000 }, (_, i) => [`t${String(i).padStart(5, '0')}`, 1])) };
+  const truncada = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: muitas, autorTierPorChave: {} } }), policy);
+  assert.ok(truncada.reasons.includes('history_truncado'), 'historico acima de 1000 entradas e cortado');
+  assert.equal(truncada.tier, 'T1', 'historico truncado: sem nova concessao');
+  assert.ok(truncada.reasons.includes('teto_por_fluxo'));
+  const sticky = decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: { ...muitas, k1: 2 }, autorTierPorChave: {} } }), policy);
+  assert.equal(sticky.tier, 'T2', 'historico truncado nao revoga concessao');
   const zeros = { k1: 1, a1: 0, a2: 0, a3: 0, a4: 0 };
   assert.equal(decide(comFicha(f, 'x', { chave: 'k1', history: { falhasPorChave: zeros, autorTierPorChave: {} } }), policy).tier, 'T2', 'chaves com zero falha nao contam para o teto');
   const longa = 'k'.repeat(257);
@@ -498,6 +701,25 @@ test('J6 teto por fluxo impede NOVAS subidas e nunca rebaixa chave que ja subiu'
   assert.equal(dec({ a: 1, z1: 2, z2: 2, z3: 2 }, 'a').tier, 'T1', 'tres subidas ja concedidas esgotam o teto, mesmo depois de a na ordem de nome');
   assert.equal(dec({ k9: 2, k1: 1, k2: 1, k3: 1 }, 'k9').tier, 'T2', 'chave com 2 falhas continua subida mesmo depois de outras na ordem de nome');
   assert.equal(dec({ k1: 1, k2: '5', k3: '5', k4: '5', k5: null }, 'k1').tier, 'T2', 'valores que nao sao numero nao contam como subida concedida');
+  // concessao pegajosa: nunca revoga, mesmo com chave nova que vem antes por nome
+  const um = medida((p) => { p.escalation.max_por_fluxo = 1; });
+  const com = (falhas, chave, extra = {}) => decide(comFicha(f, 'x', { chave, history: { falhasPorChave: falhas, autorTierPorChave: {}, ...extra } }), um);
+  assert.equal(com({ z: 1 }, 'z').tier, 'T2', 'z sobe sozinha');
+  assert.equal(com({ z: 1, a: 1 }, 'z', { subidasConcedidas: ['z'] }).tier, 'T2', 'z continua subida com a chave nova a');
+  assert.equal(com({ z: 1, a: 1 }, 'a', { subidasConcedidas: ['z'] }).tier, 'T1', 'a e nova e nao ha vaga');
+  assert.equal(com({ z: 1, a: 1 }, 'z', { ordem: ['z', 'a'] }).tier, 'T2', 'sem a lista, a ordem temporal mantem z');
+  assert.equal(com({ z: 1, a: 1 }, 'a', { ordem: ['z', 'a'] }).tier, 'T1');
+  assert.equal(com({ 'z-auth-migration': 1, 'a-trivial': 1 }, 'z-auth-migration').tier, 'T2', 'chave critica por nome nao perde para a-trivial');
+  assert.equal(com({ 'z-auth-migration': 1, 'a-trivial': 1 }, 'a-trivial').tier, 'T1');
+  assert.equal(com({ zeta: 1, alfa: 1 }, 'zeta', { chavesCriticas: ['zeta'] }).tier, 'T2', 'chave critica informada pelo mod');
+  assert.equal(com({ zeta: 1, alfa: 1 }, 'alfa', { chavesCriticas: ['zeta'] }).tier, 'T1');
+  assert.equal(com({ b: 1, a: 1 }, 'b', { ordem: ['b', 'a'], chavesCriticas: ['a'] }).tier, 'T2', 'a ordem temporal vem antes da criticidade');
+  const dois = medida((p) => { p.escalation.max_por_fluxo = 2; });
+  const comDois = (falhas, chave, extra = {}) => decide(comFicha(f, 'x', { chave, history: { falhasPorChave: falhas, autorTierPorChave: {}, ...extra } }), dois);
+  assert.equal(comDois({ a: 1, b: 1 }, 'b', { subidasConcedidas: ['a'] }).tier, 'T2', 'a concessao de a ocupa uma vaga e b ainda cabe');
+  assert.equal(comDois({ a: 1, b: 1, c: 1 }, 'c', { subidasConcedidas: ['a'] }).tier, 'T1', 'a e b esgotam as duas vagas');
+  assert.equal(com({ z: 1, a: 1 }, 'z', { ordem: ['z', 'a', 'z'] }).tier, 'T2', 'chave repetida em ordem vale pela primeira posicao');
+  assert.ok(com({ z: 1 }, 'z').subida_concedida, 'subida_concedida marca a nova concessao');
 });
 
 // ---------------------------------------------------------------- J7
@@ -527,10 +749,12 @@ test('J7 revisor e refutador nunca abaixo do autor: mesma chave, senao o maior d
     assert.equal(x.tier, 'T3', `autor invalido ${String(ruim)} ignorado`);
   }
   const herdado = semFicha('refutador', { chave: 'k1', history: { falhasPorChave: {}, autorTierPorChave: Object.create({ k1: 'T4' }) } });
-  assert.equal(herdado.tier, 'T3', 'autor herdado do prototipo nao conta');
+  assert.equal(herdado.tier, null, 'autor herdado do prototipo: entrada que nao e dado puro');
+  assert.ok(herdado.reasons.includes('entrada_invalida'));
   assert.ok(!herdado.reasons.includes('revisor_nao_abaixo_do_autor'));
   const maxHerdado = semFicha('refutador', { history: Object.assign(Object.create({ autorTierMax: 'T4' }), HIST()) });
-  assert.equal(maxHerdado.tier, 'T3', 'autorTierMax herdado do prototipo nao conta');
+  assert.equal(maxHerdado.tier, null, 'autorTierMax herdado do prototipo: entrada invalida');
+  assert.ok(maxHerdado.reasons.includes('entrada_invalida'));
 });
 
 // ---------------------------------------------------------------- J9
@@ -648,11 +872,14 @@ test('R12 politica inicial entregue: valida, shadow, nada medido, Fable ausente,
   for (const papel of ['refutador', 'revisor-codigo', 'auditor-seguranca']) assert.ok(idx(SHIPPED.role_floors[papel]) >= 3);
   assert.equal(SHIPPED.risk_surface.piso, 'T3');
   assert.ok(Date.parse(SHIPPED.valid_until) - NOW <= 14 * DIA);
-  assert.equal(SHIPPED.limites.prompt_max_bytes, 65536);
-  for (const [c, esperado] of [[1, 'T0'], [3, 'T2'], [5, 'T4']]) {
+  assert.deepEqual(SHIPPED.limites, { prompt_max_bytes: 1048576, n_minimo: 8 });
+  assert.deepEqual(TIERS.map((t) => SHIPPED.tiers[t].emitivel), [false, false, undefined, undefined, undefined], 'T0 e T1 nao emitiveis');
+  assert.equal(SHIPPED.size.acima_do_teto.piso, 'T3');
+  assert.ok(idx(SHIPPED.role_floors.revisor) >= 2, 'todo papel de reviewer_roles tem piso');
+  for (const [c, esperado, base] of [[1, 'T2', 'T0'], [3, 'T2', 'T2'], [5, 'T4', 'T4']]) {
     const x = decide(comFicha(FICHA({ c })), SHIPPED);
-    assert.equal(x.tier, esperado, `c=${c}: devolve o nivel base, nao T4`);
-    assert.equal(x.tier_base, esperado);
+    assert.equal(x.tier, esperado, `c=${c}: nivel base nao emitivel sobe so ate o primeiro emitivel, nao T4`);
+    assert.equal(x.tier_base, base);
     assert.equal(x.mode, 'shadow');
     assert.equal(x.aplicar, false);
     assert.equal(x.estado_nivel, 'nao_medido');
@@ -661,6 +888,43 @@ test('R12 politica inicial entregue: valida, shadow, nada medido, Fable ausente,
   const forcada = decide(comFicha(FICHA({ c: 1 })), { ...clone(SHIPPED), mode: 'enforce' });
   assert.equal(forcada.aplicar, false, 'enforce sem nenhuma medicao nunca aplica');
   assert.equal(forcada.modo_efetivo, 'shadow');
+});
+
+test('R12 n minimo e niveis nao emitiveis: n insuficiente e nao medido; nao emitivel nunca e escolhido; enforce exige so os emitiveis', () => {
+  const poucoN = medida((p) => { p.quality.por_nivel.T1.n = 7; });
+  const a = decide(comFicha(FICHA({ c: 2, r: 'normal' })), poucoN);
+  assert.equal(a.estado_nivel, 'nao_medido', 'n abaixo de 8 nao conta como medido');
+  assert.equal(a.tier, 'T1');
+  assert.equal(a.modo_efetivo, 'shadow', 'enforce com nivel emitivel sem medicao suficiente nao aplica');
+  const padraoN7 = medida((p) => { delete p.limites; p.quality.por_nivel.T1.n = 7; });
+  assert.equal(decide(comFicha(FICHA({ c: 2, r: 'normal' })), padraoN7).estado_nivel, 'nao_medido', 'sem limites o n minimo padrao e 8');
+  const padraoN8 = medida((p) => { delete p.limites; p.quality.por_nivel.T1.n = 8; });
+  assert.equal(decide(comFicha(FICHA({ c: 2, r: 'normal' })), padraoN8).estado_nivel, 'medido_ok');
+  const n8 = medida((p) => { p.quality.por_nivel.T1.n = 8; });
+  assert.equal(decide(comFicha(FICHA({ c: 2, r: 'normal' })), n8).estado_nivel, 'medido_ok', 'n igual ao minimo conta');
+  const n3 = medida((p) => { p.limites.n_minimo = 3; p.quality.por_nivel.T1.n = 3; });
+  assert.equal(decide(comFicha(FICHA({ c: 2, r: 'normal' })), n3).estado_nivel, 'medido_ok', 'limites.n_minimo vale');
+  const semEmitir = medida((p) => {
+    for (const t of ['T0', 'T1']) { p.tiers[t].emitivel = false; p.quality.por_nivel[t] = { aprovacao_medida: null, n: null, fonte: 'fixture: nao medido' }; }
+  });
+  assert.deepEqual(validatePolicy(semEmitir, { now: NOW }), { ok: true });
+  const b = decide(comFicha(FICHA({ c: 1 })), semEmitir);
+  assert.equal(b.tier, 'T2', 'T0 e T1 nao emitiveis: sobe ate o proximo emitivel');
+  assert.equal(b.tier_base, 'T0');
+  assert.equal(b.estado_nivel, 'medido_ok');
+  assert.equal(b.aplicar, true, 'enforce so exige os emitiveis medidos');
+  const descer = decide(comFicha(FICHA({ c: 3, r: 'medio', v: 'sim' }), 'x', { pace: { estado: 'acima' } }), semEmitir);
+  assert.equal(descer.tier, 'T2', 'o ritmo nao desce para nivel nao emitivel');
+  assert.ok(!descer.reasons.includes('ritmo_desce'));
+  const t1Fechado = medida((p) => { p.tiers.T1.emitivel = false; });
+  const fechado = decide(comFicha(FICHA({ c: 3, r: 'medio', v: 'sim' }), 'x', { pace: { estado: 'acima' } }), t1Fechado);
+  assert.equal(fechado.tier, 'T2', 'T1 medido mas nao emitivel: o ritmo nao desce para ele');
+  assert.ok(!fechado.reasons.includes('ritmo_desce'));
+  const topoFechado = medida((p) => { p.tiers.T4.emitivel = false; });
+  const c = decide(comFicha(FICHA({ c: 5 })), topoFechado);
+  assert.equal(c.tier, 'T4', 'sem emitivel acima: devolve o nivel base');
+  assert.equal(c.aplicar, false);
+  assert.ok(c.reasons.includes('sem_nivel_elegivel'));
 });
 
 // ---------------------------------------------------------------- J10
@@ -711,67 +975,13 @@ test('J10 prompt com qualquer terminador de linha: corpo preservado e piso de ri
 
 // ---------------------------------------------------------------- propriedades
 
-test('J1/J2/J3/J6/J7 propriedades: 2000 entradas adversariais deterministicas, entradas congeladas, abaixo de 2 s', () => {
-  const T = TIERS;
-  const normalizaRole = (r) => (typeof r === 'string' ? r.trim().replace(/\s+/g, ' ').toLowerCase() : '');
-  const plain = (o) => o !== null && typeof o === 'object' && !Array.isArray(o);
-  const ownTier = (o, k) => (plain(o) && Object.hasOwn(o, k) && T.includes(o[k]) ? idx(o[k]) : -1);
-  const cpu0 = process.cpuUsage();
-  const falhas = [];
-  let validas = 0;
-  let invalidas = 0;
-  let enforce = 0;
-  let contador = 0;
-  for (const { input, policy } of casos(2000, 0xC0FFEE, SHIPPED)) {
-    contador++;
-    deepFreeze(input);
-    deepFreeze(policy);
-    let d;
-    let d2;
-    try { d = decide(input, policy); d2 = decide(input, policy); } catch (e) { falhas.push(`lancou: ${e}`); continue; }
-    try { assert.deepEqual(d, d2); } catch { falhas.push('nao deterministico'); }
-    const v = validatePolicy(policy, { now: plain(input) ? input.now : undefined });
-    if (!v.ok) {
-      invalidas++;
-      if (!(d.mode === 'off' && d.modo_efetivo === 'off' && d.aplicar === false && d.model === null)) falhas.push('J8: politica invalida nao virou off');
-      continue;
-    }
-    validas++;
-    if (!T.includes(d.tier)) { falhas.push(`tier invalido ${d.tier}`); continue; }
-    if (idx(d.tier) < idx(d.floor)) falhas.push('J1: tier < floor');
-    if (!['haiku', 'sonnet', 'opus'].includes(d.model) || /fable/i.test(d.model)) falhas.push(`J2: modelo ${d.model}`);
-    if (!policy.model_allowlist.includes(d.model)) falhas.push('J2: fora da allowlist');
-    if (d.aplicar !== (d.modo_efetivo === 'enforce')) falhas.push('J3: aplicar incoerente com modo_efetivo');
-    if (policy.mode !== 'enforce' && d.aplicar) falhas.push('J3: aplicou fora de enforce');
-    if (d.aplicar) enforce++;
-    const inp = plain(input) ? input : {};
-    const hist = plain(inp.history) ? inp.history : {};
-    const nomes = [normalizaRole(inp.role), normalizaRole(inp.subagentType)];
-    if (nomes.some((n) => policy.reviewer_roles.map(normalizaRole).includes(n))) {
-      const chave = typeof inp.chave === 'string' ? inp.chave : null;
-      let autor = chave !== null ? ownTier(hist.autorTierPorChave, chave) : -1;
-      if (autor < 0) autor = ownTier(hist, 'autorTierMax');
-      if (autor >= 0 && idx(d.tier) < autor) falhas.push('J7: revisor abaixo do autor');
-    }
-    if (contador % 4 === 0 && typeof inp.chave === 'string' && plain(inp.history) && plain(inp.history.falhasPorChave) && d.tier_base) {
-      const comFalhas = (n) => {
-        const c = structuredClone(inp);
-        c.pace = { estado: 'dentro' };
-        c.history.falhasPorChave[inp.chave] = n;
-        return decide(c, policy);
-      };
-      const k0 = comFalhas(0).tier_base;
-      const k2 = comFalhas(2).tier_base;
-      const k9 = comFalhas(9).tier_base;
-      if (k2 !== k9) falhas.push('J6: mais falhas subiram de novo');
-      if (idx(k2) > idx(k0) + 1) falhas.push('J6: subiu mais de um nivel');
-    }
-  }
-  const uso = process.cpuUsage(cpu0);
-  const ms = (uso.user + uso.system) / 1000; // tempo de CPU: a carga da maquina nao o infla como infla o relogio de parede
+test('J1/J2/J3/J6/J7 propriedades: 300 entradas adversariais deterministicas, entradas congeladas, cobertura minima de J7, repeticao e J9', () => {
+  const { falhas, cobertura } = verificar(300, 0xC0FFEE, SHIPPED);
   assert.deepEqual(falhas.slice(0, 5), [], `violacoes (total ${falhas.length})`);
-  assert.ok(validas > 300 && invalidas > 300 && enforce > 50, `cobertura do corpus: ${validas} validas, ${invalidas} invalidas, ${enforce} aplicadas`);
-  assert.ok(ms < 2000, `levou ${ms.toFixed(0)} ms de CPU`);
+  assert.ok(cobertura.validas > 60 && cobertura.invalidas > 30 && cobertura.aplicadas > 20, `cobertura do corpus: ${JSON.stringify(cobertura)}`);
+  assert.ok(cobertura.ritmo_desce >= 3, `ritmo_desce ${cobertura.ritmo_desce}`);
+  assert.ok(cobertura.repeticao >= 7, `repeticao ${cobertura.repeticao}`);
+  assert.ok(cobertura.revisor >= 15, `revisor ${cobertura.revisor}`);
 });
 
 // ---------------------------------------------------------------- contrato
@@ -785,4 +995,8 @@ test('contrato: o schema documenta as mesmas chaves de topo que o validador exig
   assert.deepEqual(Object.keys(SCHEMA.properties).sort(), [...obrig, ...opc].sort());
   assert.deepEqual(Object.keys(SHIPPED).sort(), [...obrig, ...opc].sort());
   assert.deepEqual(SCHEMA.properties.model_allowlist.items.enum, ['haiku', 'sonnet', 'opus']);
+  assert.deepEqual(Object.keys(SCHEMA.properties.limites.properties).sort(), ['n_minimo', 'prompt_max_bytes']);
+  assert.deepEqual(SCHEMA.properties.size.required, ['prompt_chars', 'caminhos', 'acima_do_teto']);
+  assert.deepEqual(SCHEMA.properties.risk_surface.required, ['piso', 'words', 'nota']);
+  assert.ok('emitivel' in SCHEMA.properties.tiers.patternProperties['^T[0-4]$'].properties);
 });

@@ -85,7 +85,42 @@ export function* casos(n, seed, base) {
     if (rnd() < 0.5) h.autorTierMax = pick([...T, 'T9', null, 3]);
     return h;
   };
+  // Casos dirigidos: a mesma politica limpa e entradas validas que exercitam ritmo, repeticao e revisor.
+  const limpa = () => {
+    const p = structuredClone(base);
+    p.mode = 'enforce';
+    p.valid_until = '2027-06-30T00:00:00Z';
+    for (const t of T) {
+      p.quality.por_nivel[t] = { aprovacao_medida: 0.95, n: 10, fonte: 'x' };
+      delete p.tiers[t].emitivel;
+    }
+    return p;
+  };
+  const dirigido = () => {
+    const tipo = pick(['ritmo', 'repeticao', 'revisor']);
+    const ficha = { c: pick([2, 3, 4, 5]), r: 'trivial', v: 'sim', t: 'k1' };
+    const input = {
+      prompt: `@@ROTA ${JSON.stringify(ficha)}\ntarefa`, now: 1794787200000, subagentType: 'implementador', role: 'autor', chave: 'k1',
+      history: { falhasPorChave: {}, autorTierPorChave: {} }, pace: { estado: 'dentro' },
+    };
+    if (tipo === 'ritmo') input.pace = { estado: 'acima' };
+    if (tipo === 'repeticao') {
+      input.history.falhasPorChave = { k1: pick([1, 2, 3]), k2: pick([0, 1, 2]), k3: 1 };
+      if (rnd() < 0.4) input.history.subidasConcedidas = ['k1'];
+      if (rnd() < 0.4) input.history.ordem = ['k3', 'k1', 'k2'];
+    }
+    if (tipo === 'revisor') {
+      input.role = pick(['revisor', 'refutador', 'Revisor-Codigo', 'autor']);
+      input.history.autorTierPorChave = { k1: pick(T) };
+      if (rnd() < 0.5) input.history.autorTierMax = pick(T);
+    }
+    return { input, policy: limpa() };
+  };
   for (let i = 0; i < n; i++) {
+    if (rnd() < 0.3) {
+      yield dirigido();
+      continue;
+    }
     const policy = mkPolicy();
     const input = {};
     if (rnd() < 0.9) input.prompt = mkPrompt();

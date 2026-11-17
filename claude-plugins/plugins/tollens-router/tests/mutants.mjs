@@ -13,7 +13,9 @@
 // Controles do instrumento: (1) a suite passa na copia SEM mutacao; (2) cada trecho `de` ocorre
 // exatamente uma vez no engine; sem isso o mutante e reportado como INSTRUMENTO e o exit e 1.
 //
-// Uso: node claude-plugins/plugins/tollens-router/tests/mutants.mjs [--lista] [--diferencial=N] [--so=id1,id2]
+// Uma linha por mutante: `MORTO | id | teste: <primeiro teste que falhou>`, `VIVO | id | ...` ou `EQUIVALENTE | id | ...`.
+//
+// Uso: node claude-plugins/plugins/tollens-router/tests/mutants.mjs [--lista] [--diferencial=N] [--so=id1,id2] [--fatia=i/n]
 // Exit: 0 se todo mutante nao equivalente morreu e todo equivalente foi confirmado; 1 caso contrario.
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -29,10 +31,110 @@ const TESTE = path.join(RAIZ, 'tests/unit/router-engine.test.mjs');
 const ENGINE = readFileSync(path.join(PLUGIN, 'engine.mjs'), 'utf8');
 const POLITICA = JSON.parse(readFileSync(path.join(PLUGIN, 'router-policy.json'), 'utf8'));
 const SO = (process.argv.find((a) => a.startsWith('--so=')) ?? '').split('=')[1]?.split(',');
+const FATIA = (process.argv.find((a) => a.startsWith('--fatia=')) ?? '').split('=')[1]?.split('/').map(Number);
 const NDIFF = Number((process.argv.find((a) => a.startsWith('--diferencial=')) ?? '--diferencial=6000').split('=')[1]);
 
 // [id, de, para, equivalente?]
 const M = [
+  // rodada 3: janelas, dado puro, teto pegajoso, papel, qualidade com n minimo e emitivel
+  ['papel-sem-trim', ".replace(FORMATO_RE, '').trim()", ".replace(FORMATO_RE, '')"],
+  ['papel-sem-nfkc', ".normalize('NFKC').replace(FORMATO_RE, '')", ".replace(FORMATO_RE, '')"],
+  ['papel-sem-formato', ".replace(FORMATO_RE, '').trim()", '.trim()'],
+  ['papel-sem-dobra', '? dobrar(s.normalize(', '? ((x) => x)(s.normalize('],
+  ['texto-sem-corte-de-trecho', "Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('')", 'limpo', 'o corte so limita custo: prefixos de ate 64 pontos de codigo no inicio do trecho casam igual'],
+  ['texto-corte-utf16-antes-nfkc', "const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').normalize('NFKC').toLowerCase();\n  const corte = Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('');",
+    "const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').slice(0, MAX_TOKEN_TEXTO).normalize('NFKC').toLowerCase();\n  const corte = limpo;"],
+  ['risco-unicode-sem-fronteira', 'alvo.includes(` ${n}`)', 'alvo.includes(n)'],
+  ['risco-ascii-sem-fronteira', '(?:^|[^a-z0-9])(?:', '(?:'],
+  ['risco-ascii-sem-minuscula', 'risco.regexAscii.test(janela.toLowerCase())', 'risco.regexAscii.test(janela)'],
+  ['risco-janela-ascii-forcada', 'if (ASCII_RE.test(janela))', 'if (true)'],
+  ['janela-sem-sobreposicao', 'const SOBREPOSICAO = 128;', 'const SOBREPOSICAO = 0;'],
+  ['janela-inicio-falso', 'return corte > piso ? corte : fim;', 'return fim;'],
+  ['janela-sem-teto', 'varrer(texto.length > teto ? texto.slice(0, teto) : texto,', 'varrer(texto,'],
+  ['teto-igual-sinaliza', 'if (texto.length > teto) {', 'if (texto.length >= teto) {'],
+  ['teto-sem-aviso', "add('prompt_acima_do_teto');", ''],
+  ['tamanho-igual-vale', 'texto.length > tamanho.acima_de', 'texto.length >= tamanho.acima_de'],
+  ['caminhos-igual-vale', 'achados.caminhos > caminhos.acima_de', 'achados.caminhos >= caminhos.acima_de'],
+  ['varredura-sempre-risco', 'const queRisco = pisoRisco > floor;', 'const queRisco = true;'],
+  ['varredura-sempre-caminhos', 'const quePaths = pisoCaminhos > floor;', 'const quePaths = true;'],
+  ['varredura-nunca-risco', 'const queRisco = pisoRisco > floor;', 'const queRisco = false;'],
+  ['varredura-sem-saida-antecipada', 'if (riscoResolvido && caminhosResolvidos) break;', '', 'so poda trabalho: com risco e caminhos resolvidos o resto da varredura nao muda o resultado'],
+  ['concede-sem-lista', 'h.concedidas.has(chave) || ', ''],
+  ['concede-sem-falhas2', ' || falhas >= 2) return true;', ') return true;'],
+  ['concede-sem-contar-concedidas', 'if (n >= 2) jaConcedidas.add(k);', ''],
+  ['concede-conta-zeros', 'else if (n >= 1 && !h.concedidas.has(k)) novas.push(k);', 'else if (n >= 0 && !h.concedidas.has(k)) novas.push(k);'],
+  ['concede-sem-excluir-concedidas', 'else if (n >= 1 && !h.concedidas.has(k)) novas.push(k);', 'else if (n >= 1) novas.push(k);'],
+  ['concede-nao-numero', "if (typeof n !== 'number') continue;", ''],
+  ['concede-sem-ordem-temporal', 'if (posicao(a) !== posicao(b)) return posicao(a) < posicao(b);', ''],
+  ['concede-sem-criticidade', 'if (criticaDe(a) !== criticaDe(b)) return criticaDe(a);', ''],
+  ['critica-sem-lista', 'criticas.has(k) || ', ''],
+  ['critica-sem-nome', ' || janelaTemRisco(k, risco)', ''],
+  ['ordem-sem-primeira-posicao', '.map((k, i) => [k, i]).reverse()', '.map((k, i) => [k, i])'],
+  ['concede-historico-truncado', 'if (h.truncado) return false;', ''],
+  ['teto-sempre-concede', 'if (concedeSubida(historico, chave, falhas, policyCopia.escalation.max_por_fluxo, criticaDe)) {', 'if (true) {'],
+  ['subida-concedida-nao-informa', 'subidaConcedida = true;', ''],
+  ['chave-vazia-vale', 'inp.chave.length >= 1 && ', ''],
+  ['chave-sem-limite', ' && inp.chave.length <= MAX_CHAVE', ''],
+  ['chave-sem-aviso', "if (chave === null) add('sem_chave');", ''],
+  ['historico-sem-aviso', "if (ctx.truncado) add('history_truncado');", ''],
+  ['dado-puro-getter', "!Object.hasOwn(d, 'value')", 'false'],
+  ['dado-puro-prototipo', 'lista ? proto !== Array.prototype : proto !== Object.prototype && proto !== null', 'false'],
+  ['dado-puro-profundidade', 'profundidade > MAX_PROFUNDIDADE || ', ''],
+  ['dado-puro-ciclo', ' || pilha.has(v)', '', 'so poda custo: o limite de profundidade ja recusa o ciclo'],
+  ['dado-puro-history-sem-corte', "profundidade === 0 && k === 'history'", 'false'],
+  ['dado-puro-corte-maior', 'const MAX_HISTORY = 1000;', 'const MAX_HISTORY = 100000;'],
+  ['dado-puro-lista-esparsa', 'if (lista) saida.length = Math.min(', 'if (false) saida.length = Math.min('],
+  ['dado-puro-entrada', "if (copiaDaEntrada === IMPURO) return semDecisao('entrada_invalida');", ''],
+  ['dado-puro-teto-politica', 'const MAX_CHAVES_POLITICA = 10000;', 'const MAX_CHAVES_POLITICA = 100000000;'],
+  ['qualidade-nao-sobe', "while (tier <= TOPO && (!emitivel(policyCopia, tier) || estadoDoNivel(policyCopia, nomes, tier) === 'reprovado')) {", 'while (false) {'],
+  ['qualidade-colapsa-nao-medido', "|| estadoDoNivel(policyCopia, nomes, tier) === 'reprovado')) {", "|| estadoDoNivel(policyCopia, nomes, tier) !== 'medido_ok')) {"],
+  ['qualidade-ignora-emitivel', '(!emitivel(policyCopia, tier) || ', '(false || '],
+  ['qualidade-sem-aviso-reprovado', "if (emitivel(policyCopia, tier)) add('abaixo_do_piso_de_qualidade');", ''],
+  ['ritmo-desce-sem-emitivel', 'emitivel(policyCopia, alvo) && ', ''],
+  ['emitivel-ignorado', "policy.tiers[TIER_NAMES[idx]].emitivel !== false", 'true'],
+  ['enforce-exige-nao-emitiveis', 'emitivel(policy, i) && estadoDoNivel(policy, [], i)', 'estadoDoNivel(policy, [], i)'],
+  ['n-minimo-ignorado', "if (!(q.n >= limiteDe(policy, 'n_minimo', N_MINIMO_PADRAO))) return 'nao_medido';", ''],
+  ['n-minimo-inclusivo', "q.n >= limiteDe(policy, 'n_minimo', N_MINIMO_PADRAO)", "q.n > limiteDe(policy, 'n_minimo', N_MINIMO_PADRAO)"],
+  ['n-minimo-padrao', 'const N_MINIMO_PADRAO = 8;', 'const N_MINIMO_PADRAO = 7;'],
+  ['limites-ignorados', "own(policy.limites, nome) ? policy.limites[nome] : padrao", 'padrao'],
+  ['teto-padrao-menor', 'const PROMPT_MAX_PADRAO = 1048576;', 'const PROMPT_MAX_PADRAO = 524288;'],
+  ['politica-limites-faixa', 'ehInteiroEm(teto, 1024, 4194304)', 'ehInteiroEm(teto, 0, Number.MAX_SAFE_INTEGER)'],
+  ['politica-limites-indefinido', 'teto !== undefined && ', ''],
+  ['politica-nmin-faixa', 'ehInteiroEm(nMin, 1, 1000)', 'ehInteiroEm(nMin, 0, Number.MAX_SAFE_INTEGER)'],
+  ['politica-custo-estrito', 'if (custo <= anterior)', 'if (custo < anterior)'],
+  ['politica-custo-livre', 'if (custo <= anterior)', 'if (false)'],
+  ['politica-algum-emitivel', "if (!algumEmitivel) erros.push('tiers: nenhum nivel emitivel');", ''],
+  ['politica-emitivel-booleano', "if (Object.hasOwn(x, 'emitivel') && typeof x.emitivel !== 'boolean') erros.push", 'if (false) erros.push'],
+  ['politica-papeis-obrigatorios', 'if (tierIdx(valorDoPapel(policy.role_floors, nome)) < minimo) erros.push', 'if (false) erros.push'],
+  ['politica-papel-minimo-menor', 'for (const [nome, minimo] of PAPEIS_OBRIGATORIOS) {', 'for (const [nome, minimo] of PAPEIS_OBRIGATORIOS.map(([n]) => [n, 0])) {'],
+  ['politica-revisores-vazios', 'policy.reviewer_roles.length === 0 || ', ''],
+  ['politica-risk-piso-T3', "tierIdx(policy.risk_surface.piso) < 3", "tierIdx(policy.risk_surface.piso) < 2"],
+  ['politica-size-piso-prompt', "tierIdx(policy.size.prompt_chars?.piso) < 2", "tierIdx(policy.size.prompt_chars?.piso) < 1"],
+  ['politica-size-piso-teto', "tierIdx(policy.size.acima_do_teto.piso) < 2", "tierIdx(policy.size.acima_do_teto.piso) < 1"],
+  ['politica-prefixos-obrigatorios', 'for (const p of PREFIXOS_OBRIGATORIOS) if (!normais.has(p))', 'for (const p of PREFIXOS_OBRIGATORIOS) if (false)'],
+  ['politica-palavra-curta', 'if (n.length < 3) erros.push', 'if (n.length < 2) erros.push'],
+  ['politica-words-demais', ' || w.length > MAX_PALAVRAS', ''],
+  ['politica-words-nao-texto', ' || !w.every((x) => ehTexto(x, 64))', ''],
+  ['politica-piso-default-min', 'ehNumeroEm(piso.default, 0.5, 1)) erros.push(\'quality.piso_aprovacao.default', 'ehNumeroEm(piso.default, 0, 1)) erros.push(\'quality.piso_aprovacao.default'],
+  ['politica-por-papel-min', 'ehNumeroEm(x, ehNumeroEm(piso.default, 0.5, 1) ? piso.default : 0.5, 1)', 'ehNumeroEm(x, 0.5, 1)'],
+  ['politica-invalida-segue', "if (!validade.ok) return semDecisao('politica_invalida');", ''],
+  ['politica-piso-por-papel', "if (!isObj(piso.por_papel) || !Object.values(piso.por_papel).every((x) => ehNumeroEm(x, ehNumeroEm(piso.default, 0.5, 1) ? piso.default : 0.5, 1))) {", 'if (false) {'],
+  ['degrada-shadow-sem-enforce', "(policy.mode === 'enforce' && algumEmitivelNaoMedido(policy));", 'algumEmitivelNaoMedido(policy);'],
+  ['degrada-nunca-por-medicao', "(policy.mode === 'enforce' && algumEmitivelNaoMedido(policy));", 'false;'],
+  ['degrada-sem-aviso-de-medicao', "if (policyCopia.mode === 'enforce' && algumEmitivelNaoMedido(policyCopia)) add('nivel_nao_medido');", ''],
+  ['entrada-nao-objeto', 'isObj(input) ? copiar(input, 0, new Set(), ctx, false) : {}', 'copiar(input, 0, new Set(), ctx, false)', 'entrada que nao e objeto nao tem campo lido: o resultado e o de {}'],
+  ['texto-com-linha-rota', 'const texto = stripRota(bruto);', 'const texto = bruto;'],
+  ['ficha-so-complexidade', 'Math.max(tierIdx(policyCopia.ficha_tiers.complexidade[String(ficha.c)]), tierIdx(policyCopia.ficha_tiers.risco[ficha.r]))', 'tierIdx(policyCopia.ficha_tiers.complexidade[String(ficha.c)])'],
+  ['ficha-so-risco', 'Math.max(tierIdx(policyCopia.ficha_tiers.complexidade[String(ficha.c)]), tierIdx(policyCopia.ficha_tiers.risco[ficha.r]))', 'tierIdx(policyCopia.ficha_tiers.risco[ficha.r])'],
+  ['caminho-sem-parada', 'if (vistos.size > limite) return;', '', 'so poda trabalho: a contagem acima do limiar ja decide'],
+  ['concede-limite-inclusivo', 'if (anteriores >= vagas) return false;', 'if (anteriores > vagas) return false;'],
+  ['concede-sem-conferir-no-laco', 'if (anteriores >= vagas) return false;', ''],
+  ['politica-chave-faltando', 'for (const k of esperadas) if (!Object.hasOwn(obj, k)) erros.push', 'for (const k of esperadas) if (false) erros.push', 'cada campo exigido tem validacao de tipo propria (inclusive undefined): a chave ausente falha nela'],
+  ['ficha-nomes', "|| !['c', 'r', 'v', 't'].every((k) => chaves.includes(k))", '', 'com 4 chaves proprias e nome errado falta um de c,r,v,t: o campo chega undefined e falha na checagem de tipo'],
+  ['revisor-maximo-sem-own', "autor < 0 && own(hist, 'autorTierMax')", 'autor < 0', 'a entrada e dado puro (so chaves proprias): tierIdx(undefined) vale -1 como a ausencia'],
+  ['revisor-sem-piso-no-papel', "if (tierIdx(piso) < 2) erros.push(`role_floors.${r}: papel revisor sem piso em role_floors ou com piso abaixo de T2`);", 'if (false) erros.push();'],
+  ['politica-revisor-piso-T2', 'if (tierIdx(piso) < 2) erros.push(`role_floors.${r}', 'if (tierIdx(piso) < 1) erros.push(`role_floors.${r}'],
+  ['politica-impura-segue', "validarCopia(copiar(policy, 0, new Set(), { truncado: false }, false), opts)", "validarCopia(policy, opts)"],
   // ficha e parse
   ['ficha-teto-2049', 'const MAX_LINHA_BYTES = 2048;', 'const MAX_LINHA_BYTES = 4096;'],
   ['ficha-teto-2047', 'const MAX_LINHA_BYTES = 2048;', 'const MAX_LINHA_BYTES = 2047;'],
@@ -53,7 +155,6 @@ const M = [
   ['strip-remove-demais', 'return prompt.slice(resto);', 'return prompt.slice(resto + 1);'],
   ['parse-linha-inteira', 'const { linha } = primeiraLinha(prompt);', 'const linha = prompt;'],
   ['ficha-4-campos', 'chaves.length !== 4', 'chaves.length !== 5'],
-  ['ficha-nomes', "|| !['c', 'r', 'v', 't'].every((k) => chaves.includes(k))", ''],
   ['ficha-c-min', 'c < 1 || c > 5', 'c < 0 || c > 5'],
   ['ficha-c-max', 'c < 1 || c > 5', 'c < 1 || c > 6'],
   ['ficha-c-inteiro', '!Number.isInteger(c) || ', ''],
@@ -70,7 +171,6 @@ const M = [
   ['resolver-sem-revalidar', 'if (f.ok) return validateFicha(f.ficha);', 'if (f.ok) return { ok: true, ficha: f.ficha };'],
   // texto do prompt
   ['papel-sem-minuscula', ".replace(/\\s+/g, ' ').toLowerCase()", ".replace(/\\s+/g, ' ')"],
-  ['papel-sem-trim', 's.trim().replace(', 's.replace('],
   ['papel-sem-colapso', ".replace(/\\s+/g, ' ')", ''],
   ['texto-sem-nfkc', ".normalize('NFKC').toLowerCase()", '.toLowerCase()'],
   ['texto-sem-minuscula', ".normalize('NFKC').toLowerCase()", ".normalize('NFKC')"],
@@ -79,57 +179,24 @@ const M = [
   ['texto-sem-marcas-finais', ".normalize('NFD').replace(MARCAS_RE, '')", ".normalize('NFD')"],
   ['texto-sem-limpar-formato', '/[\\p{Cf}\\p{M}]+/gu', '/[\\p{M}]+/gu'],
   ['texto-sem-limpar-marcas', '/[\\p{Cf}\\p{M}]+/gu', '/[\\p{Cf}]+/gu'],
-  ['texto-sem-corte-de-trecho', '.slice(0, MAX_TOKEN_TEXTO)', '',
-    'o corte so limita custo: prefixos de ate 64 caracteres no inicio do trecho casam igual, e as marcas ja saem antes do corte'],
   ['tokens-sem-cache', 'let n = cache.get(bruto);', 'let n;', 'o cache so evita renormalizar o mesmo trecho'],
-  ['risco-sem-fronteira-inicial', 'alvo.includes(` ${norm}`)', 'alvo.includes(norm)'],
-  ['risco-com-fronteira-final', 'alvo.includes(` ${norm}`)', 'alvo.includes(` ${norm} `)'],
-  ['risco-palavra-vazia', "norm !== '' && ", '', 'palavra que normaliza para vazio nao existe numa politica valida'],
-  ['recorte-sem-cauda', 'return `${texto.slice(0, metade)} ${texto.slice(-metade)}`;', 'return texto.slice(0, metade);'],
-  ['recorte-sem-cabeca', 'return `${texto.slice(0, metade)} ${texto.slice(-metade)}`;', 'return texto.slice(-metade);'],
-  ['recorte-limite-exato', 'if (texto.length <= limite) return texto;', 'if (texto.length < limite) return texto;'],
-  ['recorte-sem-aviso', "if (analise !== texto) add('prompt_truncado');", ''],
-  ['limites-ignorados', "own(policy, 'limites') ? policy.limites.prompt_max_bytes : PROMPT_MAX_PADRAO", 'PROMPT_MAX_PADRAO'],
-  ['limites-padrao-menor', 'const PROMPT_MAX_PADRAO = 65536;', 'const PROMPT_MAX_PADRAO = 32768;'],
   ['caminho-sem-barra-inicial', "tok.startsWith('/') || ", ''],
   ['caminho-sem-til', "tok.startsWith('~') || ", ''],
   ['caminho-sem-extensao', 'if (EXTENSAO_RE.test(tok)) return true;', ''],
   ['caminho-duas-barras', "tok.split('/').length - 1 >= 2", "tok.split('/').length - 1 >= 3"],
   ['caminho-sem-teto-de-token', 'tok.length > MAX_TOKEN_CAMINHO || ', ''],
-  ['caminho-sem-parada', 'if (vistos.size > limite) break;', '', 'so poda trabalho: a contagem acima do limiar ja decide'],
   ['caminho-nao-distintos', 'vistos.add(tok);', 'vistos.add(tok + vistos.size);'],
   // piso
   ['piso-nao-sobe', 'if (idx > floor) floor = idx;', 'if (idx < floor) floor = idx;'],
   ['papel-so-role', 'const nomes = [papel(inp.role), papel(inp.subagentType)];', 'const nomes = [papel(inp.role)];'],
   ['papel-so-subagente', 'const nomes = [papel(inp.role), papel(inp.subagentType)];', 'const nomes = [papel(inp.subagentType)];'],
   ['revisor-sempre', 'nomes.some((n) => revisores.has(n))', 'true'],
-  ['revisor-sem-own', 'chave !== null && own(autorPorChave, chave) ? tierIdx(autorPorChave[chave]) : -1', 'chave !== null ? tierIdx(autorPorChave[chave]) : -1'],
   ['revisor-sem-maximo', "if (autor < 0 && own(hist, 'autorTierMax')) autor = tierIdx(hist.autorTierMax);", ''],
   ['revisor-maximo-sempre', "if (autor < 0 && own(hist, 'autorTierMax')) autor", "if (own(hist, 'autorTierMax')) autor"],
-  ['revisor-maximo-sem-own', "autor < 0 && own(hist, 'autorTierMax')", 'autor < 0'],
-  ['chave-sem-limite', 'inp.chave.length <= MAX_CHAVE', 'true'],
-  ['chave-de-fallback-na-ficha', "const chave = typeof inp.chave === 'string' && inp.chave.length <= MAX_CHAVE ? inp.chave : null;",
-    "const chave = typeof inp.chave === 'string' && inp.chave.length <= MAX_CHAVE ? inp.chave : (ficha ? ficha.t : null);"],
-  ['tamanho-igual-vale', 'texto.length > tamanho.acima_de', 'texto.length >= tamanho.acima_de'],
-  ['caminhos-igual-vale', 'contaCaminhos(analise, caminhos.acima_de) > caminhos.acima_de', 'contaCaminhos(analise, caminhos.acima_de) >= caminhos.acima_de'],
-  ['ficha-so-complexidade',
-    'Math.max(tierIdx(policy.ficha_tiers.complexidade[String(ficha.c)]), tierIdx(policy.ficha_tiers.risco[ficha.r]))',
-    'tierIdx(policy.ficha_tiers.complexidade[String(ficha.c)])'],
-  ['ficha-so-risco',
-    'Math.max(tierIdx(policy.ficha_tiers.complexidade[String(ficha.c)]), tierIdx(policy.ficha_tiers.risco[ficha.r]))',
-    'tierIdx(policy.ficha_tiers.risco[ficha.r])'],
   ['ficha-ignora-piso', 'let tier = Math.max(daFicha, floor);', 'let tier = daFicha;'],
   ['subclassificacao-muda', "if (ficha && daFicha < floor) add('ficha_abaixo_do_piso');", ''],
   // repeticao e teto
   ['repeticao-so-depois-de-2', "typeof falhas === 'number' && falhas >= 1;", "typeof falhas === 'number' && falhas > 1;"],
-  ['repeticao-sem-own', 'chave !== null && own(falhasPorChave, chave) ? falhasPorChave[chave] : 0', 'chave !== null ? falhasPorChave[chave] : 0'],
-  ['teto-sempre-concede', 'if (concedeSubida(falhasPorChave, chave, falhas, policy.escalation.max_por_fluxo)) {', 'if (true) {'],
-  ['concede-sem-pegajosa', 'if (falhas >= 2) return true;', ''],
-  ['concede-sem-contar-concedidas', 'if (n >= 2) concedidas++;', ''],
-  ['concede-conta-zeros', 'else if (n >= 1 && k < chave) novasAntes++;', 'else if (n >= 0 && k < chave) novasAntes++;'],
-  ['concede-conta-a-propria', 'else if (n >= 1 && k < chave) novasAntes++;', 'else if (n >= 1 && k <= chave) novasAntes++;'],
-  ['concede-limite-inclusivo', 'return novasAntes < max - concedidas;', 'return novasAntes <= max - concedidas;'],
-  ['concede-nao-numero', "if (typeof n !== 'number') continue;", ''],
   ['capped-sem-repeticao-multipla', 'if (tier >= TOPO || falhas >= 2) capped = true;', 'if (tier >= TOPO) capped = true;'],
   ['capped-sem-topo', 'if (tier >= TOPO || falhas >= 2) capped = true;', 'if (falhas >= 2) capped = true;'],
   ['capped-sem-teto', '      capped = true;\n      add(\'teto_por_fluxo\');', '      add(\'teto_por_fluxo\');'],
@@ -141,8 +208,8 @@ const M = [
   ['ritmo-desce-sem-verificar-v', "ficha.v === 'sim' && !repetida", "ficha.v !== 'nao' && !repetida"],
   ['ritmo-desce-apos-falha', "ficha.v === 'sim' && !repetida", "ficha.v === 'sim'"],
   ['ritmo-desce-abaixo-do-piso', 'alvo >= floor && ', ''],
-  ['ritmo-desce-p-nao-medido', "estadoDoNivel(policy, nomes, alvo) === 'medido_ok'", "estadoDoNivel(policy, nomes, alvo) !== 'reprovado'"],
-  ['ritmo-desce-sem-qualidade', " && estadoDoNivel(policy, nomes, alvo) === 'medido_ok'", ''],
+  ['ritmo-desce-p-nao-medido', "estadoDoNivel(policyCopia, nomes, alvo) === 'medido_ok'", "estadoDoNivel(policyCopia, nomes, alvo) !== 'reprovado'"],
+  ['ritmo-desce-sem-qualidade', " && estadoDoNivel(policyCopia, nomes, alvo) === 'medido_ok'", ''],
   ['ritmo-abaixo-desce-tambem', "if (estado === 'acima' && ficha && ficha.v === 'sim' && !repetida) {",
     "if (estado !== 'dentro' && ficha && ficha.v === 'sim' && !repetida) {"],
   ['ritmo-sobe-sem-verificar-v', "estado === 'abaixo' && ficha && ficha.v === 'nao' && tier < TOPO", "estado === 'abaixo' && ficha && ficha.v !== 'sim' && tier < TOPO"],
@@ -151,8 +218,6 @@ const M = [
   ['ritmo-estado-livre', 'isObj(inp.pace) && ESTADOS_RITMO.includes(inp.pace.estado) ? inp.pace.estado', 'isObj(inp.pace) ? inp.pace.estado',
     'estado fora do enum nao casa nenhum dos dois ramos: o resultado e igual ao de dentro'],
   // qualidade (R12)
-  ['qualidade-nao-sobe', "while (tier <= TOPO && estadoDoNivel(policy, nomes, tier) === 'reprovado') {", 'while (false) {'],
-  ['qualidade-colapsa-nao-medido', "while (tier <= TOPO && estadoDoNivel(policy, nomes, tier) === 'reprovado') {", "while (tier <= TOPO && estadoDoNivel(policy, nomes, tier) !== 'medido_ok') {"],
   ['qualidade-sem-elegivel-aplica', 'const semElegivel = tier > TOPO;', 'const semElegivel = false;'],
   ['qualidade-sem-elegivel-nao-volta', '    tier = tierBase;', ''],
   ['qualidade-sem-aviso-final', "add('sem_nivel_elegivel');", ''],
@@ -161,10 +226,6 @@ const M = [
   ['qualidade-sem-aviso-nao-medido', "if (estadoNivel === 'nao_medido') add('nivel_nao_medido');", ''],
   ['qualidade-sem-piso-de-papel', 'exigida = Math.max(exigida, v);', 'exigida = exigida;'],
   ['qualidade-igual-nao-vale', 'return q.aprovacao_medida >= exigenciaDeAprovacao(policy, nomes)', 'return q.aprovacao_medida > exigenciaDeAprovacao(policy, nomes)'],
-  ['qualidade-null-vale', "if (q.aprovacao_medida === null) return 'nao_medido';", ''],
-  ['degrada-shadow-sem-enforce', "(policy.mode === 'enforce' && algumNivelNaoMedido(policy));", 'algumNivelNaoMedido(policy);'],
-  ['degrada-nunca-por-medicao', "(policy.mode === 'enforce' && algumNivelNaoMedido(policy));", 'false;'],
-  ['degrada-sem-aviso-de-medicao', "if (policy.mode === 'enforce' && algumNivelNaoMedido(policy)) add('nivel_nao_medido');", ''],
   // modo, relogio e validade
   ['modo-vencida-promove-off', "if (mode !== 'off') mode = validade.degradaPara;", 'mode = validade.degradaPara;'],
   ['modo-aplicar-shadow', "aplicar: modoEfetivo === 'enforce',", "aplicar: modoEfetivo !== 'off',"],
@@ -184,19 +245,11 @@ const M = [
   ['iso-sem-checar-nan', 'if (Number.isNaN(t)) return NaN;', ''],
   ['horizonte-inclusivo', 'validUntil - agora > HORIZONTE_MS', 'validUntil - agora >= HORIZONTE_MS'],
   ['horizonte-maior', 'const HORIZONTE_MS = 400 * 86400000;', 'const HORIZONTE_MS = 401 * 86400000;'],
-  ['entrada-nao-objeto', 'const inp = isObj(input) ? input : {};', 'const inp = input;'],
-  ['texto-com-linha-rota', "const texto = stripRota(typeof inp.prompt === 'string' ? inp.prompt : '');", "const texto = typeof inp.prompt === 'string' ? inp.prompt : '';"],
-  ['politica-invalida-segue', 'if (!validade.ok) return semDecisao();', ''],
   // validador
   ['alias-por-prefixo', '!ALIAS_PERMITIDOS.includes(m)', '!ALIAS_PERMITIDOS.some((a) => String(m).startsWith(a))'],
   ['tier-fora-da-allowlist', 'modelo < 0 || !allowOk.includes(x.model)', 'modelo < 0'],
-  ['custo-decrescente-vale', 'if (custo < anterior)', 'if (false)'],
-  ['custo-igual-reprova', 'if (custo < anterior)', 'if (custo <= anterior)'],
   ['custo-so-esforco', 'const custo = modelo * EFFORTS.length + esforco;', 'const custo = esforco;'],
   ['custo-so-modelo', 'const custo = modelo * EFFORTS.length + esforco;', 'const custo = modelo;'],
-  ['revisor-piso-minimo-T1', 'tierIdx(piso) < 2', 'tierIdx(piso) < 1'],
-  ['revisor-piso-minimo-T3', 'tierIdx(piso) < 2', 'tierIdx(piso) < 3'],
-  ['revisores-vazios-valem', 'policy.reviewer_roles.length === 0 || ', ''],
   ['politica-schema-version', 'policy.schema_version !== 1', 'false'],
   ['politica-version', 'if (!ehTexto(policy.version, 64)) erros.push', 'if (false) erros.push'],
   ['politica-mode', 'if (!MODES.includes(policy.mode)) erros.push', 'if (false) erros.push'],
@@ -205,27 +258,19 @@ const M = [
   ['politica-risco', 'if (tierIdx(risco[k]) < 0) erros.push', 'if (false) erros.push'],
   ['politica-role-floors-nivel', 'if (!ehTexto(k, 64) || tierIdx(v) < 0) erros.push', 'if (!ehTexto(k, 64)) erros.push'],
   ['politica-role-floors-chave', 'if (!ehTexto(k, 64) || tierIdx(v) < 0) erros.push', 'if (tierIdx(v) < 0) erros.push'],
-  ['politica-reviewer-itens', '|| !policy.reviewer_roles.every((r) => ehTexto(r, 64))', ''],
-  ['politica-risk-piso', 'if (tierIdx(policy.risk_surface.piso) < 0) erros.push', 'if (false) erros.push'],
-  ['politica-words-vazia', 'w.length === 0 || ', ''],
   ['politica-words-demais', ' || w.length > MAX_PALAVRAS', ''],
-  ['politica-words-itens', ' || !w.every((x) => ehTexto(x, 64) && TEM_LETRA_OU_DIGITO_RE.test(x))', ''],
   ['politica-nota', 'if (!ehTexto(policy.risk_surface.nota, 400)) erros.push', 'if (false) erros.push'],
-  ['politica-limites-faixa', 'ehInteiroEm(policy.limites.prompt_max_bytes, 1024, 4194304)', 'ehInteiroEm(policy.limites.prompt_max_bytes, 0, Number.MAX_SAFE_INTEGER)'],
   ['politica-limiar-acima', 'if (!ehInteiroEm(l.acima_de, 1, Number.MAX_SAFE_INTEGER)) erros.push', 'if (false) erros.push'],
   ['politica-limiar-piso', 'if (tierIdx(l.piso) < 0) erros.push', 'if (false) erros.push'],
   ['politica-pace-ordem', '|| !(a < b)', ''],
   ['politica-pace-numeros', '!ehNumeroEm(a, -1000, 1000) || !ehNumeroEm(b, -1000, 1000) || ', ''],
   ['politica-escalation', 'if (!ehInteiroEm(policy.escalation.max_por_fluxo, 0, 1000)) erros.push', 'if (false) erros.push'],
-  ['politica-piso-default', 'if (!ehNumeroEm(piso.default, 0, 1)) erros.push', 'if (false) erros.push'],
-  ['politica-piso-por-papel', 'if (!isObj(piso.por_papel) || !Object.values(piso.por_papel).every((x) => ehNumeroEm(x, 0, 1))) {', 'if (false) {'],
   ['politica-aprovacao', 'if (!semAprov && !ehNumeroEm(q.aprovacao_medida, 0, 1)) erros.push', 'if (false) erros.push'],
   ['politica-n', 'if (q.n !== null && !ehInteiroEm(q.n, 1, Number.MAX_SAFE_INTEGER)) erros.push', 'if (false) erros.push'],
   ['politica-n-consistente', 'if (semAprov !== (q.n === null)) erros.push', 'if (false) erros.push'],
   ['politica-fonte', 'if (!ehTexto(q.fonte, 400)) erros.push', 'if (false) erros.push'],
   ['politica-chave-extra', 'for (const k of Object.keys(obj)) if (!esperadas.includes(k) && !opcionais.includes(k)) erros.push', 'for (const k of Object.keys(obj)) if (false) erros.push'],
   ['politica-chave-opcional-qualquer', '!esperadas.includes(k) && !opcionais.includes(k)', '!esperadas.includes(k) && false'],
-  ['politica-chave-faltando', 'for (const k of esperadas) if (!Object.hasOwn(obj, k)) erros.push', 'for (const k of esperadas) if (false) erros.push'],
   ['politica-inteiro', 'ehNumeroEm(x, min, max) && Number.isInteger(x)', 'ehNumeroEm(x, min, max)'],
   ['politica-denso', 'const denso = (a) => Array.isArray(a) && Object.keys(a).length === a.length;', 'const denso = (a) => Array.isArray(a);'],
 ];
@@ -237,13 +282,16 @@ function copiaDe(trabalho, engineTexto) {
   cpSync(path.join(PLUGIN, 'router-policy.json'), path.join(plug, 'router-policy.json'));
   cpSync(path.join(PLUGIN, 'policy.schema.json'), path.join(plug, 'policy.schema.json'));
   cpSync(path.join(PLUGIN, 'tests/corpus.mjs'), path.join(plug, 'tests/corpus.mjs'));
+  cpSync(path.join(PLUGIN, 'tests/propriedades.mjs'), path.join(plug, 'tests/propriedades.mjs'));
   cpSync(TESTE, path.join(trabalho, 'tests/unit/router-engine.test.mjs'));
   writeFileSync(path.join(plug, 'engine.mjs'), engineTexto);
   return path.join(plug, 'engine.mjs');
 }
 
-function roda(trabalho) {
-  const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--experimental-test-isolation=none', path.join(trabalho, 'tests/unit/router-engine.test.mjs')],
+// `completo` falso pula o teste de linearidade (lento); so os mutantes que sobrevivem sem ele rodam a suite inteira.
+function roda(trabalho, completo = true) {
+  const pula = completo ? [] : ['--test-skip-pattern=J1 linearidade'];
+  const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...pula, '--experimental-test-isolation=none', path.join(trabalho, 'tests/unit/router-engine.test.mjs')],
     { encoding: 'utf8', timeout: 90_000, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 });
   const reprovados = [...(r.stdout ?? '').matchAll(/^not ok \d+ - (.*)$/gm)].map((m) => m[1]);
   return { status: r.status, timeout: r.error?.code === 'ETIMEDOUT' || r.signal === 'SIGKILL', reprovados };
@@ -271,6 +319,8 @@ const EXTRAS = [
   `${'z'.repeat(70)} producao ${'\u200b'.repeat(80)}token`,
 ];
 
+const semErros = (v) => ({ ok: v.ok, degradaPara: v.degradaPara });
+
 function resultado(fn) {
   try {
     return JSON.stringify(fn(), (k, v) => (typeof v === 'number' && !Number.isFinite(v) ? String(v) : v === undefined ? '__undef' : v));
@@ -295,7 +345,7 @@ async function diferencial(arquivoMutante) {
     const prompt = a.value.input?.prompt;
     const pares = [
       [() => orig.decide(a.value.input, a.value.policy), () => mut.decide(b.value.input, b.value.policy)],
-      [() => orig.validatePolicy(a.value.policy, { now: a.value.input?.now }), () => mut.validatePolicy(b.value.policy, { now: b.value.input?.now })],
+      [() => semErros(orig.validatePolicy(a.value.policy, { now: a.value.input?.now })), () => semErros(mut.validatePolicy(b.value.policy, { now: b.value.input?.now }))],
       [() => orig.parseRota(prompt), () => mut.parseRota(b.value.input?.prompt)],
       [() => orig.stripRota(prompt), () => mut.stripRota(b.value.input?.prompt)],
     ];
@@ -336,8 +386,9 @@ try {
     const vivos = [];
     const confirmados = [];
     const instrumento = [];
-    for (const [id, de, para, equiv] of M) {
+    for (const [indice, [id, de, para, equiv]] of M.entries()) {
       if (SO && !SO.includes(id)) continue;
+      if (FATIA && indice % FATIA[1] !== FATIA[0]) continue;
       const ocorrencias = ENGINE.split(de).length - 1;
       if (ocorrencias !== 1) {
         instrumento.push(`${id} (ocorrencias=${ocorrencias})`);
@@ -345,25 +396,27 @@ try {
       }
       const dir = path.join(base, id);
       const arquivo = copiaDe(dir, ENGINE.replace(de, () => para));
-      const r = roda(dir);
+      let r = roda(dir, false);
+      if (r.status === 0) r = roda(dir, true);
       const soCarga = r.reprovados.length > 0 && r.reprovados.every((n) => SENSIVEL_A_CARGA.test(n));
       // Mutante declarado equivalente que so cai em teste de tempo/CPU nao conta como morto: vai a prova por execucao.
       const morto = mortoConfirmado(dir, r) && !(soCarga && equiv);
       if (morto) {
         mortos.push(id);
-        console.log(`MORTO  ${id}${r.timeout ? ' (prazo)' : ''}${soCarga ? ' (so por teste de tempo/CPU, falha repetida)' : ''}`);
+        const mata = r.reprovados.length > 0 ? r.reprovados[0].slice(0, 70) : r.timeout ? 'prazo de 90 s estourado' : 'a suite nao carregou ou terminou com erro';
+        console.log(`MORTO | ${id} | teste: ${mata}${r.reprovados.length > 1 ? ` (+${r.reprovados.length - 1})` : ''}${soCarga ? ' [so teste de tempo/CPU, falha repetida]' : ''}`);
       } else if (equiv) {
         const d = await diferencial(arquivo);
         if (d.divergencias === 0) {
           confirmados.push(id);
-          console.log(`EQUIVALENTE ${id}  [0 divergencias em ${d.casosN} comparacoes; ${equiv}]`);
+          console.log(`EQUIVALENTE | ${id} | suite verde; ${d.casosN} comparacoes com 0 divergencias; ${equiv}`);
         } else {
           vivos.push(id);
-          console.log(`VIVO   ${id}  [equivalencia REFUTADA: ${d.divergencias} divergencias em ${d.casosN} comparacoes]`);
+          console.log(`VIVO | ${id} | equivalencia REFUTADA: ${d.divergencias} divergencias em ${d.casosN} comparacoes`);
         }
       } else {
         vivos.push(id);
-        console.log(`VIVO   ${id}`);
+        console.log(`VIVO | ${id} | suite verde com o mutante`);
       }
       rmSync(dir, { recursive: true, force: true });
     }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "router-policy",
-  "description": "Politica do roteador interno de modelos. O validador executavel e validatePolicy em engine.mjs (regras adicionais que o schema nao expressa: custo nao decrescente entre niveis, round-trip de valid_until e horizonte de 400 dias, pisos de papel revisor >= T2, arrays densos); a suite confere que as chaves de topo coincidem.",
+  "description": "Politica do roteador interno de modelos. O validador executavel e validatePolicy em engine.mjs, mais estrito que este schema (custo estritamente crescente, round-trip de valid_until e horizonte de 400 dias, papeis e prefixos obrigatorios, arrays densos, dado puro); a suite confere que o validador nunca aceita o que o schema recusa.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -89,10 +89,15 @@
                 "xhigh",
                 "max"
               ]
+            },
+            "emitivel": {
+              "type": "boolean",
+              "description": "Nivel emitivel (padrao true). Nivel nao emitivel nunca e escolhido: o motor sobe ate o proximo emitivel. enforce exige apenas os emitiveis medidos."
             }
           }
         }
-      }
+      },
+      "description": "Custo estritamente crescente de T0 a T4 (modelo, depois effort); ao menos um nivel emitivel."
     },
     "ficha_tiers": {
       "type": "object",
@@ -184,7 +189,8 @@
           "T3",
           "T4"
         ]
-      }
+      },
+      "description": "Deve conter refutador e auditor-seguranca (>= T3) e revisor-codigo (>= T2)."
     },
     "reviewer_roles": {
       "type": "array",
@@ -193,7 +199,8 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 64
-      }
+      },
+      "description": "Cada papel deve existir em role_floors com piso >= T2."
     },
     "risk_surface": {
       "type": "object",
@@ -206,9 +213,6 @@
       "properties": {
         "piso": {
           "enum": [
-            "T0",
-            "T1",
-            "T2",
             "T3",
             "T4"
           ]
@@ -237,7 +241,8 @@
       "additionalProperties": false,
       "required": [
         "prompt_chars",
-        "caminhos"
+        "caminhos",
+        "acima_do_teto"
       ],
       "properties": {
         "prompt_chars": {
@@ -245,6 +250,23 @@
         },
         "caminhos": {
           "$ref": "#/$defs/limiar"
+        },
+        "acima_do_teto": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "piso"
+          ],
+          "properties": {
+            "piso": {
+              "enum": [
+                "T2",
+                "T3",
+                "T4"
+              ]
+            }
+          },
+          "description": "Piso quando o prompt passa de limites.prompt_max_bytes."
         }
       }
     },
@@ -298,16 +320,17 @@
           "properties": {
             "default": {
               "type": "number",
-              "minimum": 0,
+              "minimum": 0.5,
               "maximum": 1
             },
             "por_papel": {
               "type": "object",
               "additionalProperties": {
                 "type": "number",
-                "minimum": 0,
+                "minimum": 0.5,
                 "maximum": 1
-              }
+              },
+              "description": "Cada valor >= default (conferido pelo validador)."
             }
           }
         },
@@ -362,15 +385,18 @@
     "limites": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "prompt_max_bytes"
-      ],
       "properties": {
         "prompt_max_bytes": {
           "type": "integer",
           "minimum": 1024,
           "maximum": 4194304,
-          "description": "Teto do texto analisado (cabeca mais cauda); padrao 65536 quando ausente."
+          "description": "Teto do texto varrido (padrao 1048576); acima dele vale o piso size.acima_do_teto."
+        },
+        "n_minimo": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "n minimo para um nivel contar como medido (padrao 8)."
         }
       }
     }
@@ -390,8 +416,6 @@
         },
         "piso": {
           "enum": [
-            "T0",
-            "T1",
             "T2",
             "T3",
             "T4"
