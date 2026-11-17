@@ -1,7 +1,7 @@
 // Fuzz do MOTOR DE DECISAO fora do agregador (run.sh despacha so *.sh e *.py). Roda o corpus
 // adversarial deterministico de 2000 entradas (semente fixa) sobre as propriedades de
 // tests/propriedades.mjs e confere contadores minimos de cobertura. Orcamentos absolutos de tempo
-// (prompt patologico de 1 MiB, 10 MiB comum, 1 milhao de chaves no historico) sao apenas AVISO:
+// (prompt patologico de 1 MiB, 10 MiB comum, tokens distintos nao-ASCII, U+FDFA, 1 milhao de chaves no historico) sao apenas AVISO:
 // dependem da carga da maquina e nao reprovam.
 // Exit 0: propriedades e cobertura ok. Exit 1: violacao ou cobertura abaixo do minimo.
 import { readFileSync } from 'node:fs';
@@ -38,9 +38,13 @@ const medida = (rotulo, fn, limiteMs) => {
 const politica = structuredClone(SHIPPED);
 politica.valid_until = '2027-06-30T00:00:00Z';
 const entrada = (prompt, extra = {}) => ({ prompt, role: 'autor', subagentType: 'x', now: NOW, ...extra });
-medida('prompt patologico de 1 MiB (marcas combinantes)', () => decide(entrada(`a${'̖́'.repeat(524288)}`), politica), 300);
+medida('prompt patologico de 1 MiB (marcas combinantes)', () => decide(entrada(`a${'\u0316\u0301'.repeat(524288)}`), politica), 300);
 medida('10 MiB de texto comum', () => decide(entrada('palavra comum de teste '.repeat(Math.ceil((10 * 1024 * 1024) / 23))), politica), 1000);
 medida('1 MiB de texto comum com a palavra de risco no meio', () => decide(entrada(`${'lorem ipsum '.repeat(43690)} producao ${'lorem ipsum '.repeat(43690)}`), { ...politica, role_floors: { ...politica.role_floors } }), 300);
+const distintos = (n) => { let t = ''; for (let i = 0; t.length < n; i++) t += `\u00e9${i.toString(36)} `; return t.slice(0, n); };
+medida('H: 256 KiB de tokens distintos nao-ASCII', () => decide(entrada(distintos(256 * 1024)), politica), 400);
+medida('H: 1 MiB de tokens distintos nao-ASCII (acima do teto)', () => decide(entrada(distintos(1024 * 1024)), politica), 400);
+medida('U+FDFA x 256 KiB', () => decide(entrada('\ufdfa'.repeat(256 * 1024)), politica), 400);
 const muitas = {};
 for (let i = 0; i < 1_000_000; i++) muitas[`k${i}`] = 1;
 medida('1 milhao de chaves em history.falhasPorChave', () => decide(entrada('x', { chave: 'k1', history: { falhasPorChave: muitas, autorTierPorChave: {} } }), politica), 300);

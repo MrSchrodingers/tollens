@@ -40,7 +40,7 @@
     "valid_until": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
-      "description": "Instante UTC com round-trip estrito, no maximo 400 dias a frente de now. now >= valid_until: validatePolicy devolve ok:true com degradaPara:shadow."
+      "description": "Instante UTC com round-trip estrito, no maximo 400 dias a frente de now e nunca depois de 2030-01-01 (teto absoluto, vale sem now). now >= valid_until: validatePolicy devolve ok:true com degradaPara:shadow."
     },
     "model_allowlist": {
       "type": "array",
@@ -260,13 +260,12 @@
           "properties": {
             "piso": {
               "enum": [
-                "T2",
                 "T3",
                 "T4"
               ]
             }
           },
-          "description": "Piso quando o prompt passa de limites.prompt_max_bytes."
+          "description": "Piso quando o prompt passa de limites.prompt_max_bytes; T3 ou acima e nunca abaixo de risk_surface.piso (o texto depois do teto nao e varrido)."
         }
       }
     },
@@ -389,8 +388,8 @@
         "prompt_max_bytes": {
           "type": "integer",
           "minimum": 1024,
-          "maximum": 4194304,
-          "description": "Teto do texto varrido (padrao 1048576); acima dele vale o piso size.acima_do_teto."
+          "maximum": 1048576,
+          "description": "Teto do texto varrido (padrao 262144); acima dele vale o piso size.acima_do_teto."
         },
         "n_minimo": {
           "type": "integer",

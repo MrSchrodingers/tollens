@@ -37,35 +37,35 @@ export const CAMPOS_OPCIONAIS = ['limites'];
 
 const MAX_LINHA_BYTES = 2048;
 const MAX_TOKEN_CAMINHO = 512;
-const MAX_TOKEN_TEXTO = 64;
 const MAX_PALAVRAS = 256;
 const MAX_NOS = 100000;
-const PRE_CORTE_TRECHO = 1024;
 const MAX_CHAVE = 256;
 const MAX_HISTORY = 1000;
 const MAX_CHAVES_POLITICA = 10000;
 const MAX_PROFUNDIDADE = 16;
-const JANELA = 65536;
-const SOBREPOSICAO = 128;
-const PROMPT_MAX_PADRAO = 1048576;
+const PROMPT_MAX_PADRAO = 262144;
+const PROMPT_MAX_TETO = 1048576;
 const N_MINIMO_PADRAO = 8;
 const AGORA_MIN = 1.6e12;
 const AGORA_MAX = 4.1e12;
 const HORIZONTE_MS = 400 * 86400000;
+const VALID_UNTIL_TETO = Date.parse('2030-01-01T00:00:00Z'); // teto absoluto, vale sem relogio
 const TERMINADOR_RE = /[\r\n\u2028\u2029\u0085]/;
 const PREFIXO_ROTA = /^@@ROTA(?:[ \t]|$)/;
 const CHAVE_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 const INSTANTE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-const LETRA_RE = /[\p{L}\p{N}\p{M}\p{Cf}]/u;
 const CHARSET_CAMINHO_RE = /^[A-Za-z0-9_.~/-]+$/;
 const EXTENSAO_RE = /\.[A-Za-z0-9]{1,8}$/;
-const TRECHO_RE = /[\p{L}\p{N}\p{M}\p{Cf}]+/gu;
-const FORMATO_E_MARCAS_RE = /[\p{Cf}\p{M}]+/gu;
-const FORMATO_RE = /\p{Cf}+/gu;
+const IGNORAVEL_RE = /[\p{Cf}\p{M}\p{Default_Ignorable_Code_Point}]+/gu;
+// Caracteres cuja expansao no NFKC passa de 4 (U+FDFA expande 18x; sao ligaduras e unidades sem letras latinas
+// de palavra de risco): tratados como separador, o que limita o custo da normalizacao a 4x o tamanho do texto.
+const EXPANSIVO_RE = /[\u3307\u3315\u3316\u3317\u3319\u331a\u3320\u332b\u332e\u3332\u3334\u3336\u3347\u334a\u3356\u33ae\u33af\ufdfa\ufdfb]/g;
+const HOMOGLIFO_RE = /[\u0370-\u03ff\u0400-\u052f]/g;
+const NAO_ALFANUM_RE = /[^\p{L}\p{N}]+/gu;
+const NAO_ALFANUM_ASCII_RE = /[^a-z0-9]+/g;
 const MARCAS_RE = /\p{M}+/gu;
 const ASCII_RE = /^[\x00-\x7f]*$/;
 const SEPARADOR_CAMINHO_RE = /[\s"'`()[\]<>,;]+/;
-const ALFANUM_ASCII_RE = /^[a-z0-9 ]+$/;
 
 // Homoglifos cirilicos e gregos comuns, ja em minuscula, dobrados para latino. Fora deste mapa
 // nao ha cobertura.
@@ -82,18 +82,14 @@ const own = (o, k) => isObj(o) && Object.hasOwn(o, k);
 const tierIdx = (t) => (typeof t === 'string' ? TIER_NAMES.indexOf(t) : -1);
 const denso = (a) => Array.isArray(a) && Object.keys(a).length === a.length;
 
-function dobrar(texto) {
-  let saida = '';
-  for (const ch of texto) saida += DOBRA.get(ch) ?? ch;
-  return saida;
-}
+const dobrar = (texto) => texto.replace(HOMOGLIFO_RE, (c) => DOBRA.get(c) ?? c);
 
 // Nome de papel: NFKC, sem caracteres de formato (zero-width, soft hyphen) e sem marcas combinantes,
 // sem caixa, sem espacos extras e com homoglifos dobrados, como as palavras de risco. Um prefixo de
 // namespace `plugin:nome` vale pelo ultimo segmento (so pode ELEVAR o piso).
 const papel = (s) => {
   if (typeof s !== 'string' || s.length > 128) return '';
-  const norm = dobrar(s.normalize('NFKC').replace(FORMATO_RE, '').replace(/\s+/g, ' ').toLowerCase())
+  const norm = dobrar(s.normalize('NFKC').replace(IGNORAVEL_RE, '').replace(/\s+/g, ' ').toLowerCase())
     .normalize('NFD').replace(MARCAS_RE, '');
   return norm.slice(norm.lastIndexOf(':') + 1).trim();
 };
@@ -235,44 +231,28 @@ function resolverFicha(input) {
 
 // ---------------------------------------------------------------- texto do prompt
 
-// Cada trecho de letras, digitos, marcas e caracteres de formato e limpo (zero-width e marcas nao
-// empurram o texto util), normalizado por NFKC e so entao cortado em 64 PONTOS DE CODIGO (o corte
-// antes do NFKC partia jamo e par substituto). O custo fica limitado pela janela de varredura.
-function normalizarTrecho(bruto) {
-  const limpo = bruto.replace(FORMATO_E_MARCAS_RE, '').slice(0, PRE_CORTE_TRECHO).normalize('NFKC').toLowerCase();
-  const corte = Array.from(limpo).slice(0, MAX_TOKEN_TEXTO).join('');
-  return dobrar(corte).normalize('NFD').replace(MARCAS_RE, '');
+// Texto de BUSCA do prompt inteiro (ate prompt_max_bytes), numa passada so e sem janelas: o resultado
+// nao depende de onde o texto cai. NFKC (letras circuladas, largura total, ligaduras), sem ignoraveis
+// (formato, marcas combinantes, Default_Ignorable como os preenchimentos de hangul), minuscula,
+// homoglifos dobrados, sem acentos; tudo o que nao e letra ou digito vira um espaco, com um espaco
+// no inicio e no fim. Texto so ASCII pula as etapas Unicode.
+function paraBusca(texto) {
+  if (ASCII_RE.test(texto)) return ` ${texto.toLowerCase().replace(NAO_ALFANUM_ASCII_RE, ' ')} `;
+  let t = dobrar(texto.replace(IGNORAVEL_RE, '').replace(EXPANSIVO_RE, ' ').normalize('NFKC').toLowerCase()); // ignoraveis ANTES do NFKC: uma corrida longa de marcas tornaria a normalizacao quadratica
+  if (!ASCII_RE.test(t)) t = t.normalize('NFD').replace(MARCAS_RE, '');
+  return ` ${t.replace(NAO_ALFANUM_RE, ' ')} `;
 }
 
-function tokens(texto) {
-  const cache = new Map();
-  const norm = (bruto) => {
-    let n = cache.get(bruto);
-    if (n === undefined) {
-      n = normalizarTrecho(bruto);
-      cache.set(bruto, n);
-    }
-    return n;
-  };
-  return Array.from(texto.matchAll(TRECHO_RE), (m) => norm(m[0])).filter((t) => t !== '');
-}
+const normalizarPalavra = (p) => paraBusca(p).trim();
 
-const normalizarPalavra = (p) => tokens(p).join(' ');
-
-// Palavras de risco da politica, normalizadas uma vez por decisao. Para janelas so ASCII usa-se uma
-// regex unica sobre o texto em minuscula; para as demais, o caminho completo por trecho.
+// Palavras de risco da politica, normalizadas uma vez por decisao e reunidas numa regex so: prefixo
+// de palavra em fronteira inicial, sem fronteira final (`-` e `_` separam palavras).
 function prepararRisco(palavras) {
   const normais = [...new Set(palavras.map(normalizarPalavra))];
-  const ascii = normais.filter((n) => ALFANUM_ASCII_RE.test(n)).map((n) => n.replace(/ /g, '[^a-z0-9]+'));
-  return { normais, regexAscii: ascii.length > 0 ? new RegExp(`(?:^|[^a-z0-9])(?:${ascii.join('|')})`) : null };
+  return { normais, regex: new RegExp(` (?:${normais.join('|')})`) };
 }
 
-// Prefixo de palavra em fronteira inicial; `-` e `_` separam palavras. Sem fronteira final.
-function janelaTemRisco(janela, risco) {
-  if (ASCII_RE.test(janela)) return risco.regexAscii !== null && risco.regexAscii.test(janela.toLowerCase());
-  const alvo = ` ${tokens(janela).join(' ')} `;
-  return risco.normais.some((n) => alvo.includes(` ${n}`));
-}
+const temRisco = (texto, risco) => risco.regex.test(paraBusca(texto));
 
 function pareceCaminho(tok) {
   if (!tok.includes('/') || !CHARSET_CAMINHO_RE.test(tok) || !/[A-Za-z0-9]/.test(tok)) return false;
@@ -281,49 +261,15 @@ function pareceCaminho(tok) {
   return tok.split('/').length - 1 >= 2;
 }
 
-function acumulaCaminhos(janela, vistos, limite) {
-  for (const tok of janela.split(SEPARADOR_CAMINHO_RE)) {
+// Conta caminhos DISTINTOS e para ao passar do limiar.
+function contaCaminhos(texto, limite) {
+  const vistos = new Set();
+  for (const tok of texto.split(SEPARADOR_CAMINHO_RE)) {
     if (tok.length < 3 || tok.length > MAX_TOKEN_CAMINHO || !pareceCaminho(tok)) continue;
     vistos.add(tok);
-    if (vistos.size > limite) return;
+    if (vistos.size > limite) break;
   }
-}
-
-// Letra, digito, marca ou formato (como o separador de trechos); par substituto conta como palavra.
-function codigoDePalavra(texto, i) {
-  const c = texto.charCodeAt(i);
-  if (c < 128) return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
-  return (c >= 0xd800 && c <= 0xdfff) || LETRA_RE.test(texto[i]);
-}
-
-// A proxima janela comeca no inicio de um trecho de palavra dentro da sobreposicao (para nao partir
-// uma palavra nem criar um inicio de palavra falso); sem fronteira ali, segue sem sobreposicao.
-function proximoInicio(texto, fim) {
-  const piso = Math.max(fim - SOBREPOSICAO, 0);
-  let corte = fim;
-  while (corte > piso && codigoDePalavra(texto, corte - 1)) corte--;
-  return corte > piso ? corte : fim;
-}
-
-// Varre o texto em janelas de 64 KiB com sobreposicao; sai no primeiro casamento de risco quando
-// os caminhos nao importam. `queRisco`/`quePaths` dizem o que ainda pode elevar o piso.
-function varrer(texto, risco, queRisco, limiteCaminhos, quePaths) {
-  const n = texto.length;
-  const vistos = new Set();
-  let achou = false;
-  let ini = 0;
-  while (ini < n) {
-    const fim = Math.min(n, ini + JANELA);
-    const janela = texto.slice(ini, fim);
-    if (queRisco && !achou && janelaTemRisco(janela, risco)) achou = true;
-    if (quePaths && vistos.size <= limiteCaminhos) acumulaCaminhos(janela, vistos, limiteCaminhos);
-    const riscoResolvido = !queRisco || achou;
-    const caminhosResolvidos = !quePaths || vistos.size > limiteCaminhos;
-    if (riscoResolvido && caminhosResolvidos) break;
-    if (fim >= n) break;
-    ini = proximoInicio(texto, fim);
-  }
-  return { risco: achou, caminhos: vistos.size };
+  return vistos.size;
 }
 
 // ---------------------------------------------------------------- relogio e politica
@@ -393,6 +339,7 @@ function validarCopia(policy, opts) {
   if (validUntil - agora > HORIZONTE_MS) { // NaN em qualquer lado: comparacao falsa, sem horizonte a conferir
     erros.push('valid_until: alem de 400 dias a frente de now');
   }
+  if (validUntil > VALID_UNTIL_TETO) erros.push('valid_until: alem do teto absoluto de 2030-01-01');
 
   const allow = policy.model_allowlist;
   if (!denso(allow) || allow.length === 0) {
@@ -470,8 +417,9 @@ function validarCopia(policy, opts) {
     validarLimiar(policy.size.caminhos, 'size.caminhos', erros);
     if (tierIdx(policy.size.caminhos?.piso) < 2) erros.push('size.caminhos.piso: T2 ou acima');
     if (tierIdx(policy.size.prompt_chars?.piso) < 2) erros.push('size.prompt_chars.piso: T2 ou acima');
-    if (exato(policy.size.acima_do_teto, ['piso'], 'size.acima_do_teto', erros) && tierIdx(policy.size.acima_do_teto.piso) < 2) {
-      erros.push('size.acima_do_teto.piso: T2 ou acima');
+    if (exato(policy.size.acima_do_teto, ['piso'], 'size.acima_do_teto', erros)
+      && tierIdx(policy.size.acima_do_teto.piso) < Math.max(3, tierIdx(policy.risk_surface?.piso))) {
+      erros.push('size.acima_do_teto.piso: T3 ou acima, e nunca abaixo do piso de risco (o texto depois do teto nao e varrido)');
     }
   }
 
@@ -486,7 +434,7 @@ function validarCopia(policy, opts) {
 
   if (Object.hasOwn(policy, 'limites') && exato(policy.limites, [], 'limites', erros, ['prompt_max_bytes', 'n_minimo'])) {
     const { prompt_max_bytes: teto, n_minimo: nMin } = policy.limites;
-    if (teto !== undefined && !ehInteiroEm(teto, 1024, 4194304)) erros.push('limites.prompt_max_bytes: inteiro 1024..4194304');
+    if (teto !== undefined && !ehInteiroEm(teto, 1024, PROMPT_MAX_TETO)) erros.push('limites.prompt_max_bytes: inteiro 1024..1048576');
     if (nMin !== undefined && !ehInteiroEm(nMin, 1, 1000)) erros.push('limites.n_minimo: inteiro 1..1000');
   }
 
@@ -551,11 +499,13 @@ function exigenciaDeAprovacao(policy, nomes) {
 const listaDeTextos = (x) => (Array.isArray(x) ? x.filter((k) => typeof k === 'string') : []);
 
 // Subida por falha. Teto de NOVAS concessoes por fluxo: `escalation.max_por_fluxo` menos as chaves de
-// `history.subidasConcedidas` (que o mod persiste). Uma chave que ja subiu continua subida (nunca
+// as registradas em `history.subidasConcedidas` (que o mod persiste) sem 2 ou mais falhas. Uma chave que ja subiu continua subida (nunca
 // revogada); uma chave com 2 ou mais falhas sobe uma vez sem consumir o teto (sem laco). Entre as
 // novas (1 falha), a ordem e a temporal (`history.ordem`), depois chave critica (nome com palavra de
 // risco ou listada em `history.chavesCriticas`), depois o nome. Historico truncado: sem nova concessao.
-// A pegajosidade vale enquanto a falha existe no historico; fora dele, so a lista persistida a mantem.
+// Chave registrada em `subidasConcedidas` sobe sempre (com ou sem falha no historico) e nunca desce.
+// O motor e funcao pura de um historico CONSISTENTE: o mod DEVE persistir `subidasConcedidas` antes
+// de aplicar a decisao; com persistencia atrasada a concessao pode ser revogada (ver CONTRATO).
 function concedeSubida(h, chave, falhas, max, criticaDe) {
   if (h.concedidas.has(chave) || falhas >= 2) return true;
   if (h.truncado) return false;
@@ -569,7 +519,10 @@ function concedeSubida(h, chave, falhas, max, criticaDe) {
     if (criticaDe(a) !== criticaDe(b)) return criticaDe(a);
     return a < b;
   };
-  const vagas = max - h.concedidas.size;
+  // Consumo do teto: registradas sem 2 ou mais falhas (as com 2 ou mais nunca consomem vaga).
+  let consumo = 0;
+  for (const k of h.concedidas) if (!(typeof h.falhasPorChave[k] === 'number' && h.falhasPorChave[k] >= 2)) consumo++;
+  const vagas = max - consumo;
   let anteriores = 0;
   for (const k of novas) {
     if (k !== chave && antes(k, chave)) anteriores++;
@@ -659,9 +612,9 @@ export function decide(input, policy) {
   const quePaths = pisoCaminhos > floor;
   const risco = prepararRisco(policyCopia.risk_surface.words);
   if (queRisco || quePaths) {
-    const achados = varrer(texto.length > teto ? texto.slice(0, teto) : texto, risco, queRisco, caminhos.acima_de, quePaths);
-    if (achados.risco) subir(pisoRisco, 'piso_superficie_de_risco');
-    if (achados.caminhos > caminhos.acima_de) subir(pisoCaminhos, 'piso_caminhos');
+    const analise = texto.length > teto ? texto.slice(0, teto) : texto;
+    if (queRisco && temRisco(analise, risco)) subir(pisoRisco, 'piso_superficie_de_risco');
+    if (quePaths && contaCaminhos(analise, caminhos.acima_de) > caminhos.acima_de) subir(pisoCaminhos, 'piso_caminhos');
   }
 
   const daFicha = ficha
@@ -674,16 +627,18 @@ export function decide(input, policy) {
   let capped = false;
   let subidaConcedida = false;
   const falhas = chave !== null && own(falhasPorChave, chave) ? falhasPorChave[chave] : 0;
-  const repetida = typeof falhas === 'number' && falhas >= 1;
+  const concedidas = new Set(listaDeTextos(hist.subidasConcedidas));
+  // D2: chave registrada em subidasConcedidas sobe sempre, com ou sem falha no historico.
+  const repetida = (chave !== null && concedidas.has(chave)) || (typeof falhas === 'number' && falhas >= 1);
   if (repetida) {
     const historico = {
       falhasPorChave,
-      concedidas: new Set(listaDeTextos(hist.subidasConcedidas)),
+      concedidas,
       ordem: new Map(listaDeTextos(hist.ordem).map((k, i) => [k, i]).reverse()),
       truncado: ctx.truncado,
     };
     const criticas = new Set(listaDeTextos(hist.chavesCriticas));
-    const criticaDe = (k) => criticas.has(k) || janelaTemRisco(k, risco);
+    const criticaDe = (k) => criticas.has(k) || temRisco(k, risco);
     if (concedeSubida(historico, chave, falhas, policyCopia.escalation.max_por_fluxo, criticaDe)) {
       if (tier >= TOPO || falhas >= 2) capped = true;
       tier = Math.min(TOPO, tier + 1);

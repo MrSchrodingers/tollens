@@ -103,7 +103,7 @@
     "max_por_fluxo": 3
   },
   "limites": {
-    "prompt_max_bytes": 1048576,
+    "prompt_max_bytes": 262144,
     "n_minimo": 8
   },
   "quality": {

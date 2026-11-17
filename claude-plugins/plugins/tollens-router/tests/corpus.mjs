@@ -141,6 +141,13 @@ export function* casos(n, seed, base) {
     return { input, policy: limpa(), oraculo };
   };
   for (let i = 0; i < n; i++) {
+    if (i % 400 === 7) {
+      // ciclo largo: 200 chaves apontando para o proprio objeto (sem controle de ciclo e de nos, 200^16 visitas)
+      const ciclo = {};
+      for (let k = 0; k < 200; k++) ciclo[`k${k}`] = ciclo;
+      yield { input: { prompt: 'x', now: 1794787200000, history: ciclo }, policy: limpa() };
+      continue;
+    }
     if (rnd() < 0.3) {
       yield dirigido();
       continue;
