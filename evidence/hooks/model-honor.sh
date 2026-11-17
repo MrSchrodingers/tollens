@@ -29,7 +29,12 @@
 # errado (numero, array, objeto, booleano) ou fora do vocabulario: `pedido_desconhecido`.
 # `indeterminado`: meta ou transcript ausente, ilegivel, ou sem linha assistant, ou caminho fora
 # da raiz, ou ID longo, ou payload ilegivel, ou efetivo sem prefixo `claude-` depois da
-# normalizacao (ARN, ID sem prefixo, outro fornecedor: `efetivo_nao_reconhecido`). Caminho
+# normalizacao (`efetivo_nao_reconhecido`). A normalizacao tambem toma o ULTIMO segmento depois de
+# `/` (`anthropic/claude-...`, ARN de inference-profile ou foundation-model, `vertex/...`) e troca
+# `.` por `-` (`claude-opus-4.5` vale `claude-opus-4-5`). Sem prefixo `claude-`, a FAMILIA ainda e
+# derivada quando o ID tem um token `claude` e um token de familia: se difere da pedida,
+# `DIVERGE/familia_diferente`; se coincide, ou se nao ha familia derivavel (ARN opaco, `opus-4-6`,
+# `gpt-sonnet-9`), `indeterminado/efetivo_nao_reconhecido`. Caminho
 # relativo no payload e resolvido contra o cwd do hook (limite, ADR 0048).
 #
 # SAIDA. Uma linha JSONL por evento em ${MODEL_HONOR_LOG:-$HOME/.claude/logs/model-honor.jsonl},
@@ -73,7 +78,9 @@
 # (o limite entra).
 # Exit 0 quando nada divergiu e nada ficou nao julgado; 1 com DIVERGE; 3 quando NADA divergiu mas
 # houve `indeterminado` ou `pedido_desconhecido` (o resumo `NAO JULGADOS n de total` e a contagem
-# por motivo vao ao stderr; `sem_pedido` nao conta como incompletude, so aparece no resumo);
+# por motivo vao ao stderr), ou quando NENHUM evento foi julgado (honrado + DIVERGE == 0 com
+# total > 0, so `sem_pedido`: mensagem `NENHUM JULGADO`). `sem_pedido` com pelo menos um julgado
+# nao conta como incompletude, so aparece no resumo;
 # 2 erro de uso ou de instrumento (precedencia 2 > 1 > 3 > 0): jq que nao funciona ou que
 # falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta encontrado, ou
 # arquivo/diretorio ilegivel (contado como `ilegivel`). Um --since que exclui tudo nao e erro: o
@@ -125,18 +132,21 @@ norm_id() {
   local v="${1,,}" re_br='^(.*)\[[^]]*\]$' re_pf='^([a-z]+\.)?anthropic\.(.*)$'
   local re_at='^(.*)@[0-9]{8}$' re_v='^(.*)-v[0-9]+(:[0-9]+)?$' re_d='^(.*)-[0-9]{8}$' re_l='^(.*)-latest$'
   while [[ "$v" =~ $re_br ]]; do v="${BASH_REMATCH[1]}"; done
+  v="${v##*/}"
   [[ "$v" =~ $re_pf ]] && v="${BASH_REMATCH[2]}"
   [[ "$v" =~ $re_at ]] && v="${BASH_REMATCH[1]}"
   [[ "$v" =~ $re_v ]] && v="${BASH_REMATCH[1]}"
   [[ "$v" =~ $re_l ]] && v="${BASH_REMATCH[1]}"
   [[ "$v" =~ $re_d ]] && v="${BASH_REMATCH[1]}"
-  printf '%s' "$v"
+  printf '%s' "${v//./-}"
 }
 
 # Familia (primeiro token opus|sonnet|haiku|fable) de um ID normalizado (stdout).
 familia_de() {
-  local tk=() t IFS=-
+  local tk=() t IFS=- tem_claude=0
   read -ra tk <<<"$1"
+  for t in ${tk[@]+"${tk[@]}"}; do [ "$t" = claude ] && tem_claude=1; done
+  [ "$tem_claude" -eq 1 ] || return 0
   for t in ${tk[@]+"${tk[@]}"}; do
     case "$t" in opus|sonnet|haiku|fable) printf '%s' "$t"; return 0 ;; esac
   done
@@ -220,13 +230,21 @@ julga() {
   case "$PN" in
     opus|sonnet|haiku|fable)
       FAM="$(familia_de "$EN")"
-      if [[ "$EN" != claude-* ]]; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido
-      elif [ "$FAM" = "$PN" ]; then STATUS=honrado; MOTIVO=familia_igual
-      else STATUS=DIVERGE; MOTIVO=familia_diferente; fi ;;
+      if [[ "$EN" == claude-* ]]; then
+        if [ "$FAM" = "$PN" ]; then STATUS=honrado; MOTIVO=familia_igual
+        else STATUS=DIVERGE; MOTIVO=familia_diferente; fi
+      elif [ -n "$FAM" ] && [ "$FAM" != "$PN" ]; then
+        # sem prefixo claude- mas com token claude e familia derivavel diferente da pedida
+        STATUS=DIVERGE; MOTIVO=familia_diferente
+      else STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido; fi ;;
     claude-*)
-      if [[ "$EN" != claude-* ]]; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido
-      elif [ "$PN" = "$EN" ]; then STATUS=honrado; MOTIVO=id_igual
-      else STATUS=DIVERGE; MOTIVO=id_diferente; fi ;;
+      if [ "$PN" = "$EN" ]; then STATUS=honrado; MOTIVO=id_igual
+      elif [[ "$EN" == claude-* ]]; then STATUS=DIVERGE; MOTIVO=id_diferente
+      else
+        FAM="$(familia_de "$PN")"; FE="$(familia_de "$EN")"
+        if [ -n "$FAM" ] && [ -n "$FE" ] && [ "$FAM" != "$FE" ]; then STATUS=DIVERGE; MOTIVO=familia_diferente
+        else STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido; fi
+      fi ;;
     *) STATUS=pedido_desconhecido; MOTIVO=valor_fora_do_vocabulario ;;
   esac
   return 0
@@ -358,6 +376,7 @@ scan_main() {
   if [ "$NJ" -gt 0 ]; then
     {
       echo "model-honor: NAO JULGADOS $NJ de $TOTAL (sem_pedido ${CNT[sem_pedido]:-0}, fora da conta)"
+      [ $(( ${CNT[honrado]:-0} + ${CNT[DIVERGE]:-0} )) -gt 0 ] || echo "model-honor: NENHUM JULGADO em $TOTAL"
       for K in "${!MOT[@]}"; do printf '  motivo %s: %s\n' "$K" "${MOT[$K]}"; done | LC_ALL=C sort
     } >&2
     for K in "${!MOT[@]}"; do printf 'motivo\t%s\t%s\n' "$K" "${MOT[$K]}"; done | LC_ALL=C sort
@@ -368,6 +387,10 @@ scan_main() {
   fi
   [ "${CNT[DIVERGE]:-0}" -gt 0 ] && return 1
   [ "$NJ" -gt 0 ] && return 3
+  if [ "$TOTAL" -gt 0 ] && [ $(( ${CNT[honrado]:-0} + ${CNT[DIVERGE]:-0} )) -eq 0 ]; then
+    echo "model-honor: NENHUM JULGADO em $TOTAL (so sem_pedido); a varredura nao verificou nenhum modelo" >&2
+    return 3
+  fi
   return 0
 }
 

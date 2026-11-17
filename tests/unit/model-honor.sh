@@ -24,6 +24,8 @@
 #              Tambem: jq que falha so na extracao, primeiro valor do stdin que nao e objeto,
 #              filtro do transcript quebrado no scan e symlink que escapa das raizes no scan.
 #  I-INCOMPLETO o --scan nao diz "sem DIVERGE" (exit 0) quando nada foi julgado: exit 3.
+#  I-FAMILIA   efetivo sem prefixo claude- com familia derivavel e diferente da pedida e DIVERGE (nao
+#              fica oculto); sem familia derivavel ou com a mesma familia, indeterminado.
 #  I-REAL      o hook aceita a forma REAL do evento (chaves e `effort` objeto, ADR 0015 regra 1).
 #
 # Fixtures SINTETICAS e SEM conteudo: o transcript traz so {"type":"assistant","message":{"model":..}}.
@@ -556,10 +558,10 @@ chk "42 100% indeterminado e pedido_desconhecido: exit 3 com resumo; com DIVERGE
 
 echo "== 43. efetivo sem prefixo claude- e indeterminado, nao DIVERGE =="
 R43=""
-for par in "opus|arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6" "opus|opus-4-6" "sonnet|gpt-sonnet-9" "claude-opus-4-6|opus-4-6"; do
+for par in "opus|arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc123xyz" "opus|opus-4-6" "sonnet|gpt-sonnet-9" "claude-opus-4-6|opus-4-6"; do
   mk "$PROJ" c43 "$(meta "${par%%|*}")" "${par#*|}"; run "$(payload "$PROJ/agent-c43.jsonl")"; R43="$R43 $ULT/$(campo .motivo)"
 done
-chk "43 ARN, id sem prefixo, outro fornecedor e ID completo contra id sem prefixo: indeterminado/efetivo_nao_reconhecido" \
+chk "43 ARN opaco, id sem prefixo, outro fornecedor sem token claude e ID completo contra id sem prefixo: indeterminado/efetivo_nao_reconhecido" \
   "$R43" " indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido indeterminado/efetivo_nao_reconhecido"
 
 echo "== 44. tentativa de escape de caminho avisa; indeterminado comum fica mudo =="
@@ -574,9 +576,47 @@ chk "45 A morto; B vivo; C e D inconclusivos; EQ equivalente; exit 2 (inconclusi
   "$RC45/$(printf '%s\n' "$O45" | awk '$1=="MUTANTE"{printf "%s=%s ",$2,$3} /^MORTOS=/{printf "%s",$0}')" \
   "2/A=morto B=vivo C=inconclusivo D=inconclusivo EQ=vivo MORTOS=1 DE=5 INCONCLUSIVOS=2"
 
+echo "== 46. transcript FORA das raizes com meta symlink para DENTRO: nao e lido =="
+mkdir -p "$T/o46/subagents"
+mk "$T/o46/subagents" q NONE claude-sonnet-5-5
+meta opus > "$PROJ/agent-m46.meta.json"; ln -sfn "$PROJ/agent-m46.meta.json" "$T/o46/subagents/agent-q.meta.json"
+run "$(payload "$T/o46/subagents/agent-q.jsonl")"
+chk "46 indeterminado/caminho_fora_da_raiz (a guarda do transcript e independente da do meta)" "$ULT/$(campo .motivo)" "indeterminado/caminho_fora_da_raiz"
+
+echo "== 47. familia do efetivo sem prefixo claude-: diverge se difere, nao oculta =="
+R47=""
+p47(){ mk "$PROJ" c47 "$(meta "$1")" "$2"; run "$(payload "$PROJ/agent-c47.jsonl")"; R47="$R47 $ULT/$(campo .motivo)"; }
+p47 opus 'anthropic/claude-sonnet-4.5'
+p47 opus 'anthropic/claude-opus-4.5'
+p47 opus 'arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-4-5-v1:0'
+p47 opus 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-6'
+p47 opus 'vertex/claude-sonnet-4-5@20250929'
+p47 opus 'bedrock-claude-opus-4-5'
+p47 claude-opus-4-5 'bedrock-claude-sonnet-4-5'
+p47 claude-opus-4-5 'anthropic/claude-opus-4.5'
+chk "47 sonnet/ARN de sonnet/vertex contra opus: DIVERGE; opus por prefixo e ARN: honrado; mesma familia sem prefixo: indeterminado" \
+  "$R47" " DIVERGE/familia_diferente honrado/familia_igual DIVERGE/familia_diferente honrado/familia_igual DIVERGE/familia_diferente indeterminado/efetivo_nao_reconhecido DIVERGE/familia_diferente honrado/id_igual"
+
+echo "== 48. --scan sem NENHUM julgado nao sai 0 =="
+S48="$T/scan48"
+mk "$S48/a/p/s/subagents" sp1 "$(meta '')" claude-sonnet-5-5; mk "$S48/a/p/s/subagents" sp2 '{"agentType":"x"}' claude-sonnet-5-5
+mk "$S48/b/p/s/subagents" sp "$(meta '')" claude-sonnet-5-5; mk "$S48/b/p/s/subagents" ok "$(meta opus)" claude-opus-5-5
+R48=""
+for alvo in a b; do
+  "$BASH_BIN" "$HOOK" --scan "$S48/$alvo" >/dev/null 2>"$T/e48"; R48="$R48 $?/$(grep -c 'NENHUM JULGADO' "$T/e48")"
+done
+chk "48 so sem_pedido: exit 3 com NENHUM JULGADO; um honrado e o resto sem_pedido: exit 0" "$R48" " 3/1 0/0"
+
+echo "== 49. executor: mutante com sintaxe quebrada e inconclusivo, nunca morto =="
+printf 'if\n' > "$T/m_SYN.sh"; : > "$T/res49"
+bash tests/mutation/model-honor/um.sh "$T/m_SYN.sh" "$T/res49" >/dev/null 2>&1
+printf 'SYN\n' > "$T/eq49x"; : > "$T/eq49"
+O49="$(bash tests/mutation/model-honor/resumo.sh "$T/res49" "$T/eq49" 2>/dev/null | awk '$1=="MUTANTE"{print $3}')"
+chk "49 SYN: linha rc!=0 sem caso e estado inconclusivo" "$(awk '{print ($2=="rc=0")?"rc0":"rcN"}' "$T/res49")/$O49" "rcN/inconclusivo"
+
 echo
 echo "TOTAL=$((P+F)) PASS=$P FAIL=$F"
 # Pino da propria contagem (convencao de scripts/status.sh): caso removido em silencio e vermelho.
-EXPECTED=45
+EXPECTED=49
 [ "$((P+F))" -eq "$EXPECTED" ] || { echo "CONTAGEM INESPERADA: executados=$((P+F)) esperado=$EXPECTED"; exit 1; }
 [ "$F" -eq 0 ]

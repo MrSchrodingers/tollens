@@ -13,6 +13,10 @@ raiz="$(cd "$aqui/../../.." && pwd)"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 res="${MODEL_HONOR_MUT_RESULTADO:-${TMPDIR:-/tmp}/model-honor-mut.$$.txt}"
 python3 -I "$aqui/gen.py" "$tmp" "$raiz/evidence/hooks/model-honor.sh" || exit 2
+# Baseline: o hook intacto precisa passar na suite; se falhar, os "mortos" nao significam nada.
+: > "$tmp/baseline.txt"
+bash "$aqui/um.sh" "$raiz/evidence/hooks/model-honor.sh" "$tmp/baseline.txt" >/dev/null
+grep -q ' rc=0 ' "$tmp/baseline.txt" || { echo "baseline (hook intacto) FALHOU: $(cat "$tmp/baseline.txt")" >&2; exit 2; }
 : > "$res"; echo "resultado (parcial valido): $res"
 ls "$tmp"/m_*.sh | xargs -P "${MODEL_HONOR_MUT_PARALELO:-2}" -I{} bash "$aqui/um.sh" {} "$res" >/dev/null
 total="$(wc -l < "$res" | tr -d ' ')"

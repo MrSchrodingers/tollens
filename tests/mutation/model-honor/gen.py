@@ -8,14 +8,16 @@ Escreve um arquivo `m_<ID>.sh` por mutante (o hook com UMA troca textual) e a li
 vira erro (exit 1), para o mutante nao sumir em silencio quando o hook mudar.
 
 Mutantes EQUIVALENTES (sobrevivem por construcao, e isso e esperado):
-  G4_trap           todo caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`.
-  W_roottranscript  a guarda de raiz do meta, derivado do mesmo caminho, cobre o mesmo conjunto.
+  G4_trap           todo caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`
+                    (NAO VERIFICADO: nenhuma entrada que provoque erro interno foi encontrada).
   U_msgcap          os tetos por campo (40 e 80) impedem que o teto de 300 seja atingido.
+`W_roottranscript` NAO e equivalente: transcript fora das raizes com meta symlink para dentro
+(caso 46 da suite) o mata. `SYN_sintaxe` e o controle do executor: deve ficar inconclusivo.
 """
 import pathlib
 import sys
 
-EQUIVALENTES = ["G4_trap", "W_roottranscript", "U_msgcap"]
+EQUIVALENTES = ["G4_trap", "U_msgcap"]
 M = {
  'A_pai': ('((.agent_transcript_path | c(4096)) // "")', '(((.agent_transcript_path // .transcript_path) | c(4096)) // "")'),
  'B_rot': ('if [ "$SZ" -gt 2097152 ]; then', 'if false; then'),
@@ -25,8 +27,8 @@ M = {
  'C_caps': ('head -c 1048576 "$rp"', 'cat "$rp"'),
  'C2_lin4': ('head -n 400 |', 'head -n 4 |'),
  'C3_lin4000': ('head -n 400 |', 'head -n 4000 |'),
- 'D_fam': ('elif [ "$FAM" = "$PN" ]; then', 'elif [[ "$EN" == *"$PN"* ]]; then'),
- 'D2_fam_token': ('elif [ "$FAM" = "$PN" ]; then', 'elif [[ "$EN" == claude-"$PN"-* ]]; then'),
+ 'D_fam': ('if [ "$FAM" = "$PN" ]; then STATUS=honrado', 'if [[ "$EN" == *"$PN"* ]]; then STATUS=honrado'),
+ 'D2_fam_token': ('if [ "$FAM" = "$PN" ]; then STATUS=honrado', 'if [[ "$EN" == claude-"$PN"-* ]]; then STATUS=honrado'),
  'E_case': ('local v="${1,,}"', 'local v="$1"'),
  'E2_case_alias': ('pl="${PEDIDO,,}"', 'pl="$PEDIDO"'),
  'F_san': ('def c($n): strings | gsub("[[:cntrl:]]"; "") | .[0:$n];', 'def c($n): strings | .[0:$n];'),
@@ -55,8 +57,15 @@ M = {
  'G3_cntrl_efet': ('| gsub("[[:cntrl:]]"; "") | .[0:257]\'', '| .[0:257]\''),
  'G4_trap': ("trap 'exit 0' EXIT", ':'),
  'G5_mkdir': ('mkdir -p "$(dirname "$LOG")" || exit 1', ':'),
- 'G6_claude': ('if [[ "$EN" != claude-* ]]; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido\n      elif [ "$FAM"', 'if false; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido\n      elif [ "$FAM"'),
- 'M5_id': ('if [[ "$EN" != claude-* ]]; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido\n      elif [ "$PN" = "$EN" ]', 'if false; then STATUS=indeterminado; MOTIVO=efetivo_nao_reconhecido\n      elif [ "$PN" = "$EN" ]'),
+ 'G6_claude': ('if [[ "$EN" == claude-* ]]; then\n        if [ "$FAM"', 'if true; then\n        if [ "$FAM"'),
+ 'M5_id': ('elif [[ "$EN" == claude-* ]]; then STATUS=DIVERGE; MOTIVO=id_diferente', 'elif false; then STATUS=DIVERGE; MOTIVO=id_diferente'),
+ 'D2_derivada': ('elif [ -n "$FAM" ] && [ "$FAM" != "$PN" ]; then', 'elif false; then'),
+ 'D2_fam_id': ('if [ -n "$FAM" ] && [ -n "$FE" ] && [ "$FAM" != "$FE" ]; then', 'if false; then'),
+ 'D2_segmento': ('v="${v##*/}"', ':'),
+ 'D2_pontos': ('printf \'%s\' "${v//./-}"', 'printf \'%s\' "$v"'),
+ 'D2_tokenclaude': ('[ "$tem_claude" -eq 1 ] || return 0', ':'),
+ 'D3_nenhum': ('if [ "$TOTAL" -gt 0 ] && [ $(( ${CNT[honrado]:-0} + ${CNT[DIVERGE]:-0} )) -eq 0 ]; then', 'if false; then'),
+ 'SYN_sintaxe': ('MODO=hook\n', 'MODO=hook\nif\n'),
  'M1_exit3': ('[ "$NJ" -gt 0 ] && return 3', ':'),
  'M1_pd': ('+ ${CNT[pedido_desconhecido]:-0} ))', '+ 0 ))'),
  'M1_resumo': ('echo "model-honor: NAO JULGADOS $NJ de $TOTAL', 'echo "model-honor: JULGADOS $NJ de $TOTAL'),

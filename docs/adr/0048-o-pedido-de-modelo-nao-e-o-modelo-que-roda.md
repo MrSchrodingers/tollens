@@ -66,9 +66,13 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   reais so aparecem os pedidos `sonnet`, `opus`, `fable`, `haiku`, `inherit` e ausente. `inherit`, vazio, null ou ausente:
   `sem_pedido`. Tipo errado (numero, array, objeto, booleano) ou valor fora do vocabulario:
   `pedido_desconhecido`. Transcript ou meta ausente ou ilegivel, sem linha assistant, caminho fora
-  da raiz, ID longo, payload ilegivel ou efetivo sem prefixo `claude-` apos a normalizacao (ARN
-  Bedrock, ID sem prefixo, outro fornecedor: `efetivo_nao_reconhecido`): `indeterminado`.
-  Divergencia: `DIVERGE`.
+  da raiz, ID longo ou payload ilegivel: `indeterminado`. Efetivo sem prefixo `claude-` apos a
+  normalizacao: a normalizacao toma o ultimo segmento depois de `/` (`anthropic/claude-...`, ARN de
+  inference-profile ou foundation-model, `vertex/...`) e troca `.` por `-` (`claude-opus-4.5` vale
+  `claude-opus-4-5`); persistindo sem prefixo, a FAMILIA ainda e derivada quando o ID tem um token
+  `claude` e um token de familia. Se difere da pedida, `DIVERGE/familia_diferente` (o efetivo nao
+  fica oculto); se coincide, ou se nao ha familia derivavel (ARN opaco, `opus-4-6`,
+  `gpt-sonnet-9`), `indeterminado/efetivo_nao_reconhecido`. Divergencia: `DIVERGE`.
 - SAIDA: uma linha JSONL por evento em `${MODEL_HONOR_LOG:-~/.claude/logs/model-honor.jsonl}`,
   modo 0600, ASCII puro (U+2028 e U+2029 escapados), somente identificadores, nomes de modelo e
   motivo curto, com `pedido_origem` (`meta` ou `ausente`) e `rotacao` (`flock` ou `sem_flock`).
@@ -106,8 +110,10 @@ Novo hook `evidence/hooks/model-honor.sh`, registrado em `SubagentStop`
   pedido->efetivo; controles, TAB, quebra de linha e U+2028/U+2029 em caminhos viram espaco).
   Exit 0 quando nada divergiu e nada ficou nao julgado; 1 com `DIVERGE`; 3 quando nada divergiu
   mas ha `indeterminado` ou `pedido_desconhecido` (o resumo `NAO JULGADOS n de total` e a contagem
-  por motivo vao ao stderr, e linhas `motivo` ao stdout; `sem_pedido` nao conta como incompletude,
-  limite a, mas aparece no resumo); 2 em erro de uso ou de instrumento, com precedencia
+  por motivo vao ao stderr, e linhas `motivo` ao stdout), ou quando NENHUM evento foi julgado
+  (`honrado` + `DIVERGE` == 0 com total > 0, so `sem_pedido`: mensagem `NENHUM JULGADO`);
+  `sem_pedido` com pelo menos um julgado nao conta como incompletude (limite a), mas aparece no
+  resumo; 2 em erro de uso ou de instrumento, com precedencia
   2 > 1 > 3 > 0: `jq` que nao funciona,
   `jq` que falha nos filtros (contado como `jq_erro`), diretorio inexistente, nenhum meta
   encontrado, ou arquivo, diretorio ou symlink ilegivel (contado como `ilegivel`). O argumento e
@@ -169,6 +175,11 @@ p. O mutante `G4_trap` (remover o `trap 'exit 0' EXIT`) sobrevive. A razao e por
 q. Os achados m3 e m4 da quinta revisao independente foram entregues a esta mudanca so como
    "limites a registrar", sem o texto do achado; nao ha o que descrever aqui sem inventar: NAO
    VERIFICADO.
+r. Publicacao: as fixtures de `tests/fixtures/model-honor/` nos commits `c773ae4`, `1d33f83` e
+   `77cba2b` guardam identificadores reais de sessao e de agente; a arvore final ja os trocou por
+   sinteticos. Publicar exige squash para uma branch nova a partir da base com a arvore final;
+   o historico desta branch nao deve ser publicado como esta. A decisao de quando e como fazer o
+   squash e do momento do push.
 k. Trava de log presa por outro processo: cada hook espera ate 5 s, grava sem rotacionar, e o log
    cresce enquanto a trava estiver presa. O timeout de 10 s do hook em `install/hooks-spec.sh`
    cobre a espera, mas um disco travado faz cada SubagentStop sequencial pagar 5 s.
@@ -216,7 +227,7 @@ crescem; cada valor abaixo traz a data e a hora em que foi obtido.
 
 ## Verificacao
 
-`tests/unit/model-honor.sh`: 45 casos, cada um protegendo um invariante nomeado no cabecalho da
+`tests/unit/model-honor.sh`: 49 casos, cada um protegendo um invariante nomeado no cabecalho da
 suite. O controle positivo (caso 1, `opus` contra `claude-sonnet-5-5`) foi registrado como
 vermelho pelo autor na sessao de 2026-11-16, antes de o hook existir; essa observacao nao e
 reproduzivel a partir do diff.
@@ -225,10 +236,15 @@ Mutantes do hook (remocao de rotacao, trava e geracoes, tetos de leitura, famili
 normalizacao, sanitizacao, escopo e saida do scan, fronteira de `--since`, fallback ao transcript
 do pai, raiz irma, tipo do meta, saneamento de surrogate, entre outros) foram aplicados para
 conferir a suite. Sobre o hook de 2026-11-16 (commit 86d3190), `run-all.sh` deu `MORTOS=68 DE=71`
-(exit 0, 2026-11-16 as 18:50), com 3 sobreviventes equivalentes: o `trap 'exit 0' EXIT` (todo
-caminho do modo hook termina com `exit 0` explicito e nao ha `set -e`); a guarda de raiz do
-transcript, coberta pela guarda de raiz do meta, derivado do mesmo caminho; e o teto de 300
-caracteres do `systemMessage`, que os tetos por campo (40 e 80) nao deixam atingir na pratica.
+(exit 0, 2026-11-16 as 18:50). Naquela data tres mutantes sobreviventes foram declarados
+equivalentes; a declaracao de `W_roottranscript` (remover a guarda de raiz do transcript) estava
+ERRADA: com o transcript fora das raizes e o `.meta.json` como symlink para um meta dentro delas,
+o hook correto da `indeterminado/caminho_fora_da_raiz` e o mutante le o transcript de fora e da
+`DIVERGE`. O caso 46 da suite o mata, e o mutante deixou de ser equivalente. Restam dois
+sobreviventes declarados: o `trap 'exit 0' EXIT` (`G4_trap`; todo caminho do modo hook termina
+com `exit 0` explicito e nao ha `set -e`, mas a equivalencia segue NAO VERIFICADA, limite p) e o
+teto de 300 caracteres do `systemMessage` (`U_msgcap`), que os tetos por campo (40 e 80) nao
+deixam atingir na pratica.
 Sobre o hook de a98eb3f, os 5 mutantes acrescentados (`mx1_controle_efet`, `D1b_extracao`,
 `D2d_naoobjeto`, `D2e_semcaminho`, `R3_foraraiz`) morreram nos casos 41, 39, 40, 40 e 38
 (2026-11-17 as 11:08). O gerador passou a produzir 81 mutantes (acrescentados `M5_id`,
@@ -236,6 +252,9 @@ Sobre o hook de a98eb3f, os 5 mutantes acrescentados (`mx1_controle_efet`, `D1b_
 caso FAIL nomeado (`inconclusivo` para rc != 0 sem caso: timeout 124, contagem inesperada,
 dependencia ausente), gravando cada linha ao terminar. A execucao completa sobre o hook atual NAO
 foi concluida (carga da maquina): NAO VERIFICADO; nao se reemite "N de 81".
+Nesta rodada o gerador passou a 88 mutantes e o executor roda `bash -n` em cada um antes (sintaxe
+quebrada e `inconclusivo`, nunca morto; controle `SYN_sintaxe`) e um baseline com o hook intacto
+(se falhar, o executor aborta com exit 2). A execucao completa dos 88 mutantes sobre o hook atual NAO foi feita nesta rodada: o load average ficou entre 21 e 52 (a regra era rodar so abaixo de 25) e o prazo nao cabia; NAO VERIFICADO, e nao se reemite "N de M".
 Rotacao sob 150 hooks concorrentes com tres geracoes pre-existentes (2026-11-17 as 11:09):
 150 de 150 eventos distintos preservados e marcas A, B e C em `.1`, `.2` e `.3`.
 

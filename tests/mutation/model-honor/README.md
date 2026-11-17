@@ -17,3 +17,11 @@ Saida: uma linha `MUTANTE <ID> <morto|vivo|inconclusivo> casos=<...>` por mutant
 inconclusivo; 1 se algum nao equivalente sobreviveu; 2 se ha inconclusivo ou o instrumento falhou.
 Dura de alguns a dezenas de minutos conforme a carga da maquina; nao entra em
 `tests/unit/run.sh` nem na lista de `tests/mutation/*.sh`.
+
+`W_roottranscript` NAO e equivalente (o caso 46 da suite o mata). Equivalentes declarados:
+`G4_trap` (NAO VERIFICADO) e `U_msgcap`. `SYN_sintaxe` e o controle do executor e deve
+ficar inconclusivo.
+
+Publicacao: o historico da branch contem fixtures com identificadores reais nos commits
+`c773ae4`, `1d33f83` e `77cba2b`; a arvore final esta limpa. Publicar exige squash para uma
+branch nova a partir da base com a arvore final.
