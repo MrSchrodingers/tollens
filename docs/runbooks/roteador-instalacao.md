@@ -42,32 +42,37 @@ sudo ls -ld /opt/tollens.bak-*                                    # esperado: o 
 
 Nao avance sem o `ls` mostrar o backup.
 
-### A0b. Sincronizar a arvore de origem root:root (ADR 0026)
+### A0b. Sincronizar a arvore de origem root:root (ADR 0026), POR HASH
 
 O instalador, quando roda como root, recusa uma fonte que nao seja inteira root:root, sem symlink e
 sem escrita de grupo/outros (exit 78). A fonte e `/opt/.tollens-src`. Monte uma nova ao lado e troque.
+O snapshot e arquivado e verificado pelo HASH do commit, nao pelo nome da branch: a branch pode andar
+entre o ensaio e o `archive`. Confira o hash com o que a revisao informou antes de seguir.
 
 ```
-# terminal do operador (sem root): o commit a publicar
-git -C /home/ti/evidence-gate status --short | head          # nao e requisito; so para ver
-git -C /home/ti/evidence-gate log -1 --format='%H %s' onda34-roteador-instalacao
+# terminal do operador (sem root)
+H="$(git -C /home/ti/evidence-gate rev-parse --verify 'onda34-roteador-instalacao^{commit}')"; echo "$H"
+git -C /home/ti/evidence-gate log -1 --format='%H %s' "$H"     # esperado: o hash e o assunto revisados
+git -C /home/ti/evidence-gate archive --format=tar -o "$HOME/tollens-src-$H.tar" "$H"
+git get-tar-commit-id < "$HOME/tollens-src-$H.tar"             # esperado: igual a $H
 
-ls -d /opt/.tollens-src.new /opt/.tollens-src.prev 2>&1       # esperado: "No such file" nos dois
+ls -d /opt/.tollens-src.new /opt/.tollens-src.prev 2>&1        # esperado: "No such file" nos dois
 
 sudo mkdir /opt/.tollens-src.new
-git -C /home/ti/evidence-gate archive --format=tar onda34-roteador-instalacao \
-  | sudo tar -x -C /opt/.tollens-src.new --no-same-owner
+sudo tar -x -C /opt/.tollens-src.new --no-same-owner < "$HOME/tollens-src-$H.tar"
+printf '%s\n' "$H" | sudo tee /opt/.tollens-src.new/.commit-publicado >/dev/null
 sudo chown -R root:root /opt/.tollens-src.new
 sudo chmod -R go-w /opt/.tollens-src.new
 sudo find /opt/.tollens-src.new \( -type l -o \! -user root -o \! -group root -o -perm /022 \) -print -quit
 #   esperado: nenhuma linha
 
 sudo mv /opt/.tollens-src /opt/.tollens-src.prev && sudo mv /opt/.tollens-src.new /opt/.tollens-src
+cat /opt/.tollens-src/.commit-publicado                        # esperado: igual a $H
 ```
 
 `git archive` leva so arquivos rastreados (sem `.git`, sem cache). O snapshot anterior fica em
 `/opt/.tollens-src.prev` (contem `id_mines`, chave privada nao rastreada: decida o destino dela; nao e
-escopo deste roteiro).
+escopo deste roteiro). O `.tar` em `$HOME` pode ser apagado depois.
 
 ### A1. Ensaio (sem root, nao escreve nada)
 
@@ -156,19 +161,37 @@ Em sessao NOVA do Claude Code (managed so e lido na partida):
    `AUSENTE /opt/tollens/claude-plugins` e `1 divergentes`. Esse e o estado esperado de um roteador
    removido, nao falha do restante; volta a exit 0 reaplicando o deploy (que reinstala o roteador).
 
-## Passo D - ligar enforce (so depois de B e C)
+## Passo D - ligar enforce: BLOQUEADO ate haver calibracao medida
 
-Criterio proposto (N e limiares sao decisao do operador; nao ha medicao previa que os justifique):
+**Nao execute este passo com a politica embarcada.** Em `enforce` o motor exige que todo nivel EMITIVEL
+(hoje T2, T3 e T4; T0 e T1 tem `emitivel: false`) tenha `quality.por_nivel.<Tn>` medido: `n` maior ou
+igual a `limites.n_minimo` (padrao 8) e `aprovacao_medida` maior ou igual ao piso do papel
+(`piso_aprovacao.default` 0.8; 0.9 para refutador, revisor-codigo e auditor-seguranca), com a `fonte` da
+medicao. A politica embarcada tem `aprovacao_medida: null` e `n: null` nos cinco niveis: com `mode=enforce`
+o `validatePolicy` devolve `degradaPara: shadow` e o motor decide em `shadow` (razao `nivel_nao_medido`).
+O instalador nao muda isso, e a trava abaixo existe para impedir um `enforce` que so parece ligado.
 
-- pelo menos 7 dias corridos em `shadow` com o ledger crescendo (item C2) e pelo menos 50 linhas
-  `tool.call`;
-- passo B aplicado e, desde ele, nenhuma razao `managed_nega_piso` no ledger:
-  `cat ~/.claude/logs/router-ledger-*.jsonl* | jq -r '.reasons[]?' | sort | uniq -c | sort -rn`;
-- nenhuma razao `persistencia_falhou`; `model-honor --scan --since <data do B>` com exit 0 ou 3;
-- `valid_until` da politica (2026-11-30) com folga: renove antes (ADR 0049) ou o motor volta a `shadow`.
+O que a calibracao exige, antes de qualquer comando:
 
-Comando (root; valida com o motor instalado e troca de forma atomica; o `node` e o de root do passo A0;
-o `trap` remove `.router-policy.novo` se qualquer etapa falhar):
+1. Medir a aprovacao por nivel T2, T3 e T4 (taxa de aprovacao pelo revisor sobre resultados de cada nivel,
+   com `n` e `fonte` registrados). Esse trabalho (calibracao R6) esta no BACKLOG e NAO foi feito: nao ha
+   medicao nem limiar justificado nesta onda.
+2. Gravar os valores medidos em `quality.por_nivel` de
+   `claude-plugins/plugins/tollens-router/router-policy.json` no repositorio, regenerar
+   `install/manifest.lock`, ressincronizar a fonte (A0b) e reaplicar o deploy (o `mode` instalado e mantido).
+3. Conferir `valid_until`: a politica embarcada vence em 2026-11-30T00:00:00Z. Politica vencida degrada a
+   `shadow` mesmo em `enforce`, sem alerta. Renove antes (ADR 0049, secao Vencimento).
+4. Criterio proposto de observacao (limiares sao decisao do operador): pelo menos 7 dias corridos em
+   `shadow` com o ledger crescendo (item C2) e pelo menos 50 linhas `tool.call`; passo B aplicado e, desde
+   ele, nenhuma razao `managed_nega_piso`
+   (`cat ~/.claude/logs/router-ledger-*.jsonl* | jq -r '.reasons[]?' | sort | uniq -c | sort -rn`);
+   nenhuma razao `persistencia_falhou`; `model-honor --scan --since <data do B>` com exit 0 ou 3.
+
+Comando (root; so depois dos itens 1 a 4; valida com o motor instalado, por `env -i` e PATH fixo, e troca de
+forma atomica; o `node` e o de root do passo A0; o `trap` remove `.router-policy.novo` se qualquer etapa
+falhar). A trava impede o `enforce` com politica vencida ou degradada: o `validatePolicy` reprova se
+`degradaPara` vier preenchido, e nada e trocado. Com a politica embarcada atual ele SEMPRE reprova; isso e
+o comportamento esperado enquanto o passo estiver bloqueado.
 
 ```
 sudo bash -c '
@@ -176,7 +199,7 @@ set -euo pipefail
 cd /etc/claude-code
 trap "rm -f .router-policy.novo" EXIT
 jq ".mode=\"enforce\"" router-policy.json > .router-policy.novo
-node --input-type=module -e "
+/usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin node --input-type=module -e "
 const [, pol, eng] = process.argv;
 const fs = await import(\"node:fs\");
 const { validatePolicy } = await import(eng);
@@ -189,8 +212,8 @@ jq -r .mode router-policy.json
 '
 ```
 
-Esperado: imprime `enforce`. Reaplicar o instalador depois preserva `enforce`. Para voltar:
-mesmo comando com `\"shadow\"`.
+Esperado (so desbloqueado): imprime `enforce`. Reaplicar o instalador depois preserva `enforce`. Para voltar:
+mesmo comando com `\"shadow\"` (e sem a validacao de degradacao).
 
 ## Rollback
 
@@ -231,6 +254,14 @@ O backup da arvore (`/opt/tollens.bak-<data>`, passo A0) e o unico ponto de volt
 
 ## O que este roteiro NAO prova
 
-O carregamento real do mod, a posse root:root medida na raiz real (o `--verify` do passo A3 a mede) e
-o efeito do alias `opus` sobre `claude-opus-5-5` na selecao de modelo nunca foram observados. O
-ledger nao vazio do passo C2 e o primeiro teste de aceitacao.
+Continuam NAO VERIFICADOS por execucao (nada disso foi observado em maquina real):
+
+- a carga do mod `tollens-router` sob `allowManagedHooksOnly=true`;
+- o comportamento do runtime quando a carga do plugin FALHA (se os hooks managed seguem ou nao);
+- o `env_keep` e o `secure_path` do `sudoers` do host: o roteiro usa `sudo` simples e nao os inspeciona;
+- o efeito do alias `opus` sobre `claude-opus-5-5` na selecao de modelo;
+- a aceitacao de um `node` root-owned em raiz real (o host so tem `node` em `~/.nvm`);
+- a posse root:root em raiz real (o `--verify` do passo A3 a mede).
+
+O passo C e o aceite: ledger nao vazio apos delegacoes em sessao nova e `claude plugin list` com o plugin
+habilitado. Sem isso, nada acima esta provado.
