@@ -41,10 +41,10 @@ esac
 if [ "$DRY" -eq 1 ]; then
   echo "== plano (nada sera escrito) =="
   LOCK_D="$DEST/tollens/managed-files.lock"
-  NOVO_D="$(awk -F"\t" '!/^#/{print $3}' "$MAN")"
+  NOVO_D="$(awk -F"\t" '!/^#/ && $1!="plugin"{print $3}' "$MAN")"
   n=0
   while IFS=$'\t' read -r tipo origem destino digest; do
-    case "$tipo" in ''|'#'*) continue;; esac
+    case "$tipo" in ''|'#'*|plugin) continue;; esac
     if [ -e "$DEST/$destino" ]; then printf '  [dry] atualiza  %s\n' "$destino"
     else printf '  [dry] instala   %s\n' "$destino"; fi
     n=$((n+1))
@@ -91,7 +91,7 @@ confinado(){ # $1=candidato $2=raiz
 }
 RUINS=0
 while IFS=$'\t' read -r tipo origem destino digest; do
-  case "$tipo" in ''|'#'*) continue;; esac
+  case "$tipo" in ''|'#'*|plugin) continue;; esac
   case "$destino" in ""|/*|../*|*/../*|*/..|"..") echo "  DESTINO INVALIDO: [$destino]"; RUINS=$((RUINS+1)); continue;; esac
   case "$origem"  in ""|/*|../*|*/../*|*/..|"..") echo "  ORIGEM INVALIDA: [$origem]";  RUINS=$((RUINS+1)); continue;; esac
   confinado "$DEST/$destino" "$DEST" || { echo "  DESTINO ESCAPA DE $DEST: [$destino]"; RUINS=$((RUINS+1)); }
@@ -105,7 +105,7 @@ fi
 
 N=0
 while IFS=$'\t' read -r tipo origem destino digest; do
-  case "$tipo" in ''|'#'*) continue;; esac
+  case "$tipo" in ''|'#'*|plugin) continue;; esac
   alvo="$DEST/$destino"
   mkdir -p "$(dirname "$alvo")"
   # ONDA 12, defeito PRE-EXISTENTE achado ao provar outra coisa: `cp -a` nao tinha retorno
@@ -130,7 +130,7 @@ echo "componentes instalados: $N"
 # resolvia o drift que o verify apontava. Remove apenas o que ESTE instalador gerenciou antes -
 # nunca arquivo desconhecido em ~/.claude, que pode pertencer a outro sistema.
 LOCK="$DEST/tollens/managed-files.lock"
-NOVO="$(awk -F"\t" '!/^#/{print $3}' "$MAN")"
+NOVO="$(awk -F"\t" '!/^#/ && $1!="plugin"{print $3}' "$MAN")"
 if [ -f "$LOCK" ]; then
   while IFS= read -r antigo; do
     [ -n "$antigo" ] || continue

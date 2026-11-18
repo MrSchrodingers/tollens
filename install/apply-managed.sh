@@ -12,6 +12,7 @@ case "$RAW_PREFIX" in
 esac
 OPT="${PREFIX}/opt/tollens"
 SETTINGS="${PREFIX}/etc/claude-code/managed-settings.json"
+ROUTER_POLICY="${PREFIX}/etc/claude-code/router-policy.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1
 
 # PRIVILEGED TRUST BOUNDARY.
@@ -54,11 +55,12 @@ WORKER="${TOLLENS_MANAGED_WORKER:-$DEFAULT_WORKER}"
 # A CONTAGEM VEM ANTES DO `case`: o ramo --verify|--revert faz `exec` e nunca alcancava uma
 # checagem posterior. Medido pelo auditor: `--revert --dry-run` chegava ao worker com argc=2, e o
 # worker so inspeciona "$1" - um revert REAL e privilegiado com o --dry-run engolido em silencio.
-[ "$#" -le 1 ] || {
-  printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run|--enforce|--verify|--revert]\n' "$#" "$0" >&2
+# ONDA 34: unico par aceito, por igualdade exata: `--liberar-opus --dry-run`.
+[ "$#" -le 1 ] || [ "$*" = "--liberar-opus --dry-run" ] || {
+  printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run|--enforce|--verify|--revert|--liberar-opus [--dry-run]|--revert-router]\n' "$#" "$0" >&2
   exit 2
 }
-case "${1:-}" in
+case "$*" in
   # ONDA 14. `--dry-run` PASSA A SAIR AQUI, antes de qualquer maquinaria transacional.
   #
   # A onda 13 corrigiu a mensagem falsa ("managed transaction committed" num ensaio) com um
@@ -75,7 +77,9 @@ case "${1:-}" in
   #
   # A correcao nao e estreitar a frase: e tornar a frase desnecessaria. Ensaio nao abre
   # transacao, entao nao atravessa o mecanismo transacional.
-  --verify|--revert|--dry-run)
+  # --liberar-opus e --revert-router mexem so no settings (escrita atomica com backup datado) e,
+  # no segundo, na arvore do plugin; nao precisam do snapshot de /opt/tollens inteiro.
+  --verify|--revert|--dry-run|--liberar-opus|"--liberar-opus --dry-run"|--revert-router)
     exec "$WORKER" "$@"
     ;;
   --enforce|"")
@@ -94,6 +98,7 @@ trap cleanup EXIT
 
 HAD_OPT=0
 HAD_SETTINGS=0
+HAD_POL=0
 if [ -d "$OPT" ]; then
   HAD_OPT=1
   cp -a "$OPT" "$REC/opt" || exit 1
@@ -102,16 +107,23 @@ if [ -f "$SETTINGS" ]; then
   HAD_SETTINGS=1
   cp -a "$SETTINGS" "$REC/settings.json" || exit 1
 fi
+if [ -f "$ROUTER_POLICY" ]; then
+  HAD_POL=1
+  cp -a "$ROUTER_POLICY" "$REC/router-policy.json" || exit 1
+fi
 
 rollback(){
   local bad=0
   rm -rf "$OPT" 2>/dev/null || bad=1
-  rm -f "$SETTINGS" 2>/dev/null || bad=1
+  rm -f "$SETTINGS" "$ROUTER_POLICY" 2>/dev/null || bad=1
   if [ "$HAD_OPT" -eq 1 ]; then
     mkdir -p "$(dirname "$OPT")" && cp -a "$REC/opt" "$OPT" || bad=1
   fi
   if [ "$HAD_SETTINGS" -eq 1 ]; then
     mkdir -p "$(dirname "$SETTINGS")" && cp -a "$REC/settings.json" "$SETTINGS" || bad=1
+  fi
+  if [ "$HAD_POL" -eq 1 ]; then
+    mkdir -p "$(dirname "$ROUTER_POLICY")" && cp -a "$REC/router-policy.json" "$ROUTER_POLICY" || bad=1
   fi
   if [ "$bad" -ne 0 ]; then
     trap - EXIT

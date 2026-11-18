@@ -108,6 +108,7 @@ trap 'rm -f "$TMP"' EXIT
            tests/unit/pending-ask.sh \
            tests/unit/router-engine.sh \
            tests/unit/router-mod.sh \
+           tests/unit/managed-router.sh \
            tests/unit/capability-conformance.py \
            tests/unit/run.sh; do
     _saida="$(roda_suite "$t" 2>&1)"; rc=$?

@@ -1,0 +1,7 @@
+{
+  "name": "tollens-tools",
+  "owner": { "name": "Tollens" },
+  "plugins": [
+    { "name": "tollens-router", "source": "./plugins/tollens-router", "description": "Roteador interno de modelos (mod da organizacao)" }
+  ]
+}

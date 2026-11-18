@@ -81,6 +81,8 @@ N=$(find "$FK/opt/tollens" -type f 2>/dev/null | wc -l | tr -d ' ')
 # carrega as bibliotecas que seus hooks chamam. Sem `lib` nesta linha o esperado ficava em 31 e o
 # caso reprovava com got=32 - e o defeito seria do TESTE, nao do deploy.
 ESPERADO=$(awk -F'\t' '!/^#/ && ($1=="hook"||$1=="adapter"||$1=="doctool"||$1=="lib")' install/manifest.lock | wc -l | tr -d ' ')
+# ONDA 34: o tipo `plugin` e um DIRETORIO (claude-plugins); entra no `find -type f` pelos arquivos.
+ESPERADO=$((ESPERADO + $(find claude-plugins -type f | wc -l | tr -d ' ')))
 chk "  todos os $ESPERADO componentes de politica no disco" "$N" "$ESPERADO"
 chk "  ha hook, adaptador E doctool (nao so hook)" \
     "$([ -d "$FK/opt/tollens/hooks" ] && [ -d "$FK/opt/tollens/adapters" ] && [ -d "$FK/opt/tollens/document-tools" ] && echo sim || echo nao)" "sim"

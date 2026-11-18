@@ -21,6 +21,7 @@
 set -uo pipefail
 export LC_ALL=C   # ver install/manifest.sh: digest nao pode depender do locale
 cd "$(dirname "$0")/.." || exit 1
+# ONDA 34: o tipo `plugin` e so do escopo managed (root:root); o escopo de usuario o ignora.
 MAN="${1:-install/manifest.lock}"
 DEST="${CLAUDE_HOME:-$HOME/.claude}"
 [ -f "$MAN" ] || { echo "manifesto ausente: $MAN (rode install/manifest.sh)"; exit 2; }
@@ -29,7 +30,7 @@ OK=0; DRIFT=0; MISSING=0; EXTRA=0
 declare -A ESPERADO
 
 while IFS=$'\t' read -r tipo origem destino digest; do
-  case "$tipo" in ''|'#'*) continue;; esac
+  case "$tipo" in ''|'#'*|plugin) continue;; esac
   ESPERADO["$destino"]=1
   alvo="$DEST/$destino"
   if [ ! -e "$alvo" ]; then
