@@ -21,6 +21,13 @@ SETTINGS="${PREFIX}/etc/claude-code/managed-settings.json"
 ROUTER_POLICY="${PREFIX}/etc/claude-code/router-policy.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1
 
+# Root sobre a raiz real nao herda o PATH do chamador: um `sudo` que preserve o PATH do ator deixaria jq, cp,
+# bash e node do ator rodarem como root. O PATH fixo tambem e o que o node_raiz do worker consulta.
+if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  export PATH
+fi
+
 # PRIVILEGED TRUST BOUNDARY.
 # A real-root deployment must never execute a helper from a checkout writable by the governed
 # actor. This check covers the entire repository because apply-managed-worker.sh executes

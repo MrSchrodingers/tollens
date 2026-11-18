@@ -174,9 +174,11 @@ ressincronizar a arvore de origem e reaplicar (o `mode` instalado e mantido).
   quebrar o digest que o `--verify` confere.
 - NAO VERIFICADO por execucao: comportamento do runtime em ERRO de carga do plugin sob
   `allowManagedHooksOnly`; `env_keep` e `secure_path` do `sudoers` do host. O passo C do roteiro e o aceite.
-- PENDENTE (risco de privilegio, nao introduzido por esta onda): o PATH do worker como root nao e fixado;
-  um `sudo` que preserve o PATH do ator deixaria `jq`, `cp` e `bash` do ator rodarem como root. O roteiro
-  manda `sudo` simples (usa `secure_path`); fixar `PATH` no supervisor em raiz real fecharia a lacuna.
+- PATH do root: o supervisor fixa `PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` quando
+  REAL=1 e uid 0, de modo que um `sudo` que preserve o PATH do ator nao faz `jq`, `cp`, `bash` ou `node` do
+  ator rodarem como root. NAO VERIFICADO por execucao como root: a suite roda sem root e sob prefixo, onde a
+  fixacao nao se aplica; o `--verify` e o passo A2 do roteiro sao a medida. Consequencia: o `node` do passo A0
+  precisa estar em um desses diretorios.
 - NAO VERIFICADO: o aceite de um `node` root-owned em raiz real (o host nao tem um; a suite cobre a
   recusa e o predicado `node_raiz` sobre `/usr/bin/bash`, nao uma instalacao com `sudo`).
 
