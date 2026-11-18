@@ -66,6 +66,7 @@ MODO="deploy"
 # ONDA 34 (ADR 0049). Unico par aceito com dois argumentos: `--liberar-opus --dry-run`, tratado
 # por igualdade exata. Qualquer outro excesso segue recusado.
 OPUS_DRY=0
+REVERT_FORCAR=0
 if [ "$#" -eq 2 ] && [ "$1" = "--liberar-opus" ] && [ "$2" = "--dry-run" ]; then
   OPUS_DRY=1; set -- --liberar-opus
 fi
@@ -74,11 +75,12 @@ case "${1:-}" in
   --dry-run) MODO="dry" ;;
   --enforce) MODO="enforce" ;;
   --revert)  MODO="revert" ;;
+  --revert-forcar) MODO="revert"; REVERT_FORCAR=1 ;;
   --verify)  MODO="verify" ;;
   --liberar-opus)  MODO="opus" ;;
   --revert-router) MODO="revert-router" ;;
   "")        MODO="deploy" ;;
-  *) echo "uso: $0 [--dry-run|--enforce|--revert|--verify|--liberar-opus [--dry-run]|--revert-router]" >&2; exit 64 ;;
+  *) echo "uso: $0 [--dry-run|--enforce|--revert|--revert-forcar|--verify|--liberar-opus [--dry-run]|--revert-router]" >&2; exit 64 ;;
 esac
 
 if [ "$REAL" -eq 1 ] && [ "$MODO" != "dry" ] && [ "$MODO" != "verify" ] && [ "$OPUS_DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
@@ -102,6 +104,9 @@ tipos_politica(){ awk -F'\t' '!/^#/ && ($1=="hook" || $1=="adapter" || $1=="doct
 ROUTER_MARKET="tollens-tools"
 ROUTER_ID="tollens-router@$ROUTER_MARKET"
 ROUTER_POLICY_SRC="claude-plugins/plugins/tollens-router/router-policy.json"
+# Override SO PARA TESTE (tests/unit/managed-router.sh: politica reprovada). Ignorado em raiz real:
+# la a fonte da politica e a do repositorio ja validado como root:root (ADR 0026).
+[ "$REAL" -eq 0 ] && ROUTER_POLICY_SRC="${MANAGED_ROUTER_POLICY_SRC:-$ROUTER_POLICY_SRC}"
 ROUTER_POLICY="$ETC/router-policy.json"
 # Liberacao do Opus: ID da versao 5.5 (um prefixo de versao permite a versao nomeada e as que a
 # estendem). Os tokens negados removidos de deniedModels sao os que casam `opus`.
@@ -211,9 +216,32 @@ politica_json(){
   esac
 }
 
+# Em raiz real o motor roda COMO ROOT. Um `node` do ator (nvm, PATH herdado por `sudo env PATH=$PATH` ou
+# `sudo -E`) seria execucao de codigo do ator como root. $1 = caminho do executavel. Exige o binario
+# resolvido (realpath) e todo diretorio ate `/` pertencentes a root e sem escrita de grupo/outros.
+node_raiz(){
+  local d own mode
+  d="$(realpath -e "$1" 2>/dev/null)" || return 1
+  while :; do
+    read -r own mode < <(stat -c '%U %a' "$d" 2>/dev/null) || return 1
+    if [ "$own" != "root" ] || [ $(( 8#$mode & 8#022 )) -ne 0 ]; then
+      echo "ERRO: '$d' (dono=$own, modo=$mode) esta no caminho do node ($1), e ele nao e de root ou e gravavel por outros." >&2
+      echo "      Em raiz real o motor roda como root e exige um node root-owned em caminho de sistema, instalado" >&2
+      echo "      pelo operador (pacote da distribuicao). Nao use 'sudo -E' nem 'sudo env PATH=\$PATH'." >&2
+      return 1
+    fi
+    [ "$d" = "/" ] && break
+    d="$(dirname "$d")"
+  done
+}
+
 # validatePolicy do motor, com `now`. $1 = arquivo de politica, $2 = engine.mjs. Exit 0 so com ok:true.
 valida_politica(){
   command -v node >/dev/null 2>&1 || { echo "ERRO: node ausente - a politica do roteador nao pode ser validada." >&2; return 1; }
+  # MANAGED_NODE_ROOT=1 so ENDURECE (permite ensaiar a recusa sob prefixo); nunca afrouxa a raiz real.
+  if [ "$REAL" -eq 1 ] || [ "${MANAGED_NODE_ROOT:-}" = "1" ]; then
+    node_raiz "$(command -v node)" || return 1
+  fi
   node --input-type=module -e '
     const [, pol, eng] = process.argv;
     const fs = await import("node:fs");
@@ -227,7 +255,9 @@ valida_politica(){
 # settings com o Opus liberado: so availableModels e deniedModels mudam.
 opus_json(){
   jq --arg id "$OPUS_ID" '
-    def tem_opus: ascii_downcase | [scan("[a-z]+")] | index("opus") != null;
+    def tokens: ascii_downcase | [scan("[a-z]+")];
+    # entrada com token `fable` NUNCA sai, mesmo se tambem tiver `opus` (Fable segue negado, ADR 0012)
+    def tem_opus: tokens | (index("opus") != null) and (index("fable") == null);
     (if has("availableModels") then .availableModels |= (if index($id) then . else . + [$id] end) else . end)
     | (if has("deniedModels") then .deniedModels |= map(select(type != "string" or (tem_opus | not))) else . end)' "$SETTINGS"
 }
@@ -331,6 +361,18 @@ if [ "$MODO" = "revert" ]; then
     echo "ERRO: '$SETTINGS' NAO foi escrito por este instalador (falta a marca _managed_by)." >&2
     echo "      Nada foi removido. Se a intencao e descartar essa politica, remova-a a mao" >&2
     echo "      depois de ler o conteudo - este script nao apaga o que nao criou." >&2
+    exit 1
+  fi
+  # ONDA 34 (ADR 0049). So e restaurado por padrao um `.pre-tollens` que o proprio tollens escreveu. O
+  # `.pre-tollens` vivo e de 2026-08-12 (`_managed_by=evidence-gate`, hooks em /opt/evidence-gate, que nao
+  # existe): restaura-lo troca a politica atual por uma antiga e o `rm -rf` abaixo apaga hooks que nao
+  # estao no repositorio. Recusa ANTES de remover qualquer coisa; `--revert-forcar` e a saida explicita.
+  if [ "$REVERT_FORCAR" -ne 1 ] && [ -f "$SETTINGS.pre-tollens" ] \
+     && ! jq -e '._managed_by == "tollens"' "$SETTINGS.pre-tollens" >/dev/null 2>&1; then
+    echo "ERRO: '$SETTINGS.pre-tollens' nao tem _managed_by=tollens: restaura-lo substitui a politica atual por uma" >&2
+    echo "      anterior ao tollens e '$OPT' e removido por inteiro (inclui hooks fora do repositorio)." >&2
+    echo "      Nada foi removido. Para desfazer so o roteador: --revert-router. Para restaurar mesmo assim," >&2
+    echo "      depois de ler o arquivo: --revert-forcar." >&2
     exit 1
   fi
   if [ -f "$SETTINGS" ]; then rm -f "$SETTINGS"; echo "removido: $SETTINGS"; fi
@@ -741,7 +783,8 @@ RAIZ="$OPT"   # publicado: validar volta a significar validar a arvore ativa
 if [ "$MODO" = "enforce" ] || [ "$(jq -r '.allowManagedHooksOnly' "$SETTINGS" 2>/dev/null)" = "true" ]; then
   echo "allowManagedHooksOnly=true - hooks de escopo de USUARIO e de PLUGIN estao agora bloqueados."
   echo "(hooks de plugin passam so se o plugin estiver em enabledPlugins do managed: o roteador esta.)"
-  echo "Reverter: sudo bash install/apply-managed.sh --revert"
+  echo "Desfazer o roteador: sudo bash install/apply-managed.sh --revert-router. NAO use --revert sobre um"
+  echo ".pre-tollens antigo: ele recusa por padrao (ver docs/runbooks/roteador-instalacao.md, Rollback)."
 else
   echo "allowManagedHooksOnly=false - por enquanto os hooks managed SOMAM aos de usuario."
   echo "Cada hook rodara DUAS vezes ate a ativacao. Isso e esperado e mensuravel; e o passo que"

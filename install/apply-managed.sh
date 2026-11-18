@@ -57,7 +57,7 @@ WORKER="${TOLLENS_MANAGED_WORKER:-$DEFAULT_WORKER}"
 # worker so inspeciona "$1" - um revert REAL e privilegiado com o --dry-run engolido em silencio.
 # ONDA 34: unico par aceito, por igualdade exata: `--liberar-opus --dry-run`.
 [ "$#" -le 1 ] || [ "$*" = "--liberar-opus --dry-run" ] || {
-  printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run|--enforce|--verify|--revert|--liberar-opus [--dry-run]|--revert-router]\n' "$#" "$0" >&2
+  printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar|--liberar-opus [--dry-run]|--revert-router]\n' "$#" "$0" >&2
   exit 2
 }
 case "$*" in
@@ -79,7 +79,7 @@ case "$*" in
   # transacao, entao nao atravessa o mecanismo transacional.
   # --liberar-opus e --revert-router mexem so no settings (escrita atomica com backup datado) e,
   # no segundo, na arvore do plugin; nao precisam do snapshot de /opt/tollens inteiro.
-  --verify|--revert|--dry-run|--liberar-opus|"--liberar-opus --dry-run"|--revert-router)
+  --verify|--revert|--revert-forcar|--dry-run|--liberar-opus|"--liberar-opus --dry-run"|--revert-router)
     exec "$WORKER" "$@"
     ;;
   --enforce|"")
@@ -87,9 +87,9 @@ case "$*" in
     # snapshot e rollback ao redor. --enforce DEPENDE desse rollback; nao mova para o `exec`.
     : ;;
   --help|-h)
-    printf 'uso: %s [--dry-run|--enforce|--verify|--revert]\n  sem argumento: aplica o escopo managed (exige root)\n' "$0"; exit 0 ;;
+    printf 'uso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar]\n  sem argumento: aplica o escopo managed (exige root)\n' "$0"; exit 0 ;;
   *)
-    printf 'ERRO: argumento desconhecido: %s\nuso: %s [--dry-run|--enforce|--verify|--revert]\n' "$1" "$0" >&2; exit 2 ;;
+    printf 'ERRO: argumento desconhecido: %s\nuso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar]\n' "$1" "$0" >&2; exit 2 ;;
 esac
 
 REC="$(mktemp -d "${TMPDIR:-/tmp}/tollens-recovery.XXXXXX")" || exit 1
