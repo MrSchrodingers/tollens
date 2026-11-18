@@ -197,7 +197,7 @@ test('I3 excecao interna: chamada intacta e linha de erro sem conteudo', async (
 
 test('I4 ledger sem prompt, descricao, resultado, ficha.t nem tipo livre (canario), em shadow e enforce', async () => {
   const campos = ['ts', 'evento', 'session_id', 'tool_use_id', 'agent_type', 'role', 'chave', 'ficha', 'floor', 'tier_base', 'tier',
-    'pedido', 'aplicado', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'efetivo', 'usados', 'sinal', 'erro'];
+    'pedido', 'aplicado', 'permitido', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'efetivo', 'usados', 'sinal', 'erro'];
   for (const modo of ['shadow', 'enforce']) {
     const w = mundo({ pol: politica(modo) });
     const e = chamada({
@@ -443,31 +443,52 @@ test('C1 ledger nunca regrava arquivo alheio: nem o do proprio nome, nem as gera
   assert.ok(!r.arq.has(`${L}.1`) && !r.arq.has(`${L}.3`), 'rotacionou sobre arquivo alheio');
 });
 
-test('A1 managed nega o modelo: aplica o melhor permitido sem baixar do pedido, registra, avisa uma vez; managed ilegivel nao restringe', async () => {
+test('A1 managed nega o modelo: fallback so se atinge o piso do motor; sem nivel permitido a altura nada e aplicado; ilegivel nao restringe', async () => {
   const managed = { availableModels: ['sonnet', 'haiku'], deniedModels: ['opus', 'fable'] };
+  // piso T3 (revisor-codigo, opus): o melhor permitido (sonnet/high, T2) fica ABAIXO do piso -> nada e aplicado
   const w = mundo({ pol: politica('enforce'), managed });
   const e = chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
   const a = await agent(w, e);
-  assert.equal(a.recebido.model, 'sonnet');
+  assert.deepEqual(a.recebido, e, 'aplicou abaixo do piso do motor');
   const l = w.ledger()[0];
   assert.equal(l.pedido.model, 'opus');
-  assert.equal(l.aplicado.model, 'sonnet');
-  assert.ok(l.reasons.includes('managed_nega_modelo'));
+  assert.equal(l.aplicado.model, null);
+  assert.deepEqual([l.permitido.model, l.permitido.effort], ['sonnet', 'high']);
+  assert.ok(l.reasons.includes('managed_nega_piso') && !l.reasons.includes('managed_nega_modelo'));
   await agent(w, chamada({ subagent_type: 'revisor-codigo', model: 'haiku' }));
   assert.equal(w.avisos.length, 1);
-  // o orquestrador pediu opus: nenhum nivel permitido fica a altura, o model dele nao e rebaixado
+  // sem piso de papel (T4 por ficha): o melhor permitido (T2) atinge o piso (T0) e e aplicado
+  const w1 = mundo({ pol: politica('enforce'), managed });
+  const alto = chamada({ prompt: `${ROTA(5, 'alto', 'nao')}\ncorpo neutro`, model: 'haiku' });
+  const r1 = await agent(w1, alto);
+  assert.deepEqual([r1.recebido.model, r1.recebido.effort], ['sonnet', 'high']);
+  assert.ok(w1.ledger()[0].reasons.includes('managed_nega_modelo'));
+  // o orquestrador pediu opus: o model dele nao e rebaixado
   const w2 = mundo({ pol: politica('enforce'), managed });
-  const pedido = chamada({ subagent_type: 'revisor-codigo', model: 'opus' });
+  const pedido = chamada({ prompt: `${ROTA(5, 'alto', 'nao')}\ncorpo neutro`, model: 'opus' });
   assert.equal((await agent(w2, pedido)).recebido.model, 'opus');
-  // agent.spawn de workflow: sobe so ate o permitido
+  // agent.spawn de workflow: com piso T3 nada muda; sem piso sobe so ate o permitido
   const wf = { tool_use_id: 'toolu_wfm', prompt: 'p', description: 'revisar', subagentType: 'revisor-codigo', provider: {}, parentModel: 'claude-opus-4', background: true, fork: false, workflow: { runId: 'wf_1', agentIndex: 1 } };
-  const w3 = mundo({ pol: politica('enforce'), managed, env: { CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL: 'haiku' } });
-  assert.equal((await spawn(w3, wf)).model, 'sonnet');
+  const env = { CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL: 'haiku' };
+  assert.deepEqual(await spawn(mundo({ pol: politica('enforce'), managed, env }), wf), wf);
+  const wf2 = { ...wf, subagentType: 'general-purpose', description: 'item alto', prompt: `${ROTA(5, 'alto', 'nao')}\ncorpo` };
+  assert.equal((await spawn(mundo({ pol: politica('enforce'), managed, env }), wf2)).model, 'sonnet');
   // managed ilegivel ou ausente: falha aberta, sem restricao conhecida
   for (const m of ['{nao json', undefined]) {
     const w4 = mundo({ pol: politica('enforce'), managed: m });
     assert.equal((await agent(w4, chamada({ subagent_type: 'revisor-codigo' }))).recebido.model, 'opus');
   }
+});
+
+test('D1b managed lido no maximo a cada 30 s: mudanca dentro da janela nao vale, depois vale', async () => {
+  const w = mundo({ pol: politica('enforce'), managed: {} });
+  const rev = () => chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
+  assert.equal((await agent(w, rev())).recebido.model, 'opus');
+  w.arq.set(MAN, JSON.stringify({ deniedModels: ['opus'] }));
+  w.setAgora(NOW + 10000);
+  assert.equal((await agent(w, rev())).recebido.model, 'opus', 'releu dentro da janela');
+  w.setAgora(NOW + 31000);
+  assert.equal((await agent(w, rev())).recebido.model, 'haiku', 'nao releu depois da janela');
 });
 
 test('A2 efetivo: linha `efetivo` ligada ao tool_use_id com resolvedModel e modelsUsed; sem o campo, null', async () => {
@@ -523,6 +544,7 @@ test('A5 sinais de falha: so campos documentados e linha estruturada; texto solt
     { result: {}, text: 'nada refutado; o contrato reprovado antes foi corrigido' },
     { result: { stop_reason: 'max_tokens' }, text: 'fim' },
     { result: { status: 'async_launched' }, text: 'lancado' },
+    { result: { status: 'running' }, text: 'em curso' },
     { result: { status: 'completed' }, text: 'Estado do repositorio: limpo' },
     { result: 'REFUTADO', text: '' },
     null,
@@ -534,7 +556,7 @@ test('A5 sinais de falha: so campos documentados e linha estruturada; texto solt
     [{ result: {}, text: 'x\nResultado: REPROVADO (3 falhas)' }, 'linha_estruturada'],
     [{ result: {}, text: 'Estado: NÃO VERIFICADO' }, 'linha_estruturada'],
     [{ isError: true, result: {}, text: '' }, 'erro_ferramenta'],
-    [{ result: { status: 'failed' }, text: '' }, 'status_nao_concluido'],
+    [{ result: { status: 'failed' }, text: '' }, 'status_falha'],
   ];
   for (const [r, cod] of positivos) assert.equal(sinalDeFalha(r), cod);
 });
@@ -580,4 +602,42 @@ test('M2 linha de ledger: chave hostil vira so 16 hex ou null; texto livre em mo
   assert.equal(l({ chave: 'CANARIO-descricao-livre', evento: 'tool.call' }).chave, null);
   assert.equal(l({ chave: `${'a'.repeat(63)} `, evento: 'tool.call' }).chave, null);
   assert.equal(l({ efetivo: 'texto do resultado com espacos', evento: 'efetivo' }).efetivo, null);
+});
+
+test('D2 sessao antiga mas ATIVA nao e podada: o carimbo e de atividade; so a inativa ha 14 dias sai', async () => {
+  const w = mundo({ pol: politica('shadow'), sid: 'viva' });
+  w.st.set('router.indice', [['viva', NOW - 15 * DIA], ['inativa', NOW - 15 * DIA], ['recente', NOW - 60000]]);
+  w.st.set('router.estado.inativa', estadoVazio());
+  w.st.set('router.estado.recente', estadoVazio());
+  await agent(w, chamada({}));
+  const indice = Object.fromEntries(w.st.get('router.indice'));
+  assert.equal(indice.viva, NOW);
+  assert.ok(w.st.has('router.estado.viva') && !w.st.has('router.estado.inativa') && w.st.has('router.estado.recente'));
+});
+
+test('D3 leitura do ledger que falha uma vez nao regrava o ledger da sessao com conteudo vazio', async () => {
+  const w = mundo({ pol: politica('shadow') });
+  const L = await ledPath();
+  const antes = `${LINHA0}\n{"evento":"efetivo","ts":null,"tool_use_id":"toolu_hist"}\n`;
+  w.arq.set(L, antes);
+  const leitura = w.$.fs.read;
+  let falhou = false;
+  w.$.fs.read = async (p) => { if (p === L && !falhou) { falhou = true; throw new Error('EIO transitorio'); } return leitura(p); };
+  await agent(w, chamada({}));
+  assert.ok(w.arq.get(L).startsWith(antes), 'regravou o ledger apos erro de leitura (historico perdido)');
+  assert.ok([...w.st.keys()].some((k) => k.startsWith('router.ledger_erro.')), 'erro nao registrado');
+  await agent(w, chamada({ tool_use_id: 'toolu_d3b' }));
+  assert.ok(w.arq.get(L).startsWith(antes) && w.ledger().some((l) => l.tool_use_id === 'toolu_d3b'), 'nao voltou a anexar');
+});
+
+test('A5b revisor/refutador/auditor: REPROVADO e REFUTADO do trabalho revisado nao contam; NAO VERIFICADO conta', async () => {
+  const w = mundo({ pol: politica('shadow') });
+  const rev = chamada({ subagent_type: 'refutador', description: 'refutar a tarefa' });
+  await agent(w, rev, { result: {}, text: 'Veredito: REFUTADO\nResultado: REPROVADO' });
+  assert.ok(!w.st.get('router.estado.sess-1')?.falhasPorChave || Object.keys(w.st.get('router.estado.sess-1').falhasPorChave).length === 0);
+  await agent(w, rev, { result: {}, text: 'Estado: NAO VERIFICADO' });
+  assert.equal(Object.keys(w.st.get('router.estado.sess-1').falhasPorChave).length, 1);
+  const aut = chamada({ subagent_type: 'general-purpose', description: 'autor' });
+  await agent(w, aut, { result: {}, text: 'Veredito: REPROVADO' });
+  assert.equal(Object.keys(w.st.get('router.estado.sess-1').falhasPorChave).length, 2);
 });

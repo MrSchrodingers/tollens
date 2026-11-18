@@ -9,6 +9,7 @@ const SEMANA_MS = 7 * 86400000;
 
 const plain = (o) => o !== null && typeof o === 'object' && !Array.isArray(o);
 const tierIdx = (t) => TIERS.indexOf(t);
+export const nivelIdx = tierIdx;
 
 // (a) sha256 hex dos primeiros 200 caracteres do texto normalizado de `subagentType\ndescricao`.
 export async function derivarChave(subagentType, descricao) {
@@ -116,17 +117,21 @@ export function estadoDoRitmo(p, policy) {
   return 'dentro';
 }
 
-// Sinais de falha pelo RESULTADO do Agent, so de formato documentado: `isError` do resultado, `status`
-// do registro do Agent (`completed` e `async_launched` sao normais) e linha ESTRUTURADA no inicio de
-// linha. Texto solto no meio de uma frase nao conta. Devolve so um codigo, nunca texto.
+// Sinais de falha pelo RESULTADO do Agent, so de formato documentado: `isError` do resultado, `status` do
+// registro do Agent numa lista EXPLICITA de falha (status desconhecido, como `running`, nao conta) e linha
+// ESTRUTURADA no inicio de linha. Texto solto no meio de uma frase nao conta. Para papel de revisor,
+// refutador ou auditor so `NAO VERIFICADO` conta: REPROVADO e REFUTADO sao do trabalho revisado, nao do
+// revisor. Devolve so um codigo, nunca texto.
 const LINHA_ESTRUTURADA = /^(Estado|Veredito|Resultado):[ \t]*(NAO VERIFICADO|N\u00c3O VERIFICADO|REFUTADO|REPROVADO)/im;
-export function sinalDeFalha(res) {
+const LINHA_NAO_VERIFICADO = /^(Estado|Veredito|Resultado):[ \t]*(NAO VERIFICADO|N\u00c3O VERIFICADO)/im;
+const STATUS_FALHA = ['failed', 'error', 'killed', 'cancelled', 'canceled', 'timed_out'];
+export function sinalDeFalha(res, { revisor = false } = {}) {
   if (!plain(res)) return null;
   if (res.isError === true) return 'erro_ferramenta';
   const st = plain(res.result) ? res.result.status : undefined;
-  if (typeof st === 'string' && st !== 'completed' && st !== 'async_launched') return 'status_nao_concluido';
+  if (typeof st === 'string' && STATUS_FALHA.includes(st)) return 'status_falha';
   const texto = typeof res.text === 'string' ? res.text.slice(0, 200000) : '';
-  return LINHA_ESTRUTURADA.test(texto) ? 'linha_estruturada' : null;
+  return (revisor ? LINHA_NAO_VERIFICADO : LINHA_ESTRUTURADA).test(texto) ? 'linha_estruturada' : null;
 }
 
 export const NOTA_FALHA = 'router: sinal de falha; a proxima tentativa desta tarefa sobe um nivel';
@@ -179,6 +184,7 @@ export function linhaDeLedger(c) {
     tier: TIERS.includes(c.tier) ? c.tier : null,
     pedido: { model: alias(c.pedido && c.pedido.model), effort: efforts.includes(c.pedido && c.pedido.effort) ? c.pedido.effort : null },
     aplicado: { model: alias(c.aplicado && c.aplicado.model), effort: efforts.includes(c.aplicado && c.aplicado.effort) ? c.aplicado.effort : null },
+    permitido: { model: alias(c.permitido && c.permitido.model), effort: efforts.includes(c.permitido && c.permitido.effort) ? c.permitido.effort : null },
     mode: ['off', 'shadow', 'enforce'].includes(c.mode) ? c.mode : null,
     modo_efetivo: ['off', 'shadow', 'enforce'].includes(c.modo_efetivo) ? c.modo_efetivo : null,
     pace: c.pace && ['abaixo', 'dentro', 'acima'].includes(c.pace.estado) ? { estado: c.pace.estado, p: num(c.pace.p) } : null,
@@ -202,7 +208,7 @@ export function nomeDoErro(err) {
 // Campos que uma linha do ledger pode ter. Um arquivo so e tratado como do ledger se a primeira linha for
 // um objeto JSON com `evento` e so estes campos: o mod nunca anexa a (nem rotaciona sobre) arquivo alheio.
 export const CAMPOS_LEDGER = ['ts', 'evento', 'session_id', 'tool_use_id', 'agent_type', 'role', 'chave', 'ficha', 'floor', 'tier_base',
-  'tier', 'pedido', 'aplicado', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'efetivo', 'usados', 'sinal', 'erro'];
+  'tier', 'pedido', 'aplicado', 'permitido', 'mode', 'modo_efetivo', 'pace', 'capped', 'subida_concedida', 'reasons', 'efetivo', 'usados', 'sinal', 'erro'];
 export function ehDoLedger(texto) {
   if (typeof texto !== 'string') return false;
   if (texto === '') return true;

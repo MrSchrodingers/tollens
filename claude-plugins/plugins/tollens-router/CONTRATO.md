@@ -184,20 +184,32 @@ as chaves managed (`availableModels`, `deniedModels`): tudo isso e do mod.
   `agent.spawn` (e so sobe: baseline desconhecido nunca e tocado). NAO VERIFICADO: se o runtime respeita o
   `model` do hook quando `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` esta definida (o d.ts diz que o modelo
   forcado pela sessao vence o do hook).
-- **Managed.** Lê `availableModels` e `deniedModels`. Se o modelo escolhido esta negado ou ausente, aplica o
-  maior nivel emitivel abaixo do decidido cujo modelo e permitido e que nao fica abaixo do `model` pedido
-  pelo orquestrador; sem candidato, mantem a chamada. Registra `managed_nega_modelo` (o modelo desejado fica
-  em `pedido`) e avisa com `$.ui.notice` uma vez por sessao. Arquivo ilegivel: sem restricao (falha aberta).
-  O nivel alternativo nao reconfere a medicao de qualidade da politica.
+- **Managed.** Le `availableModels` e `deniedModels` (cache de 30 s por sessao; ilegivel ou ausente: sem
+  restricao, falha aberta). O casamento e por token: `claude-opus-5` negado nega o alias `opus` inteiro
+  (conservador); `availableModels` nao vazio sem o alias tambem o nega. Se o modelo escolhido pelo motor esta
+  negado, o mod busca o maior nivel emitivel abaixo do decidido cujo modelo e permitido e que nao fica abaixo
+  do `model` pedido pelo orquestrador, e SO o aplica se ele e >= ao piso (`floor`) decidido pelo motor
+  (`managed_nega_modelo`). Se nenhum nivel permitido atinge o piso, NADA e aplicado: a chamada segue como o
+  orquestrador pediu, inclusive com a linha `@@ROTA` (`managed_nega_piso`); o modelo desejado fica em
+  `pedido` e o melhor permitido em `permitido`. Nos dois casos avisa com `$.ui.notice` uma vez por sessao. O
+  nivel alternativo nao reconfere a medicao de qualidade da politica.
+  **Conflito atual (conhecido):** a politica emite `opus` em T3 e T4 e o managed de hoje nega `opus`
+  (`availableModels=[sonnet, haiku]`, `deniedModels` com `opus` e `fable`); enquanto o operador nao liberar o
+  Opus, toda decisao de piso T3 ou T4 cai em `managed_nega_piso` e nao e aplicada.
 - **Estado.** `$.store`, chave `router.estado.<session_id>` (falhasPorChave, subidasConcedidas, ordem,
   autorTierPorChave, chavesCriticas), aparado a 1000 entradas por estrutura antes de `decide`; indice
-  `router.indice` com as ultimas 50 sessoes (sessao com 14 dias ou mais, e as excedentes, sao apagadas ao
-  escrever uma sessao nova). Falha de `store.set` nao derruba o roteamento: `persistencia_falhou` e aviso.
+  `router.indice` com as ultimas 50 sessoes. O carimbo e de ATIVIDADE (refrescado a cada escrita, no maximo
+  uma vez por hora): so sessao inativa ha 14 dias ou mais, e as excedentes, sao apagadas ao escrever. Falha de `store.set` nao derruba o roteamento: `persistencia_falhou` e aviso.
   Sem `session_id` nada e persistido (`sem_sessao_id`).
 - **Ledger.** Um arquivo por SESSAO: `router-ledger-<16 hex do sha256 do session_id>.jsonl` (sem sessao:
   `router-ledger-sem-sessao.jsonl`), rotacao em 3 geracoes por arquivo (`.1` a `.3`, acima de 2 MiB).
   Consumidores (model-honor C5, painel) leem o glob `router-ledger-*.jsonl*`. So anexa a arquivo vazio ou
   cuja primeira linha seja de ledger; nunca regrava arquivo alheio nem rotaciona sobre geracao alheia.
+  Leitura do ledger que FALHA (arquivo existe) nao grava nada: o erro vai ao store
+  (`router.ledger_erro.<16 hex>`) em vez de regravar o arquivo vazio. O diretorio vem de `HOME` (o ambiente
+  decide o diretorio, aceito: o mod so gera nome proprio e nunca regrava arquivo alheio). `$.fs` nao oferece
+  apagar arquivo: os `router-ledger-*.jsonl*` de sessoes podadas NAO sao expirados pelo mod (acumulam, no
+  maximo 4 arquivos de 2 MiB por sessao; limpeza fica para o operador ou o consumidor do glob).
   `$.fs` nao tem modo de arquivo: o ledger nao e 0600 (umask do usuario). A escrita e read+write nao atomica:
   a fila serializa dentro do processo e o arquivo por sessao evita a corrida entre processos.
   Campos: `ts, evento, session_id, tool_use_id, agent_type, role, chave (16 hex), ficha (c, r, v), floor,
@@ -205,14 +217,16 @@ as chaves managed (`availableModels`, `deniedModels`): tudo isso e do mod.
   usados, sinal, erro`. `ficha.t` NAO vai ao ledger (texto livre do orquestrador). Eventos: `tool.call`,
   `agent.spawn`, `efetivo` (apos o resultado: `resolvedModel` e `modelsUsed` do Agent, ou `null`; junta por
   `tool_use_id` com o model-honor), `resultado` (sinal de falha).
-- **Sinais de falha.** So de formato documentado: `isError` do resultado, `status` do registro do Agent
-  diferente de `completed` e `async_launched`, e linha estruturada no inicio de linha
-  (`Estado|Veredito|Resultado: NAO VERIFICADO|REFUTADO|REPROVADO`). Texto solto nao conta. O mod nao
+- **Sinais de falha.** So de formato documentado: `isError` do resultado, `status` do registro do Agent numa
+  lista explicita de falha (`failed`, `error`, `killed`, `cancelled`, `timed_out`; `running` e desconhecidos
+  nao contam) e linha estruturada no inicio de linha (`Estado|Veredito|Resultado: NAO VERIFICADO|REFUTADO|
+  REPROVADO`). Para papel de revisor, refutador ou auditor so `NAO VERIFICADO` conta (REPROVADO e REFUTADO
+  sao do trabalho revisado). Texto solto nao conta. O mod nao
   re-executa; em enforce acrescenta a nota ao resultado.
 - **Ritmo.** Leitura `seven_day` descartada (estado `dentro`) com `resetsAt` ausente, no passado ou alem de
   7 dias, ou `percentUsed` fora de [0,100]; vale por 30 minutos desde a medicao.
 - **Codigos de reasons do mod:** `politica_ausente`, `politica_ilegivel`, `history_aparado`,
-  `modelo_fora_da_allowlist`, `sentinela_off`, `managed_nega_modelo`, `persistencia_falhou`,
+  `modelo_fora_da_allowlist`, `sentinela_off`, `managed_nega_modelo`, `managed_nega_piso`, `persistencia_falhou`,
   `sem_sessao_id`.
 - **Nao verificado em runtime:** carregamento real (allowManagedHooksOnly), `{...res, context}` como nota,
   nomes dos campos da chamada Agent, criacao do diretorio do ledger por `$.fs.write`, `\p{}` e `normalize`
