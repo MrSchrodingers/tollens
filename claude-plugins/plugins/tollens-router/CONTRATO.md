@@ -169,8 +169,9 @@ as chaves managed (`availableModels`, `deniedModels`): tudo isso e do mod.
 
 - **Caminhos FIXOS em producao.** Politica `/etc/claude-code/router-policy.json`, sentinela
   `/etc/claude-code/router-off` (presente = `off`, lida a cada decisao), managed-settings
-  `/etc/claude-code/managed-settings.json` (somente leitura), ledger sob `${HOME}/.claude/logs/`. Nenhum
-  caminho vem de variavel de ambiente nem de settings do repositorio. `criarMod(config)` (injecao explicita
+  `/etc/claude-code/managed-settings.json` (somente leitura): constantes, sem variavel de ambiente nem
+  settings do repositorio. O ledger fica sob `${HOME}/.claude/logs/`: o DIRETORIO vem de `HOME` (lido por
+  `$.env`; `$.paths` nao e usado), o nome do arquivo e sempre proprio do mod. `criarMod(config)` (injecao explicita
   de `politica`, `sentinela`, `managed`, `ledgerDir`) existe so para teste; o `register` instalado usa os
   padroes. A sentinela padrao vale mesmo com outra sentinela injetada.
 - **Modos.** `shadow` e `off` nao alteram a chamada (a linha `@@ROTA` permanece); so `enforce` com
@@ -198,20 +199,33 @@ as chaves managed (`availableModels`, `deniedModels`): tudo isso e do mod.
   Opus, toda decisao de piso T3 ou T4 cai em `managed_nega_piso` e nao e aplicada.
 - **Estado.** `$.store`, chave `router.estado.<session_id>` (falhasPorChave, subidasConcedidas, ordem,
   autorTierPorChave, chavesCriticas), aparado a 1000 entradas por estrutura antes de `decide`; indice
-  `router.indice` com as ultimas 50 sessoes. O carimbo e de ATIVIDADE (refrescado a cada escrita, no maximo
-  uma vez por hora): so sessao inativa ha 14 dias ou mais, e as excedentes, sao apagadas ao escrever. Falha de `store.set` nao derruba o roteamento: `persistencia_falhou` e aviso.
+  `router.indice` com as ultimas 50 sessoes. O carimbo e de ATIVIDADE: refrescado em toda chamada ativa
+  (decisao, com ou sem mudanca de estado, e registro de falha), com no maximo uma escrita do indice por
+  hora; so sessao inativa ha 14 dias ou mais, e as excedentes, sao apagadas ao escrever. Ordem dos efeitos:
+  `store.set` do estado, `store.set` do indice e so depois `store.delete` das sessoes removidas; falha de
+  `delete` deixa estado orfao e nao impede a persistencia da chamada atual. Falha de `store.set` nao derruba o roteamento: `persistencia_falhou` e aviso.
   Sem `session_id` nada e persistido (`sem_sessao_id`).
 - **Ledger.** Um arquivo por SESSAO: `router-ledger-<16 hex do sha256 do session_id>.jsonl` (sem sessao:
   `router-ledger-sem-sessao.jsonl`), rotacao em 3 geracoes por arquivo (`.1` a `.3`, acima de 2 MiB).
   Consumidores (model-honor C5, painel) leem o glob `router-ledger-*.jsonl*`. So anexa a arquivo vazio ou
   cuja primeira linha seja de ledger; nunca regrava arquivo alheio nem rotaciona sobre geracao alheia.
-  Leitura do ledger que FALHA (arquivo existe) nao grava nada: o erro vai ao store
-  (`router.ledger_erro.<16 hex>`) em vez de regravar o arquivo vazio. O diretorio vem de `HOME` (o ambiente
-  decide o diretorio, aceito: o mod so gera nome proprio e nunca regrava arquivo alheio). `$.fs` nao oferece
+  Leitura do ledger que FALHA, ou que devolve vazio de arquivo que existe (o mod nunca grava arquivo
+  vazio; vazio de arquivo existente e tratado como escrita concorrente em curso), nao grava nada: o erro vai
+  ao store (`router.ledger_erro.<16 hex>`) em vez de regravar o arquivo com conteudo vazio. Rotacao
+  bloqueada por geracao alheia ou ilegivel tambem registra `router.ledger_erro` e nao grava a linha. A
+  rotacao desloca so o prefixo contiguo de geracoes ocupadas: uma lacuna (por exemplo `.1` ausente e `.2`
+  presente) nao duplica conteudo nem sobrescreve geracao mais antiga. Consequencia: arquivo de ledger
+  existente e vazio (criado por fora) nunca e escrito pelo mod; remover o arquivo resolve. O diretorio vem
+  de `HOME` (o ambiente decide o diretorio, aceito: o mod so gera nome proprio e nunca regrava arquivo alheio). `$.fs` nao oferece
   apagar arquivo: os `router-ledger-*.jsonl*` de sessoes podadas NAO sao expirados pelo mod (acumulam, no
   maximo 4 arquivos de 2 MiB por sessao; limpeza fica para o operador ou o consumidor do glob).
-  `$.fs` nao tem modo de arquivo: o ledger nao e 0600 (umask do usuario). A escrita e read+write nao atomica:
-  a fila serializa dentro do processo e o arquivo por sessao evita a corrida entre processos.
+  `$.fs` nao tem modo de arquivo: o ledger nao e 0600 (umask do usuario). LIMITACAO: as operacoes de
+  `$.fs` que o mod usa (`read`, `write`, `exists`) nao incluem anexar (append) nem tamanho; a escrita e
+  read+write nao atomica. A fila serializa SO dentro do processo. O arquivo por sessao nao evita a corrida
+  entre processos: dois processos da MESMA sessao, e todos os processos sem `session_id`
+  (`router-ledger-sem-sessao.jsonl` e compartilhado), podem perder linhas do ledger (leitura vazia de arquivo
+  existente nao regrava, mas uma leitura parcial ou o ultimo a gravar vence). O ledger e evidencia de melhor
+  esforco, nao registro transacional.
   Campos: `ts, evento, session_id, tool_use_id, agent_type, role, chave (16 hex), ficha (c, r, v), floor,
   tier_base, tier, pedido, aplicado, mode, modo_efetivo, pace, capped, subida_concedida, reasons, efetivo,
   usados, sinal, erro`. `ficha.t` NAO vai ao ledger (texto livre do orquestrador). Eventos: `tool.call`,
@@ -226,11 +240,30 @@ as chaves managed (`availableModels`, `deniedModels`): tudo isso e do mod.
 - **Ritmo.** Leitura `seven_day` descartada (estado `dentro`) com `resetsAt` ausente, no passado ou alem de
   7 dias, ou `percentUsed` fora de [0,100]; vale por 30 minutos desde a medicao.
 - **Codigos de reasons do mod:** `politica_ausente`, `politica_ilegivel`, `history_aparado`,
-  `modelo_fora_da_allowlist`, `sentinela_off`, `managed_nega_modelo`, `managed_nega_piso`, `persistencia_falhou`,
+  `sentinela_off`, `managed_nega_modelo`, `managed_nega_piso`, `persistencia_falhou`,
   `sem_sessao_id`.
 - **Nao verificado em runtime:** carregamento real (allowManagedHooksOnly), `{...res, context}` como nota,
   nomes dos campos da chamada Agent, criacao do diretorio do ledger por `$.fs.write`, `\p{}` e `normalize`
   no sandbox do mod.
+  **Managed vivo (conferido em 2026-11-18 em `/etc/claude-code/managed-settings.json`):**
+  `allowManagedHooksOnly=true` e `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL=haiku`. Com `allowManagedHooksOnly`
+  ativo o runtime pode NAO carregar este mod (hook de plugin) e, com a variavel definida, o modelo forcado
+  pela sessao pode vencer o `model` definido em `agent.spawn`. Nenhuma das duas hipoteses foi observada
+  nem descartada. Aceite: primeiro `claude plugin list` mostrando o mod carregado e ledger
+  `router-ledger-*.jsonl` NAO vazio apos uma delegacao real (`efetivo` com `resolvedModel`); sem isso o
+  estado do mod em producao e NAO VERIFICADO.
+- **Validade da politica (runbook).** A politica entregue (`router-policy.json`) vence em `2026-11-30T00:00:00Z`.
+  Depois do vencimento o motor decide em `shadow` (politica vencida) e um `enforce` degrada a `shadow` SEM
+  alerta: o mod nao avisa o operador e nenhuma chamada e alterada. Verificacao operacional: antes de cada
+  janela de enforce e antes de 2026-11-30, conferir `valid_until` e `mode` da politica efetivamente instalada
+  em `/etc/claude-code/router-policy.json` (por exemplo `jq '.valid_until, .mode'`) e renovar `valid_until`
+  (maximo 400 dias a frente) na politica entregue e na instalada. A degradacao aparece no ledger
+  como `mode=shadow` com o motivo `politica_vencida` em `reasons`; nao ha outro alerta.
+- **Decisoes pendentes do operador (nao alteradas nesta rodada).** (1) Regra de piso e `tier_base` no
+  fallback sob managed: o fallback ignora `tier_base`, de modo que uma ficha de nivel alto pode cair em
+  `sonnet` quando o melhor permitido atinge apenas o piso do motor. (2) T3 e T4 sob o managed atual: a
+  politica emite `opus` e o managed nega `opus`; manter `managed_nega_piso` (nada aplicado) ou liberar o
+  Opus no managed e decisao do operador.
 
 ## Limites conhecidos
 

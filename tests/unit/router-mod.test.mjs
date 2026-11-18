@@ -641,3 +641,97 @@ test('A5b revisor/refutador/auditor: REPROVADO e REFUTADO do trabalho revisado n
   await agent(w, aut, { result: {}, text: 'Veredito: REPROVADO' });
   assert.equal(Object.keys(w.st.get('router.estado.sess-1').falhasPorChave).length, 2);
 });
+
+// ------------------------------------------------------------------ rodada 4
+
+test('R4a carimbo de atividade refrescado em toda chamada ativa (estado inalterado; registrarFalha) e a escrita de outra sessao nao poda a viva', async () => {
+  const chaveFixa = await derivarChave('general-purpose', 'tarefa fixa');
+  const seed = { falhasPorChave: { [chaveFixa]: 1 }, subidasConcedidas: [chaveFixa], ordem: [chaveFixa], autorTierPorChave: { [chaveFixa]: 'T3' }, chavesCriticas: [] };
+  const fixa = (id) => chamada({ tool_use_id: id, description: 'tarefa fixa', prompt: `${ROTA(3, 'medio', 'nao')}\nfaca` });
+  // (1) chamada sem mudanca de estado
+  const w = mundo({ pol: politica('shadow'), sid: 'viva' });
+  w.st.set('router.indice', [['viva', NOW - 15 * DIA]]);
+  w.st.set('router.estado.viva', seed);
+  await agent(w, fixa('t1'));
+  assert.equal(Object.fromEntries(w.st.get('router.indice')).viva, NOW, 'carimbo nao refrescado sem mudanca de estado');
+  const o2 = mundo({ pol: politica('shadow'), sid: 'outra' });
+  for (const k of ['get', 'set', 'delete']) o2.$.store[k] = w.$.store[k];
+  await agent(o2, chamada({ description: 'outra tarefa' }));
+  assert.ok(w.st.has('router.estado.viva'), 'escrita de outra sessao apagou o estado da sessao viva');
+  // (2) falha do resultado: o relogio avanca durante a chamada; o carimbo (ainda valido no decidir) e refrescado em registrarFalha
+  const f = mundo({ pol: politica('shadow'), sid: 'viva' });
+  f.st.set('router.indice', [['viva', NOW - 30 * 60000]]);
+  const h = f.hooks.find((x) => x.ev === 'tool.call');
+  await h.fn(f.$, clone(fixa('t2')), async () => { f.setAgora(NOW + 2 * 3600000); return { result: {}, text: 'Estado: NAO VERIFICADO' }; });
+  assert.equal(Object.fromEntries(f.st.get('router.indice')).viva, NOW + 2 * 3600000, 'registrarFalha nao refrescou o carimbo');
+});
+
+test('R4b falha de store.delete na poda nao impede a persistencia do estado da chamada atual; gravacoes precedem as remocoes', async () => {
+  const w = mundo({ pol: politica('shadow'), sid: 'atual' });
+  const indice = [];
+  for (let i = 0; i < 55; i++) { indice.push([`s${i}`, NOW - (60 - i) * 60000]); w.st.set(`router.estado.s${i}`, estadoVazio()); }
+  w.st.set('router.indice', indice);
+  const apagar = w.$.store.delete;
+  w.$.store.delete = async (k) => { await apagar(k); throw new Error('EIO delete'); };
+  await agent(w, chamada({ description: 'chamada atual' }));
+  assert.ok(w.st.has('router.estado.atual'), 'estado da chamada atual nao persistido');
+  assert.ok(Object.fromEntries(w.st.get('router.indice')).atual === NOW);
+  assert.ok(!w.ledger()[0].reasons.includes('persistencia_falhou'), 'falha de delete virou falha de persistencia');
+  assert.ok(w.eventos.filter((x) => x.startsWith('store.delete:')).length >= 5, 'uma falha de delete interrompeu as demais remocoes');
+  const primeiraRemocao = w.eventos.findIndex((x) => x.startsWith('store.delete:'));
+  assert.ok(primeiraRemocao !== -1 && w.eventos.lastIndexOf('store.set') < primeiraRemocao, 'remocao antes da gravacao');
+});
+
+test('R4c ledger: leitura que devolve vazio de arquivo existente (escrita em curso) nao e regravada; registra erro e volta a anexar', async () => {
+  const w = mundo({ pol: politica('shadow') });
+  const L = await ledPath();
+  const antes = `${LINHA0}\n{"evento":"efetivo","ts":null,"tool_use_id":"toolu_hist"}\n`;
+  w.arq.set(L, antes);
+  const leitura = w.$.fs.read;
+  let vazio = true;
+  w.$.fs.read = async (p) => { if (p === L && vazio) { vazio = false; return ''; } return leitura(p); };
+  await agent(w, chamada({}));
+  assert.ok(w.arq.get(L).startsWith(antes), 'regravou o ledger apos leitura vazia (historico perdido)');
+  assert.ok([...w.st.keys()].some((k) => k.startsWith('router.ledger_erro.')), 'leitura vazia nao registrada');
+  await agent(w, chamada({ tool_use_id: 'toolu_r4c' }));
+  assert.ok(w.arq.get(L).startsWith(antes) && w.ledger().some((l) => l.tool_use_id === 'toolu_r4c'));
+});
+
+test('R4d rotacao: geracao alheia registra o erro; lacuna entre geracoes nao duplica conteudo nem sobrescreve geracao mais antiga', async () => {
+  const L = await ledPath();
+  const grande = `${LINHA0}\n${'a'.repeat(2097153)}\n`;
+  const alheio = '# ~/.bashrc\nexport X=1\n';
+  const bloq = mundo({ pol: politica('shadow') });
+  bloq.arq.set(L, grande);
+  bloq.arq.set(`${L}.2`, alheio);
+  await agent(bloq, chamada({}));
+  assert.equal(bloq.arq.get(L), grande);
+  assert.ok([...bloq.st.keys()].some((k) => k.startsWith('router.ledger_erro.')), 'rotacao bloqueada sem registro');
+  const G1 = `${LINHA0}\nG1\n`;
+  const G2 = `${LINHA0}\nG2\n`;
+  const G3 = `${LINHA0}\nG3\n`;
+  for (const [ger, esperado] of [
+    [{ 2: G2 }, { 1: grande, 2: G2 }], // .1 ausente: .2 nao desce para .3
+    [{ 1: G1, 3: G3 }, { 1: grande, 2: G1, 3: G3 }], // .2 ausente: .3 permanece
+  ]) {
+    const w = mundo({ pol: politica('shadow') });
+    w.arq.set(L, grande);
+    for (const [g, t] of Object.entries(ger)) w.arq.set(`${L}.${g}`, t);
+    await agent(w, chamada({}));
+    for (const g of [1, 2, 3]) assert.equal(w.arq.get(`${L}.${g}`), esperado[g], `geracao .${g}`);
+  }
+});
+
+test('R4e managed: availableModels sozinho nega, token em deniedModels nega o alias, e o fork case-insensitive nao recebe model', async () => {
+  for (const managed of [{ availableModels: ['sonnet', 'haiku'] }, { deniedModels: ['claude-opus-5'] }]) {
+    const w = mundo({ pol: politica('enforce'), managed });
+    const e = chamada({ subagent_type: 'revisor-codigo', model: 'haiku' });
+    const { recebido } = await agent(w, e);
+    assert.deepEqual(recebido, e, JSON.stringify(managed));
+    assert.ok(w.ledger()[0].reasons.includes('managed_nega_piso'), JSON.stringify(managed));
+  }
+  for (const tipo of ['Fork', 'FORK']) {
+    const e = chamada({ subagent_type: tipo, model: 'haiku' });
+    assert.deepEqual((await agent(mundo({ pol: politica('enforce') }), e)).recebido, e, tipo);
+  }
+});

@@ -6,8 +6,9 @@
 // Sem `.catch` nos hooks de proposito: o runtime pula um hook que lanca ou estoura o prazo e a chamada
 // segue sem o mod, que e o fail-open desejado.
 //
-// CAMINHOS FIXOS em producao (politica, sentinela, managed-settings; ledger sob ~/.claude/logs): nenhum vem
-// de variavel de ambiente nem de settings do repositorio. `criarMod(config)` existe so para teste, com
+// CAMINHOS FIXOS em producao: politica, sentinela e managed-settings sao constantes (nenhum vem de variavel
+// de ambiente nem de settings do repositorio). So o diretorio do ledger vem de HOME (${HOME}/.claude/logs,
+// via `$.env`); o nome do arquivo e sempre proprio do mod. `criarMod(config)` existe so para teste, com
 // injecao explicita; o `register` exportado usa apenas os padroes fixos.
 //
 // O mod NAO altera variavel de ambiente. Para agente de workflow ele define `model` em `agent.spawn`.
@@ -100,6 +101,8 @@ async function gravarLedger($, cfg, est, sess, linha) {
     await serializar(est, 'filaLedger', async () => {
       // null = o arquivo existe e a leitura falhou (erro transitorio): NAO escrever, para nao regravar o
       // ledger da sessao com conteudo vazio. Ausente (ou existencia desconhecida e leitura falha) = ''.
+      // O mod nunca grava arquivo vazio: leitura vazia de arquivo que existe e escrita concorrente em curso
+      // (truncada e ainda nao gravada), nao arquivo vazio valido; tambem vira null.
       const ler = async (p) => {
         let existe = null;
         try {
@@ -109,26 +112,31 @@ async function gravarLedger($, cfg, est, sess, linha) {
         }
         if (existe === false) return '';
         try {
-          return await $.fs.read(p);
+          const t = await $.fs.read(p);
+          return existe === true && t === '' ? null : t;
         } catch {
           return existe === true ? null : '';
         }
       };
-      let atual = await ler(arq);
-      if (atual === null) {
+      const erro = async () => {
         try {
           await $.store.set(`router.ledger_erro.${arq.slice(arq.lastIndexOf('-') + 1, arq.lastIndexOf('.'))}`, { ts: Date.now() });
         } catch {
           // sem onde registrar: a chamada segue
         }
-        return;
-      }
+      };
+      let atual = await ler(arq);
+      if (atual === null) return erro();
       if (!ehDoLedger(atual)) return;
       if (atual.length > ROTACAO_BYTES) {
         const geracoes = [];
         for (let g = 1; g <= GERACOES; g++) geracoes.push(await ler(`${arq}.${g}`));
-        if (!geracoes.every((g) => g !== null && ehDoLedger(g))) return;
-        for (let g = GERACOES; g >= 2; g--) if (geracoes[g - 2] !== '') await $.fs.write(`${arq}.${g}`, geracoes[g - 2]);
+        if (!geracoes.every((g) => g !== null && ehDoLedger(g))) return erro();
+        // desloca so o prefixo contiguo de geracoes ocupadas (.1 a .n) para .2 a .n+1; uma lacuna nao
+        // duplica conteudo nem sobrescreve geracao mais antiga
+        let n = 0;
+        while (n < GERACOES && geracoes[n] !== '') n++;
+        for (let g = Math.min(n + 1, GERACOES); g >= 2; g--) await $.fs.write(`${arq}.${g}`, geracoes[g - 2]);
         await $.fs.write(`${arq}.1`, atual);
         atual = '';
       }
@@ -166,15 +174,23 @@ const ehRevisor = (policy, papel) => {
   return alvo !== '' && Array.isArray(policy && policy.reviewer_roles) && policy.reviewer_roles.some((r) => normalizarPapel(r) === alvo);
 };
 
-// Indice das ultimas 50 sessoes no store. O carimbo e de ATIVIDADE: refrescado a cada escrita (no maximo
-// uma vez por hora); so sessao inativa ha 14 dias ou mais e as excedentes sao podadas.
+// Indice das ultimas 50 sessoes no store. O carimbo e de ATIVIDADE: refrescado em toda chamada ativa (decisao
+// e registro de falha; no maximo uma escrita do indice por hora); so sessao inativa ha 14 dias ou mais e as
+// excedentes sao podadas.
 async function registrarSessao($, sess, agora) {
   const indice = await $.store.get('router.indice');
   const atual = Array.isArray(indice) ? indice.find((x) => Array.isArray(x) && x[0] === sess) : undefined;
   if (atual && agora >= atual[1] && agora - atual[1] < 3600000) return;
   const { indice: novo, remover } = podarSessoes(indice, sess, agora);
   await $.store.set('router.indice', novo);
-  for (const s of remover) await $.store.delete(`router.estado.${s}`);
+  // remocao depois da gravacao e sem propagar: falha de delete deixa estado orfao, nunca perde o da chamada
+  for (const s of remover) {
+    try {
+      await $.store.delete(`router.estado.${s}`);
+    } catch {
+      // estado orfao de sessao ja fora do indice
+    }
+  }
 }
 
 // Decide uma delegacao. Persiste o estado ANTES de devolver (protocolo d), em qualquer modo. Falha de
@@ -217,14 +233,12 @@ async function decidir($, cfg, est, c) {
       if (!ehRevisor(policy, c.subagentType)) estado.autorTierPorChave[chave] = d.tier;
       const critica = reasons.includes('piso_superficie_de_risco') || ehRevisor(policy, c.subagentType);
       if (critica && !estado.chavesCriticas.includes(chave)) estado.chavesCriticas.push(chave);
-      if (JSON.stringify(estado) !== antes) {
-        try {
-          await registrarSessao($, sess, agora);
-          await $.store.set(key, aparar(estado, chave).history);
-        } catch {
-          reasons.push('persistencia_falhou');
-          avisar($, est, 'persistencia', c.tool_use_id, 'router: falha ao gravar o estado; a decisao foi aplicada sem persistir');
-        }
+      try {
+        if (JSON.stringify(estado) !== antes) await $.store.set(key, aparar(estado, chave).history);
+        await registrarSessao($, sess, agora);
+      } catch {
+        reasons.push('persistencia_falhou');
+        avisar($, est, 'persistencia', c.tool_use_id, 'router: falha ao gravar o estado; a decisao foi aplicada sem persistir');
       }
     }
     const pace = { estado: estadoRitmo, p: ritmoVigente(est.ritmo, agora) };
@@ -245,8 +259,8 @@ function linhaDaDecisao(r, aplicado, ficha) {
 // se nenhum nivel permitido atinge o piso (ou o pedido do orquestrador), nada e aplicado (managed_nega_piso).
 function escolherAplicacao(r, original) {
   const al = r.policy && Array.isArray(r.policy.model_allowlist) ? r.policy.model_allowlist : [];
-  const vazio = { alvo: null, negado: false, semPiso: false, fora: false, permitido: null };
-  if (r.d.aplicar !== true || !ALIASES.includes(r.d.model) || !al.includes(r.d.model)) return { ...vazio, fora: true };
+  const vazio = { alvo: null, negado: false, semPiso: false, permitido: null };
+  if (r.d.aplicar !== true || !ALIASES.includes(r.d.model) || !al.includes(r.d.model)) return vazio;
   if (modeloPermitido(r.d.model, r.managed)) return { ...vazio, alvo: { model: r.d.model, effort: r.d.effort } };
   const melhor = melhorPermitido(r.policy, r.d.tier, undefined, r.managed);
   const alt = melhorPermitido(r.policy, r.d.tier, original, r.managed);
@@ -265,6 +279,11 @@ async function registrarFalha($, est, r) {
     estado.falhasPorChave[r.chave] = (estado.falhasPorChave[r.chave] || 0) + 1;
     if (!estado.ordem.includes(r.chave)) estado.ordem.push(r.chave);
     await $.store.set(key, aparar(estado, r.chave).history);
+    try {
+      await registrarSessao($, r.sess, await $.clock.now());
+    } catch {
+      // o carimbo e cortesia de retencao: a falha ja foi registrada
+    }
   });
 }
 
@@ -296,22 +315,19 @@ function instalar(on, cfg) {
     try {
       const ehFork = typeof e.subagent_type === 'string' && e.subagent_type.toLowerCase() === 'fork';
       if (r.d.aplicar && typeof e.prompt === 'string' && !ehFork) {
-        const { alvo, negado, semPiso, fora, permitido } = escolherAplicacao(r, e.model);
+        const { alvo, negado, semPiso, permitido } = escolherAplicacao(r, e.model);
         r.permitido = permitido;
-        if (fora) r.reasons.push('modelo_fora_da_allowlist');
         if (negado) {
           r.reasons.push(semPiso ? 'managed_nega_piso' : 'managed_nega_modelo');
           avisar($, est, semPiso ? 'managed_piso' : 'managed', e.tool_use_id, semPiso
             ? `router: o managed nega o modelo ${r.d.model} e nenhum nivel permitido atinge o piso; a chamada segue como pedida`
             : `router: o managed nega o modelo ${r.d.model}; aplicado o melhor nivel permitido`);
         }
-        if (!semPiso) {
-          chamada = { ...e, prompt: stripRota(e.prompt) };
-          if (alvo !== null) {
-            chamada.model = alvo.model;
-            if (EFFORTS.includes(alvo.effort)) chamada.effort = alvo.effort;
-            aplicado = { model: alvo.model, effort: EFFORTS.includes(alvo.effort) ? alvo.effort : null };
-          }
+        // a linha @@ROTA so sai junto com um model aplicado (sem alvo, nada muda na chamada)
+        if (alvo !== null) {
+          chamada = { ...e, prompt: stripRota(e.prompt), model: alvo.model };
+          if (EFFORTS.includes(alvo.effort)) chamada.effort = alvo.effort;
+          aplicado = { model: alvo.model, effort: EFFORTS.includes(alvo.effort) ? alvo.effort : null };
         }
       }
       await gravarLedger($, cfg, est, r.sess, linhaDeLedger(linhaDaDecisao(r, aplicado, fichaDe(e.prompt))));
@@ -361,9 +377,8 @@ function instalar(on, cfg) {
     try {
       const atual = e.model ?? (await $.env.get('CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL')) ?? e.parentModel;
       const rAtual = rankModelo(atual);
-      const { alvo, negado, semPiso, fora, permitido } = escolherAplicacao(r, atual);
+      const { alvo, negado, semPiso, permitido } = escolherAplicacao(r, atual);
       r.permitido = permitido;
-      if (fora && r.d.aplicar) r.reasons.push('modelo_fora_da_allowlist');
       if (negado) {
         r.reasons.push(semPiso ? 'managed_nega_piso' : 'managed_nega_modelo');
         avisar($, est, semPiso ? 'managed_piso' : 'managed', e.tool_use_id, semPiso
