@@ -125,7 +125,7 @@ sudo bash "$ROOT/install/apply-managed.sh" --verify     # 30 componentes, 0 dive
 # medir aqui: cada hook deve rodar DUAS vezes (managed + usuario). Se nao dobrar, PARE.
 sudo bash "$ROOT/install/apply-managed.sh" --enforce    # so depois de a medicao dobrar
 # medir de novo: deve voltar a UMA vez, com os caminhos vindo de /opt.
-sudo bash "$ROOT/install/apply-managed.sh" --revert     # desfaz por completo
+sudo bash "$ROOT/install/apply-managed.sh" --revert     # desfaz por completo; recusa se o .pre-tollens nao for do tollens (--revert-forcar restaura mesmo assim)
 ```
 
 **ARMADILHA, e o instalador ja a trata:** `allowManagedHooksOnly` bloqueia hook de usuario E de

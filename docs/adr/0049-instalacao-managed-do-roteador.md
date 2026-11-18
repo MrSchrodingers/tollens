@@ -38,8 +38,11 @@ antes de acrescentar qualquer coisa.
    - `/etc/claude-code/managed-settings.json`: acrescenta `enabledPlugins`, `extraKnownMarketplaces`
      (`directory`, `/opt/tollens/claude-plugins`) e `prependPlugins=[tollens-router@tollens-tools,
      sec-default@builtin]`. O repositorio nao usa `managed-settings.d`; as chaves vao no arquivo que o
-     instalador ja gera. Um fragmento tambem nao serviria a liberacao do Opus: `deniedModels` e lista
-     que COMBINA entre fontes (um fragmento nao remove entrada do arquivo base).
+     instalador ja gera. O host tem `/etc/claude-code/managed-settings.d/60-ai-harness.json` (informado
+     pelo operador em 2026-11-18; leitura direta nao feita por esta onda); o instalador nao o toca e ele
+     e preservado. Um fragmento tambem nao serviria a liberacao do Opus: `deniedModels` e lista que
+     COMBINA entre fontes (um fragmento nao remove entrada do arquivo base) [nao verificado: a afirmacao
+     vem da leitura da documentacao do runtime, nao de teste com o runtime].
    - `/etc/claude-code/router-policy.json` (root:root 0644): politica embarcada, validada com
      `validatePolicy(politica, {now})` do motor instalado ANTES de qualquer escrita; reprovou, nada
      muda. Modo inicial `shadow`. Reaplicar preserva o `mode` ja instalado (o operador o muda no passo
@@ -57,13 +60,20 @@ terceiro o comportamento antigo vale (backup `.pre-tollens`). Hook externo prese
 por `--verify` (nao esta no manifesto): a reconciliacao deles com o repositorio e pendencia aberta.
 Backup datado `managed-settings.json.pre-roteador.<UTC>` so quando o conteudo muda.
 
+O motor que valida a politica roda como root em raiz real: o instalador recusa um `node` que nao seja de
+root ou esteja em diretorio gravavel por outros (`node_raiz`), e a recusa vale tambem para `sudo -E` e
+`sudo env PATH=$PATH`. O operador instala um `node` root-owned em caminho de sistema (passo A0 do roteiro);
+em 2026-11-18 o host so tem `node` em `~/.nvm`. A fonte da politica embarcada so aceita override
+(`MANAGED_ROUTER_POLICY_SRC`) sob prefixo de ensaio, nunca em raiz real.
+
 ### Liberacao do Opus: passo separado
 
 Decisao do operador (2026-11-16): Opus 5.5 permanente em `availableModels`; Fable so por sessao com
 sentinela. `apply-managed.sh --liberar-opus` (com `--dry-run` para ensaio) altera SOMENTE
 `availableModels` (acrescenta `claude-opus-5-5`, prefixo de versao do runtime) e `deniedModels`
-(remove toda entrada que casa `opus`: `opus`, `claude-opus-5`). Fable permanece em `deniedModels` e
-fora de `availableModels`; o hook `fable-guard.sh` e a sentinela (ADR 0012) nao sao tocados. Backup
+(remove toda entrada que tem o TOKEN `opus`, onde token e cada sequencia `[a-z]+`: `opus`, `claude-opus-5`,
+`opus[1m]`, `claude-opus-4-1`; `opusplan` fica). Entrada que tambem tem o token `fable` nunca sai
+(ex.: `claude-fable-opus`). Fable permanece em `deniedModels` e fora de `availableModels`; o hook `fable-guard.sh` e a sentinela (ADR 0012) nao sao tocados. Backup
 `managed-settings.json.pre-liberar-opus.<UTC>`. `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL=haiku` nao e
 alterado: o d.ts diz que o modelo forcado pela sessao vence o do hook, entao agentes de workflow podem
 seguir em haiku mesmo apos a liberacao (decisao do operador pendente, NAO VERIFICADO).
@@ -100,8 +110,14 @@ ressincronizar a arvore de origem e reaplicar (o `mode` instalado e mantido).
   plugin; hooks e modelos ficam intactos.
 - Opus: restaurar `managed-settings.json.pre-liberar-opus.<UTC>` (root, `cp -p`).
 - Instalacao inteira: `managed-settings.json.pre-roteador.<UTC>` e `/opt/.tollens-src.prev`.
-- NAO usar `--revert` para isto: ele remove `/opt/tollens` e restaura `.pre-tollens`, um arquivo de
-  2026-08-12 que existe em `/etc/claude-code` e substituiria a politica atual por uma antiga.
+- `--revert` recusa por padrao (exit 1, nada removido) quando `.pre-tollens` nao tem
+  `_managed_by == "tollens"`: o vivo e de 2026-08-12 (`_managed_by` `evidence-gate`, hooks em
+  `/opt/evidence-gate`, inexistente) e restaura-lo substituiria a politica atual por uma antiga e
+  removeria `/opt/tollens` (inclui hooks fora do repositorio). `--revert-forcar` restaura mesmo assim.
+  A mensagem final do deploy deixou de sugerir `--revert`.
+- Restauracao de backup do settings por copia para temporario no mesmo diretorio e `mv -f` (atomico).
+- `--revert-router` deixa `--verify` vermelho (plugin ausente do manifesto); reaplicar o deploy corrige.
+- Backup `cp -a /opt/tollens` e obrigatorio antes do passo A2 (roteiro, A0).
 
 ## Limites
 
@@ -114,6 +130,12 @@ ressincronizar a arvore de origem e reaplicar (o `mode` instalado e mantido).
 - NAO VERIFICADO: que `claude-opus-5-5` em `availableModels` permita o alias `opus` na selecao do
   runtime (a documentacao descreve prefixo de versao; o alias nao foi exercitado).
 - A arvore de origem protege o instalador, nao o autentica (ADR 0026, Limites).
+- PENDENTE: `/opt/tollens/claude-plugins` leva tambem `tests/` e os mutantes do plugin, que nao sao
+  politica. Excluir exigiria filtrar o digest em quatro pontos (`install/manifest.sh`, `dry_diff` e
+  `conformidade_managed` do worker, e o teste I7) e a copia do staging; nao feito nesta onda para nao
+  quebrar o digest que o `--verify` confere.
+- NAO VERIFICADO: o aceite de um `node` root-owned em raiz real (o host nao tem um; a suite cobre a
+  recusa e o predicado `node_raiz` sobre `/usr/bin/bash`, nao uma instalacao com `sudo`).
 
 ## Evidencia executavel
 

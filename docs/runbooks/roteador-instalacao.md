@@ -13,7 +13,36 @@ novo os preserva (ADR 0049), mas confira no ensaio.
 
 ## Passo A - instalar em shadow (sem mudar modelos)
 
-### A0. Sincronizar a arvore de origem root:root (ADR 0026)
+### A0. Pre-requisitos
+
+**Node de root.** O instalador valida a politica do roteador com o motor (`node`) e, como root, RECUSA um
+`node` que nao seja de root ou que esteja em diretorio gravavel por outros (ADR 0049). O `node` do seu
+usuario (nvm, `/home/ti/.nvm/...`) nao serve, e nunca use `sudo -E` nem `sudo env PATH=$PATH` para
+contornar: isso poria codigo do ator para rodar como root. Em 2026-11-18 o host NAO tem `node` em
+caminho de sistema (`/usr/bin/node` e `/usr/local/bin/node` ausentes); instale-o pelo gerenciador de
+pacotes da distribuicao (por exemplo `sudo dnf install nodejs`) ANTES do passo A2.
+
+```
+sudo sh -c 'command -v node'                                      # esperado: um caminho de sistema, ex. /usr/bin/node
+sudo stat -L -c '%U:%G %a %n' "$(sudo sh -c 'command -v node')"   # esperado: root:root, modo sem escrita de grupo/outros
+```
+
+Saida vazia, ou dono diferente de `root`: PARE. Caso de teste do pre-requisito: sem `node` de root, o
+passo A2 deve terminar com exit 1 ANTES de `committed`, com mensagem sobre `node` (ausente ou nao
+root-owned) e nada alterado (`--verify` igual ao de antes). Se voce instalou e mesmo assim for
+recusado, o `node` achado pelo `sudo` e outro: confira o `command -v` acima.
+
+**Backup da arvore ativa (OBRIGATORIO).** A troca de `/opt/tollens` descarta o que nao esta no manifesto
+nem e referenciado por hook registrado. Sem esta copia nao ha ponto de volta da arvore:
+
+```
+sudo cp -a /opt/tollens /opt/tollens.bak-$(date -u +%Y%m%d)
+sudo ls -ld /opt/tollens.bak-*                                    # esperado: o diretorio recem criado
+```
+
+Nao avance sem o `ls` mostrar o backup.
+
+### A0b. Sincronizar a arvore de origem root:root (ADR 0026)
 
 O instalador, quando roda como root, recusa uma fonte que nao seja inteira root:root, sem symlink e
 sem escrita de grupo/outros (exit 78). A fonte e `/opt/.tollens-src`. Monte uma nova ao lado e troque.
@@ -46,13 +75,27 @@ escopo deste roteiro).
 bash /opt/.tollens-src/install/apply-managed.sh --dry-run
 ```
 
+Antes de aplicar, confira a validade da politica embarcada (B4): `valid_until` e 2026-11-30T00:00:00Z.
+
+```
+jq -r .valid_until /opt/.tollens-src/claude-plugins/plugins/tollens-router/router-policy.json
+date -u +%Y-%m-%dT%H:%M:%SZ
+```
+
+Se a data de hoje for igual ou posterior a `valid_until`, o motor degrada a politica para `shadow`: renove
+antes (ADR 0049, secao Vencimento) em vez de reaplicar.
+
 Esperado: `PLANO (nada sera escrito)`, depois `=== DIFF do que mudaria`. Confira:
 
 - secao `hooks externos preservados`: `quality-gate.sh`, `budget-guard.sh`, `budget-count.sh` (em
-  `/opt/tollens/hooks`) e `/opt/claude-harness/hooks/secret-guard.sh`. Se faltar algum, PARE.
+  `/opt/tollens/hooks`) e `/opt/claude-harness/hooks/secret-guard.sh`: 4 comandos. Se faltar algum, PARE.
 - diff do `managed-settings.json`: acrescimos `enabledPlugins`, `extraKnownMarketplaces`,
   `prependPlugins`; hooks `model-honor.sh` (SubagentStop) e `pending-ask.sh` (Stop) novos; nenhuma
   linha de `availableModels` ou `deniedModels` mudando; `allowManagedHooksOnly` continua `true`.
+  O diff TAMBEM mostra reordenacao de grupos de hook, nao so acrescimos: `quality-gate.sh` sai do
+  grupo do Stop (o `pending-ask.sh` ocupa o lugar dele) e vira grupo proprio, `budget-count.sh` sai do grupo do SubagentStart, e
+  `budget-guard.sh` muda de posicao no PreToolUse. Os comandos sao os mesmos; muda o agrupamento (o
+  runtime executa todos). Comando que SUMA do diff (nao so mude de grupo): PARE.
 - `INSTALA claude-plugins` e `router-policy.json` novo.
 
 ### A2. Aplicar
@@ -61,7 +104,8 @@ Esperado: `PLANO (nada sera escrito)`, depois `=== DIFF do que mudaria`. Confira
 sudo bash /opt/.tollens-src/install/apply-managed.sh
 ```
 
-Esperado: `hook externo preservado: ...` (4 linhas), `managed: N componentes | 0 divergentes | 0 com
+Esperado: `hook externo preservado: ...` (3 linhas: os tres hooks em `/opt/tollens/hooks`; o
+`secret-guard.sh` fica fora de `/opt/tollens`, nao e copiado e nao gera linha), `managed: N componentes | 0 divergentes | 0 com
 dono errado | 0 gravaveis pelo ator` e `managed transaction committed`, exit 0. Falha antes de
 `committed`: nada ativo foi alterado (staging descartado; politica e arvore anteriores restauradas).
 Backup criado: `/etc/claude-code/managed-settings.json.pre-roteador.<UTC>`.
@@ -107,7 +151,10 @@ Em sessao NOVA do Claude Code (managed so e lido na partida):
    Exit 0 = ok; 1 = ha DIVERGE (pedido x efetivo); 3 = nada divergiu mas ha nao julgado; 2 = erro de
    uso ou instrumento. Antes do passo B, exit 1 com pares `opus -> sonnet` e esperado. Depois do B,
    subagentes novos que pedem `opus` devem honrar: espere 0 ou 3.
-4. `bash /opt/.tollens-src/install/apply-managed.sh --verify` de novo (exit 0).
+4. `bash /opt/.tollens-src/install/apply-managed.sh --verify` de novo (exit 0). Exceto depois de
+   `--revert-router`: o manifesto continua exigindo o plugin, entao o `--verify` sai com exit 1, uma linha
+   `AUSENTE /opt/tollens/claude-plugins` e `1 divergentes`. Esse e o estado esperado de um roteador
+   removido, nao falha do restante; volta a exit 0 reaplicando o deploy (que reinstala o roteador).
 
 ## Passo D - ligar enforce (so depois de B e C)
 
@@ -120,12 +167,14 @@ Criterio proposto (N e limiares sao decisao do operador; nao ha medicao previa q
 - nenhuma razao `persistencia_falhou`; `model-honor --scan --since <data do B>` com exit 0 ou 3;
 - `valid_until` da politica (2026-11-30) com folga: renove antes (ADR 0049) ou o motor volta a `shadow`.
 
-Comando (root; valida com o motor instalado e troca de forma atomica):
+Comando (root; valida com o motor instalado e troca de forma atomica; o `node` e o de root do passo A0;
+o `trap` remove `.router-policy.novo` se qualquer etapa falhar):
 
 ```
 sudo bash -c '
 set -euo pipefail
 cd /etc/claude-code
+trap "rm -f .router-policy.novo" EXIT
 jq ".mode=\"enforce\"" router-policy.json > .router-policy.novo
 node --input-type=module -e "
 const [, pol, eng] = process.argv;
@@ -150,16 +199,35 @@ mesmo comando com `\"shadow\"`.
 | Desligar o mod agora | `sudo touch /etc/claude-code/router-off` (religar: `sudo rm /etc/claude-code/router-off`) |
 | Voltar a shadow | passo D com `shadow` |
 | Remover o roteador (plugin, politica, 3 chaves) | `sudo bash /opt/.tollens-src/install/apply-managed.sh --revert-router` |
-| Voltar a restringir o Opus | `sudo cp -p /etc/claude-code/managed-settings.json.pre-liberar-opus.<UTC> /etc/claude-code/managed-settings.json` |
-| Voltar ao settings anterior a instalacao | `sudo cp -p /etc/claude-code/managed-settings.json.pre-roteador.<UTC> /etc/claude-code/managed-settings.json` (a arvore nova em `/opt/tollens` so acrescenta arquivos e preserva os hooks externos referenciados; nao precisa ser restaurada) |
+| Voltar a restringir o Opus | procedimento R1 abaixo, com `<backup>` = `managed-settings.json.pre-liberar-opus.<UTC>` |
+| Voltar ao settings anterior a instalacao | procedimento R1 abaixo, com `<backup>` = `managed-settings.json.pre-roteador.<UTC>` (a arvore nova em `/opt/tollens` preserva os hooks externos referenciados; restaure-a de `/opt/tollens.bak-<data>` so se faltar arquivo) |
 | Voltar a arvore de origem | `sudo mv /opt/.tollens-src /opt/.tollens-src.novo && sudo mv /opt/.tollens-src.prev /opt/.tollens-src` |
 
-NAO use `apply-managed.sh --revert` para desfazer esta instalacao: ele remove `/opt/tollens` inteiro
-e restaura `/etc/claude-code/managed-settings.json.pre-tollens`, um arquivo de 2026-08-12 que
-substituiria a politica atual por uma antiga e apagaria as guardas e os modelos negados.
-A troca da arvore `/opt/tollens` descarta arquivo que nao esta no manifesto e nao e referenciado por
-hook registrado. Se quiser um ponto de volta da arvore, copie-a antes do passo A2:
-`sudo cp -a /opt/tollens /opt/tollens.bak-$(date -u +%Y%m%d)`.
+**Procedimento R1 (restaurar um backup do settings, atomico).** Copia para arquivo temporario no mesmo
+diretorio e troca por `mv -f` (`rename(2)`): o arquivo vivo nunca fica meio escrito, e o temporario e
+removido se a copia falhar. Nao use `cp` direto sobre `managed-settings.json`.
+
+```
+sudo bash -c 'set -euo pipefail
+d=/etc/claude-code/managed-settings.json
+bk=/etc/claude-code/<backup>
+tmp="$d.rb.$$"
+trap "rm -f \"$tmp\"" EXIT
+cp -p "$bk" "$tmp"
+jq -e . "$tmp" >/dev/null
+mv -f "$tmp" "$d"'
+jq -c '{availableModels, deniedModels}' /etc/claude-code/managed-settings.json
+```
+
+`apply-managed.sh --revert` RECUSA por padrao (exit 1, nada removido) quando
+`/etc/claude-code/managed-settings.json.pre-tollens` nao tem `_managed_by == "tollens"`. O `.pre-tollens`
+vivo e de 2026-08-12, tem `_managed_by` `evidence-gate` e aponta hooks para `/opt/evidence-gate/hooks`,
+que nao existe em `/opt`: restaura-lo substituiria a politica atual por uma antiga e removeria
+`/opt/tollens` por inteiro (inclui `quality-gate.sh`, `budget-guard.sh` e `budget-count.sh`, que nao
+estao no repositorio). Para desfazer so o roteador use `--revert-router`. `--revert-forcar` restaura
+mesmo assim e so deve ser usado depois de ler o `.pre-tollens`; nao faz parte deste roteiro.
+O `--revert-router` deixa o `--verify` vermelho (ver C4); reaplicar o deploy o reinstala.
+O backup da arvore (`/opt/tollens.bak-<data>`, passo A0) e o unico ponto de volta de `/opt/tollens`.
 
 ## O que este roteiro NAO prova
 
