@@ -1,0 +1,6 @@
+{
+  "name": "tollens-router",
+  "version": "0.1.0",
+  "description": "Roteador interno de modelos: decide model e effort de subagentes por ficha, piso deterministico e ritmo do plano. Modo padrao shadow.",
+  "author": { "name": "Tollens" }
+}
