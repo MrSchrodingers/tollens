@@ -37,7 +37,7 @@ REPO="$PWD"
 # MANAGED_MANIFEST e override SO PARA TESTE: `tests/unit/managed.sh` precisa exercitar o caso
 # "deploy incompleto" sem mutar o manifesto real - se a suite morresse no meio, o repositorio
 # ficaria com o manifesto sabotado no disco.
-MAN="${MANAGED_MANIFEST:-install/manifest.lock}"
+MAN="install/manifest.lock"
 PREFIX="${MANAGED_PREFIX:-/}"
 PREFIX="${PREFIX%/}"                 # normaliza: "/" vira "", evitando "//etc"
 # CANONICALIZA o prefixo: sem isto, `MANAGED_PREFIX=/tmp/x/opt/..` faz $OPT conter `..` e a
@@ -55,6 +55,24 @@ RAIZ="$OPT"
 ETC="$PREFIX/etc/claude-code"
 SETTINGS="$ETC/managed-settings.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1   # prefixo vazio = raiz de verdade
+
+# REAL tem UM caminho de calculo: realpath -m do prefixo (`//`, `/.` e `/tmp/..` resolvem para `/`).
+# O supervisor calcula igual e exporta o resultado; divergir significa que um dos dois acreditaria
+# estar sob prefixo de ensaio enquanto o outro escreve na raiz real. Recusa, sem escrever nada.
+if [ -n "${TOLLENS_SUPERVISOR_PREFIX+x}" ] && [ "$TOLLENS_SUPERVISOR_PREFIX" != "$PREFIX" ]; then
+  echo "ERRO: prefixo divergente entre supervisor ('$TOLLENS_SUPERVISOR_PREFIX') e worker ('$PREFIX'). Nada foi escrito." >&2
+  exit 78
+fi
+# Variaveis que existem SO PARA TESTE (manifesto alternativo, falha injetada, politica alternativa)
+# nao valem na raiz real: la sao recusadas, nao ignoradas em silencio.
+if [ "$REAL" -eq 1 ]; then
+  if [ -n "${MANAGED_MANIFEST:-}${MANAGED_FAILPOINT:-}${MANAGED_ROUTER_POLICY_SRC:-}" ]; then
+    echo "ERRO: MANAGED_MANIFEST, MANAGED_FAILPOINT e MANAGED_ROUTER_POLICY_SRC sao so de ensaio e sao recusadas sobre a raiz real." >&2
+    exit 78
+  fi
+else
+  MAN="${MANAGED_MANIFEST:-$MAN}"
+fi
 
 MODO="deploy"
 # ONDA 12. Este `case` inspeciona apenas "$1", e o worker e invocavel DIRETO (documentado, e via
@@ -219,9 +237,12 @@ politica_json(){
 # Em raiz real o motor roda COMO ROOT. Um `node` do ator (nvm, PATH herdado por `sudo env PATH=$PATH` ou
 # `sudo -E`) seria execucao de codigo do ator como root. $1 = caminho do executavel. Exige o binario
 # resolvido (realpath) e todo diretorio ate `/` pertencentes a root e sem escrita de grupo/outros.
+# Imprime o caminho RESOLVIDO em stdout: quem executa usa esse caminho, nunca o nome. Um symlink do
+# ator para um binario de root e aceito porque o que roda e o alvo resolvido, cuja cadeia inteira passou.
 node_raiz(){
-  local d own mode
+  local d own mode resolvido
   d="$(realpath -e "$1" 2>/dev/null)" || return 1
+  resolvido="$d"
   while :; do
     read -r own mode < <(stat -c '%U %a' "$d" 2>/dev/null) || return 1
     if [ "$own" != "root" ] || [ $(( 8#$mode & 8#022 )) -ne 0 ]; then
@@ -233,16 +254,23 @@ node_raiz(){
     [ "$d" = "/" ] && break
     d="$(dirname "$d")"
   done
+  printf '%s\n' "$resolvido"
 }
 
 # validatePolicy do motor, com `now`. $1 = arquivo de politica, $2 = engine.mjs. Exit 0 so com ok:true.
 valida_politica(){
   command -v node >/dev/null 2>&1 || { echo "ERRO: node ausente - a politica do roteador nao pode ser validada." >&2; return 1; }
+  local nb
+  nb="$(command -v node)"
   # MANAGED_NODE_ROOT=1 so ENDURECE (permite ensaiar a recusa sob prefixo); nunca afrouxa a raiz real.
   if [ "$REAL" -eq 1 ] || [ "${MANAGED_NODE_ROOT:-}" = "1" ]; then
-    node_raiz "$(command -v node)" || return 1
+    nb="$(node_raiz "$nb")" || return 1
+  else
+    nb="$(realpath -e "$nb")" || return 1
   fi
-  node --input-type=module -e '
+  # Ambiente higienizado: sem NODE_OPTIONS, NODE_PATH nem PATH herdados (sob `sudo -E` o ambiente do ator
+  # chegaria ao motor como root). Caminho absoluto resolvido, nunca o nome.
+  /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "$nb" --input-type=module -e '
     const [, pol, eng] = process.argv;
     const fs = await import("node:fs");
     const { validatePolicy } = await import(eng);
@@ -380,6 +408,7 @@ if [ "$MODO" = "revert" ]; then
     mv -f "$SETTINGS.pre-tollens" "$SETTINGS"; echo "restaurado o managed-settings.json anterior"
   fi
   if [ -d "$OPT" ]; then rm -rf "$OPT"; echo "removido: $OPT"; fi
+  if [ -f "$ROUTER_POLICY" ]; then rm -f "$ROUTER_POLICY"; echo "removido: $ROUTER_POLICY"; fi
   rmdir "$ETC" 2>/dev/null && echo "removido (vazio): $ETC"
   echo "REVERTIDO. Os hooks de escopo de usuario em ~/.claude voltam a valer."
   exit 0
@@ -748,12 +777,23 @@ desfaz(){  # devolve o estado ativo INTEIRO ao que era: arvore E politica
   fi
 }
 
+# SINAL NA JANELA DOS RENAMES. A troca da arvore e do settings sao renames separados; INT, TERM ou HUP
+# entre eles deixaria arvore nova com politica velha. O handler roda depois do `mv` em curso (rename e
+# atomico) e chama `desfaz`. Fora da janela (EM_COMMIT=0) so sai, e o trap de EXIT limpa o staging. Quando
+# ha supervisor, ele tambem desfaz ao ver o worker terminar com rc != 0; este trap cobre o worker direto.
+# NAO COBERTO: SIGKILL e queda de energia (ver comentario acima).
+EM_COMMIT=0
+trap 'if [ "$EM_COMMIT" -eq 1 ]; then echo "ERRO: sinal na fase de commit; restaurando o estado anterior." >&2; desfaz; fi; exit 143' INT TERM HUP
+
 # FAILPOINT - existe SO para teste (tests/unit/managed.sh, MG17/MG18). Sem a variavel definida
 # e um no-op. Nao concede autoridade alguma: o unico efeito possivel e provocar uma falha e o
 # rollback correspondente. Sem ele, a falha POS-PUBLICACAO nao pode ser exercitada de forma
 # deterministica - e foi justamente a ausencia desse caso que deixou o defeito acima passar.
 falha_se(){ [ "${MANAGED_FAILPOINT:-}" = "$1" ] && { echo "ERRO: falha injetada no ponto '$1'." >&2; return 0; }; return 1; }
 
+sinal_se(){ [ "${MANAGED_FAILPOINT:-}" = "$1" ] && kill -TERM $$; return 0; }   # so teste; recusada em raiz real
+
+EM_COMMIT=1
 if [ -d "$OPT" ]; then
   mv -f "$OPT" "$ANTERIOR" \
     || { echo "ERRO: nao foi possivel afastar a arvore ativa; nada mudou." >&2; exit 1; }
@@ -764,6 +804,7 @@ if ! mv -f "$STAGE" "$OPT"; then
   echo "ERRO: a publicacao da arvore falhou." >&2; desfaz; exit 1
 fi
 if falha_se publicar-opt; then desfaz; exit 1; fi
+sinal_se sinal-apos-publicar
 
 if ! mv -f "$SET_NOVO" "$SETTINGS"; then
   echo "ERRO: a instalacao da politica falhou APOS a publicacao da arvore." >&2
@@ -774,6 +815,7 @@ if ! mv -f "$POL_NOVO" "$ROUTER_POLICY"; then
   echo "ERRO: a instalacao da politica do roteador falhou." >&2; desfaz; exit 1
 fi
 
+EM_COMMIT=0
 # COMMIT CONFIRMADO. So agora o material de rollback pode ser descartado - antes disto, qualquer
 # saida do script passa por `desfaz` ou pelo trap, e ambos precisam dele.
 rm -rf "$ANTERIOR" 2>/dev/null || true

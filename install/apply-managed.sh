@@ -6,10 +6,16 @@ REPO="$(cd "$SELF_DIR/.." && pwd -P)" || exit 1
 DEFAULT_WORKER="$SELF_DIR/apply-managed-worker.sh"
 
 RAW_PREFIX="${MANAGED_PREFIX:-}"
-case "$RAW_PREFIX" in
-  ""|/) PREFIX="" ;;
-  *) PREFIX="${RAW_PREFIX%/}" ;;
-esac
+# MESMA normalizacao do worker (realpath -m): `//`, `/.` e `/tmp/..` resolvem para a raiz real. Antes,
+# o supervisor via REAL=0 nesses valores enquanto o worker via REAL=1, e a checagem de raiz de confianca
+# era pulada. O resultado e exportado e o worker recusa qualquer divergencia.
+if [ -z "$RAW_PREFIX" ]; then
+  PREFIX=""
+else
+  PREFIX="$(realpath -m -- "$RAW_PREFIX" 2>/dev/null)" || { echo "ERRO: MANAGED_PREFIX nao pode ser normalizado." >&2; exit 2; }
+  PREFIX="${PREFIX%/}"
+fi
+export TOLLENS_SUPERVISOR_PREFIX="$PREFIX"
 OPT="${PREFIX}/opt/tollens"
 SETTINGS="${PREFIX}/etc/claude-code/managed-settings.json"
 ROUTER_POLICY="${PREFIX}/etc/claude-code/router-policy.json"
@@ -92,8 +98,13 @@ case "$*" in
     printf 'ERRO: argumento desconhecido: %s\nuso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar]\n' "$1" "$0" >&2; exit 2 ;;
 esac
 
-REC="$(mktemp -d "${TMPDIR:-/tmp}/tollens-recovery.XXXXXX")" || exit 1
-cleanup(){ rm -rf "$REC" 2>/dev/null || true; }
+# Material de recuperacao em diretorio FIXO sob o alvo (mesmo filesystem), nunca em $TMPDIR: sob
+# `sudo -E` o TMPDIR do ator redirecionaria a copia de rollback para um local que ele controla.
+OPT_PAI="$PREFIX/opt"; CRIOU_PAI=0
+if [ ! -d "$OPT_PAI" ]; then mkdir -p "$OPT_PAI" || exit 1; CRIOU_PAI=1; fi
+REC="$(mktemp -d "$OPT_PAI/.tollens-recovery.XXXXXX")" || exit 1
+# remove tambem o diretorio-pai que ESTE processo criou, se ficar vazio (um deploy reprovado nao deixa rastro)
+cleanup(){ rm -rf "$REC" 2>/dev/null || true; [ "$CRIOU_PAI" -eq 1 ] && rmdir "$OPT_PAI" 2>/dev/null; return 0; }
 trap cleanup EXIT
 
 HAD_OPT=0

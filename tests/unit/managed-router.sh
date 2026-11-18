@@ -13,7 +13,9 @@
 #  I7  o manifesto cobre o diretorio do plugin;
 #  I8  a politica instalada passa em validatePolicy e a reprovada nao altera o estado;
 #  A1  --revert nao restaura .pre-tollens que nao seja do tollens sem --revert-forcar;
-#  A2  em raiz real o motor so roda com node de root (ator nao injeta node via PATH/sudo -E).
+#  A2  em raiz real o motor so roda com node de root, por caminho resolvido e ambiente higienizado;
+#  M1  supervisor e worker normalizam MANAGED_PREFIX igual (REAL nao diverge);
+#  M5  sinal na janela dos renames restaura arvore, settings e politica.
 # Raiz temporaria (MANAGED_PREFIX). Posse root:root so e medida na raiz real: NAO VERIFICADA aqui.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -164,7 +166,7 @@ rc="$(runp "$PA" --revert-forcar)"
 chk "A1 --revert-forcar restaura mesmo assim" "$rc/$(jq -r ._managed_by "$PA/etc/claude-code/managed-settings.json")/$([ -e "$PA/opt/tollens" ] && echo resta || echo removido)" "0/evidence-gate/removido"
 PB="$T/raizB"; runp "$PB" >/dev/null
 printf '{"_managed_by":"tollens","hooks":{}}\n' > "$PB/etc/claude-code/managed-settings.json.pre-tollens"
-chk "A1 controle: .pre-tollens do proprio tollens segue revertendo sem flag" "$(runp "$PB" --revert)" 0
+chk "A1 controle: .pre-tollens do proprio tollens segue revertendo sem flag e remove a politica do roteador" "$(runp "$PB" --revert)/$([ -e "$PB/etc/claude-code/router-policy.json" ] && echo resta || echo removida)" "0/removida"
 
 echo "== R11. o motor so roda com node de root em raiz real (A2)"
 # Sob sudo o motor roda como root: um node do ator (nvm, PATH herdado) seria execucao de codigo do ator
@@ -179,7 +181,7 @@ rc="$(PATH="$T/fakebin:$PATH" MANAGED_PREFIX="$PD0" bash "$AM" >"$T/out" 2>&1; e
 chk "A2 controle: o mesmo node, sem a exigencia (ensaio), instala" "$rc" 0
 sed -n '/^node_raiz(){/,/^}/p' install/apply-managed-worker.sh > "$T/node_raiz.sh"
 . "$T/node_raiz.sh"
-chk "A2 node_raiz: executavel de root em caminho de root passa; do ator e recusado" "$(node_raiz /usr/bin/bash 2>/dev/null; echo $?)/$(node_raiz "$T/fakebin/node" 2>/dev/null; echo $?)" "0/1"
+chk "A2 node_raiz: executavel de root em caminho de root passa; do ator e recusado" "$(node_raiz /usr/bin/bash >/dev/null 2>&1; echo $?)/$(node_raiz "$T/fakebin/node" >/dev/null 2>&1; echo $?)" "0/1"
 ls /usr/bin | grep -vx node | sed 's|^|/usr/bin/|' | xargs ln -s -t "$T/semnode" 2>/dev/null
 PE0="$T/raizC3"; mkdir -p "$PE0"
 rc="$(PATH="$T/semnode" MANAGED_PREFIX="$PE0" bash "$AM" >"$T/out" 2>&1; echo $?)"
@@ -201,8 +203,52 @@ chk "I8 politica reprovada em validatePolicy: rc != 0 e nada mudou" "$([ "$rc" -
 rc="$(MANAGED_ROUTER_POLICY_SRC="$REPO/claude-plugins/plugins/tollens-router/router-policy.json" MANAGED_PREFIX="$PF" bash "$AM" >"$T/out" 2>&1; echo $?)"
 chk "I8 controle: a politica valida pelo mesmo caminho de override passa" "$rc" 0
 
+echo "== R14. prefixo normalizado igual no supervisor e no worker (M1)"
+# `//`, `/.` e `/tmp/..` resolvem para a raiz real. O supervisor via REAL=0 e o worker REAL=1: a checagem de
+# raiz de confianca do supervisor era pulada e o worker escrevia na raiz real. O stub abaixo substitui o
+# worker so para ler o que o supervisor exporta; o worker real so e rodado em --verify (somente leitura).
+printf '#!/bin/sh\nprintf "%%s" "${TOLLENS_SUPERVISOR_PREFIX-UNSET}" > "$STUB_OUT"\n' > "$T/stub-worker.sh"; chmod 0755 "$T/stub-worker.sh"
+r=""
+for v in '//' '/.' '/tmp/..'; do
+  STUB_OUT="$T/stub.out" TOLLENS_MANAGED_WORKER="$T/stub-worker.sh" MANAGED_PREFIX="$v" bash "$AM" --dry-run >/dev/null 2>&1
+  r+="[$(cat "$T/stub.out")|$(MANAGED_PREFIX="$v" bash "$REPO/install/apply-managed-worker.sh" --verify 2>&1 | grep -c 'com dono errado')]"
+done
+chk "M1 //, /. e /tmp/..: supervisor exporta o prefixo da raiz real e o worker a trata como real" "$r" "[|1][|1][|1]"
+mkdir -p "$T/raizM"
+rc="$(TOLLENS_SUPERVISOR_PREFIX=/outro MANAGED_PREFIX="$T/raizM" bash "$REPO/install/apply-managed-worker.sh" --dry-run >/dev/null 2>&1; echo $?)"
+chk "M1 worker recusa prefixo divergente do supervisor (78)" "$rc" 78
+
+echo "== R15. ambiente e caminho do node validador (M2, M3, M4)"
+printf 'require("fs").writeFileSync("%s/pwn.marker", "x");\n' "$T" > "$T/pwn.js"
+PN="$T/raizN"; mkdir -p "$PN"
+rc="$(NODE_OPTIONS="--require $T/pwn.js" MANAGED_PREFIX="$PN" bash "$AM" >"$T/out" 2>&1; echo $?)"
+chk "M2 NODE_OPTIONS do ator nao chega ao validador (deploy ok, sem execucao)" "$rc/$([ -e "$T/pwn.marker" ] && echo executou || echo limpo)" "0/limpo"
+ln -s /usr/bin/bash "$T/lnkbin"
+chk "M3 symlink do ator para binario de root: aceito e resolvido ao alvo real (o que roda e o alvo)" "$(node_raiz "$T/lnkbin" 2>/dev/null)" "$(realpath -e /usr/bin/bash)"
+# M4: diretorio intermediario de root gravavel por grupo/outros (e binario gravavel) tem de ser recusado.
+# `stat` e sombreado por funcao: nao ha como criar diretorio de root sem privilegio.
+alvo="$(realpath -e /usr/bin/bash)"; dirb="$(dirname "$alvo")"; r=""
+for caso in "$dirb 775" "$dirb 757" "$dirb 1777" "$alvo 664"; do
+  FAKE_P="${caso% *}"; FAKE_M="${caso#* }"
+  stat(){ if [ "${!#}" = "$FAKE_P" ]; then echo "root $FAKE_M"; else command stat "$@"; fi; }
+  r+="$(node_raiz /usr/bin/bash >/dev/null 2>&1; echo $?)"
+done
+unset -f stat
+chk "M4 diretorio de root gravavel por grupo/outros, ou binario gravavel, e recusado" "$r" 1111
+
+echo "== R16. variaveis so de ensaio sao recusadas na raiz real (BAIXO)"
+rc1="$(MANAGED_PREFIX=/ MANAGED_FAILPOINT=x bash "$REPO/install/apply-managed-worker.sh" --verify >/dev/null 2>&1; echo $?)"
+rc2="$(MANAGED_PREFIX=/ MANAGED_MANIFEST=/nao/existe bash "$REPO/install/apply-managed-worker.sh" --verify >/dev/null 2>&1; echo $?)"
+chk "MANAGED_FAILPOINT e MANAGED_MANIFEST recusados em raiz real (78)" "$rc1/$rc2" "78/78"
+
+echo "== R17. sinal na janela dos renames restaura o estado (M5)"
+PG="$T/raizG"; runp "$PG" >/dev/null
+a="$(cont "$PG")"
+rc="$(MANAGED_FAILPOINT=sinal-apos-publicar MANAGED_PREFIX="$PG" bash "$REPO/install/apply-managed-worker.sh" >"$T/out" 2>&1; echo $?)"
+chk "M5 TERM apos publicar a arvore (worker direto): rc != 0 e arvore, settings e politica como antes" "$([ "$rc" -ne 0 ] && echo falhou)/$([ "$(cont "$PG")" = "$a" ] && echo igual)" "falhou/igual"
+
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=48
+EXPECTED=55
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

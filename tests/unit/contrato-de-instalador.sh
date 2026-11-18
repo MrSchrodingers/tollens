@@ -154,10 +154,12 @@ chmod 700 "$_RO"
 _D2="$(mktemp -d "$TMP/real.XXXXXX")"
 chk "o apply real AINDA declara a transacao" \
     "$(MANAGED_PREFIX="$_D2" bash install/apply-managed.sh 2>&1 | grep -c 'transaction committed')" 1
-_RO2="$(mktemp -d "$TMP/ro2.XXXXXX")"; chmod 500 "$_RO2"
-TMPDIR="$_RO2" MANAGED_PREFIX="$_D2" bash install/apply-managed.sh >/dev/null 2>&1
+# O material de recuperacao vive em $PREFIX/opt (diretorio fixo sob o alvo), nao em $TMPDIR: o
+# discriminador passou a ser esse diretorio nao-gravavel.
+chmod 500 "$_D2/opt"
+MANAGED_PREFIX="$_D2" bash install/apply-managed.sh >/dev/null 2>&1
 chk "o apply real AINDA depende do temporario (morre sem ele)" "$?" 1
-chmod 700 "$_RO2"
+chmod 700 "$_D2/opt"
 
 echo "== CI4. o worker tem contagem propria (e invocavel direto) =="
 mw(){ MANAGED_PREFIX="$(mktemp -d "$TMP/mw.XXXXXX")" bash install/apply-managed-worker.sh "$@" >/dev/null 2>&1; echo $?; }
