@@ -16,7 +16,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 . "$(dirname "$0")/../lib/lock.sh"
 
-CASOS_ESPERADOS=27
+CASOS_ESPERADOS=32
 
 if ! command -v node >/dev/null 2>&1; then
   echo "  DEPENDENCIA AUSENTE: node. Estado: NAO VERIFICADO - a suite nao rodou."
