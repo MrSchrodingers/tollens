@@ -154,10 +154,12 @@ chmod 700 "$_RO"
 _D2="$(mktemp -d "$TMP/real.XXXXXX")"
 chk "o apply real AINDA declara a transacao" \
     "$(MANAGED_PREFIX="$_D2" bash install/apply-managed.sh 2>&1 | grep -c 'transaction committed')" 1
-_RO2="$(mktemp -d "$TMP/ro2.XXXXXX")"; chmod 500 "$_RO2"
-TMPDIR="$_RO2" MANAGED_PREFIX="$_D2" bash install/apply-managed.sh >/dev/null 2>&1
+# O material de recuperacao vive em $PREFIX/opt (diretorio fixo sob o alvo), nao em $TMPDIR: o
+# discriminador passou a ser esse diretorio nao-gravavel.
+chmod 500 "$_D2/opt"
+MANAGED_PREFIX="$_D2" bash install/apply-managed.sh >/dev/null 2>&1
 chk "o apply real AINDA depende do temporario (morre sem ele)" "$?" 1
-chmod 700 "$_RO2"
+chmod 700 "$_D2/opt"
 
 echo "== CI4. o worker tem contagem propria (e invocavel direto) =="
 mw(){ MANAGED_PREFIX="$(mktemp -d "$TMP/mw.XXXXXX")" bash install/apply-managed-worker.sh "$@" >/dev/null 2>&1; echo $?; }
@@ -243,11 +245,22 @@ echo "== CI8. o instalador de usuario nao reprova por um escopo que nao instala 
 # dois estados passam a ser exercitados em QUALQUER maquina, sem depender do que ha em /etc.
 _MGD_VAZIO="$(mktemp -d "$TMP/mgd0.XXXXXX")"
 _MGD_ATOR="$(mktemp -d "$TMP/mgd1.XXXXXX")"
-mkdir -p "$_MGD_ATOR/.claude/agents" "$_MGD_ATOR/.claude/skills"
+mkdir -p "$_MGD_ATOR/.claude"
 # O CONTEUDO TEM DE CONFERIR PARA A FIXTURA ISOLAR A POSSE. Com o verificador conferindo digest do
 # kernel (onda 22d), um `CLAUDE.md` vazio dispara DIVERGENTE (5) antes de chegar a GRAVAVEL (4), e
 # o caso passaria a medir outra coisa. Medido: got=5 want=4.
 cp -f execution/config/CLAUDE.md "$_MGD_ATOR/CLAUDE.md"; : > "$_MGD_ATOR/managed-settings.json"
+# ONDA 29 (issue #39). O MESMO VALE PARA `.claude/agents` E `.claude/skills` desde que
+# `install/verify.sh` passou a comparar CONTEUDO tambem para eles (nao so posse). Um `mkdir -p`
+# vazio tem digest de arvore vazia, que diverge de `execution/agents`/`execution/skills` - o
+# caso voltaria a medir DIVERGENTE (5) em vez de GRAVAVEL (4). Medido: got=5 want=4.
+cp -a execution/agents "$_MGD_ATOR/.claude/agents"; cp -a execution/skills "$_MGD_ATOR/.claude/skills"
+# ISOLAMENTO DO ESCOPO DE POLITICA (/opt), que `install/verify.sh` passou a delegar a
+# `apply-managed.sh --verify` (issue #39). Sem prefixo proprio, as duas chamadas abaixo
+# auditariam o `/opt/tollens` REAL da maquina que roda a suite - o mesmo furo que o comentario
+# de CI8 acima ja nomeia para `/etc`, um escopo a mais. `MANAGED_PREFIX` vazio (dir sem nada
+# dentro) mantem a politica no estado AUSENTE, que nunca supera o que estes casos exercitam.
+_POL_VAZIO="$(mktemp -d "$TMP/pol0.XXXXXX")"
 # A FIXTURA TEM DE SER NAO-ROOT INDEPENDENTE DE QUEM RODA A SUITE. O criterio de `verify.sh` e a
 # POSSE: root -> IMPOSTO, qualquer outro -> GRAVAVEL. Rodando como root - contentor, ou `sudo bash
 # tests/...` - o diretorio que a suite acaba de criar nasce root-owned e e LEGITIMAMENTE imposto,
@@ -265,11 +278,11 @@ chk "a fixtura GRAVAVEL nao pertence a root (a condicao ocorre)" \
 # 1 e o caso passa a medir a bancada em vez do escopo managed. Medido: as duas reprovaram com
 # got=1 por essa razao antes deste isolamento.
 _DA="$(mktemp -d "$TMP/ap0.XXXXXX")"
-_OUTA="$(CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/apply.sh 2>&1)"
+_OUTA="$(CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" MANAGED_PREFIX="$_POL_VAZIO" bash install/apply.sh 2>&1)"
 _RCA=$?
-CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" bash install/verify.sh >/dev/null 2>&1
+CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_VAZIO" MANAGED_PREFIX="$_POL_VAZIO" bash install/verify.sh >/dev/null 2>&1
 chk "verify: managed AUSENTE tem codigo proprio (3, nao 1)"        "$?" 3
-CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/verify.sh >/dev/null 2>&1
+CLAUDE_HOME="$_DA" TOLLENS_MANAGED_DIR="$_MGD_ATOR" MANAGED_PREFIX="$_POL_VAZIO" bash install/verify.sh >/dev/null 2>&1
 chk "verify: managed GRAVAVEL pelo ator tem codigo proprio (4)"    "$?" 4
 
 # O instalador: exit 0 com a projecao de usuario integra, nos DOIS estados de managed. Nenhum dos
@@ -279,7 +292,7 @@ chk "apply: instala com exit 0 mesmo sem a fase managed"           "$1" 0
 chk "apply: e publica o passo acionavel em vez de calar" \
     "$(printf '%s' "$_OUTA" | grep -c 'apply-managed.sh --enforce')" 1
 _DB="$(mktemp -d "$TMP/ap1.XXXXXX")"
-CLAUDE_HOME="$_DB" TOLLENS_MANAGED_DIR="$_MGD_ATOR" bash install/apply.sh >/dev/null 2>&1
+CLAUDE_HOME="$_DB" TOLLENS_MANAGED_DIR="$_MGD_ATOR" MANAGED_PREFIX="$_POL_VAZIO" bash install/apply.sh >/dev/null 2>&1
 chk "apply: exit 0 tambem com managed gravavel (nao e dele consertar)" "$?" 0
 
 # ANTIVACUIDADE: os casos acima so significam algo se o verificador AINDA reprovar o que e dele.

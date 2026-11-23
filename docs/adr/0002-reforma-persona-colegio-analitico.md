@@ -4,7 +4,7 @@
 - Status: Aceito (validacao adversarial executada em 2026-06-17; achados incorporados - ver secao Validacao)
 - Supersede: 0001-persona-triade-e-disciplina-epistemica.md (a persona Triade foi substituida)
 - Escopo: configuracao global de usuario (~/.claude/)
-- Decisor: daniel@debt.com.br, via sessao de design assistida
+- Decisor: mrschrodingers@gmail.com, via sessao de design assistida
 
 ## Contexto
 

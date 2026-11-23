@@ -40,6 +40,9 @@ MUTANTS = [
     ("selecao-confundida", "protocol", ("design", "skill_selection_evaluated_separately"), False),
     ("sem-incerteza", "protocol", ("analysis", "report_confidence_intervals"), False),
     ("oculta-negativos", "protocol", ("analysis", "report_null_and_negative_results"), False),
+    # G108 (issue #52).
+    ("sem-registro-de-braco", "protocol", ("design", "arm_must_be_recorded_per_trial"), False),
+    ("braco-A-com-nudge", "protocol", ("design", "arms", "A_router_puro", "routing_nudges"), "on"),
 ]
 
 # ONDA 12. ESTE ARNES MATAVA POR CRASH, NAO POR ASSERCAO - achado do portao final.
@@ -55,10 +58,18 @@ MUTANTS = [
 # executa nao tinha controle negativo. `tests/mutation/run.sh` faz o baseline certo nos arneses
 # `.sh`; so este, em Python, nao fazia.
 #
-# Correcao em duas partes: a raiz passa a espelhar por symlink o que o tester le (leitura apenas),
-# e o CONTROLE NEGATIVO roda primeiro - raiz nao mutada tem de sair 0, senao o arnes se declara
-# vacuo e reprova em vez de reportar 16/16.
-LIDOS_PELO_TESTER = ("execution", "docs")
+# Correcao em duas partes: a raiz passa a copiar (shutil.copytree) o que o tester le, isolando
+# as execucoes no TemporaryDirectory, e o CONTROLE NEGATIVO roda primeiro - raiz nao mutada tem
+# de sair 0, senao o arnes se declara vacuo e reprova em vez de reportar 16/16.
+# NOTA: copytree foi escolhido sobre symlink_to porque Python 3.13+ nao segue symlinks de
+# diretorio no rglob por padrao; symlinks de ARQUIVO dentro dos dirs copiados sao mantidos.
+# ONDA 34: `ha cabecalhos Uso:/Usage: a conferir (medido >= 4)` exige pelo menos 4 arquivos
+# .sh com `# Uso:`, mas apenas execution/document-tools/doctool.sh esta em execution/. Os
+# outros tres (evidence/experiments/pareado.sh, evidence/telemetry/medir-skills.sh,
+# install/hooks-spec.sh) estao em evidence/ e install/ - ausentes do arnes. Resultado medido
+# antes da correcao: medido=1, threshold=4, baseline VERMELHO. Adicionar evidence, install,
+# tests ao arnes resolve o baseline sem ampliar a populacao de mutantes.
+LIDOS_PELO_TESTER = ("execution", "docs", "evidence", "install", "tests")
 
 
 def monta_raiz(raw: str, policy: dict, protocol: dict) -> Path:
@@ -72,7 +83,10 @@ def monta_raiz(raw: str, policy: dict, protocol: dict) -> Path:
     (root / "orchestration/registry.json").write_text(
         (ROOT / "orchestration/registry.json").read_text(encoding="utf-8"), encoding="utf-8")
     for nome in LIDOS_PELO_TESTER:
-        (root / nome).symlink_to(ROOT / nome, target_is_directory=True)
+        # Python 3.13+ nao segue symlinks de diretorio no rglob por padrao; usar copytree
+        # garante que ROOT.rglob("*.sh") e ROOT.rglob("*.md") encontrem todos os arquivos
+        # independente da versao do Python.
+        shutil.copytree(ROOT / nome, root / nome, symlinks=True)
     return root
 
 
@@ -110,12 +124,12 @@ for name, target, path, value in MUTANTS:
 
 # G107 (issue #51). Os 16 mutantes acima alteram um escalar em policy/protocol; nenhum toca o
 # defeito que G107 nomeia, que vive em PROSA sob execution/skills, no proprio universo de
-# RESOLUCAO do tester. `monta_raiz` simlinka `execution` inteiro (leitura), entao nao ha como
-# reintroduzir o defeito sem escrever no repositorio real. Este bloco isola so
-# `execution/skills` como COPIA gravavel - as demais fontes (`execution/agents`, `docs`,
-# `orchestration`) continuam simlink/copia read-only da arvore real - e reintroduz `/tdd` num
-# arquivo do clone. Segue o precedente do ADR 0032 ("reintroduzido o defeito num clone via
-# TOLLENS_ROOT, a assercao reprova; o clone limpo fica verde").
+# RESOLUCAO do tester. `monta_raiz` copia execution/ inteiro via copytree para o tempdir, entao
+# reintroduzir o defeito exigiria escrever no proprio clone. Este bloco isola so
+# `execution/skills` como copia gravavel independente - as demais fontes (`execution/agents`,
+# `docs`, `orchestration`) estao em copias fisicas no tempdir (isoladas do repositorio real) -
+# e reintroduz `/tdd` num arquivo do clone. Segue o precedente do ADR 0032 ("reintroduzido o
+# defeito num clone via TOLLENS_ROOT, a assercao reprova; o clone limpo fica verde").
 def monta_raiz_skills(raw: str) -> Path:
     root = Path(raw)
     (root / "orchestration").mkdir()
@@ -123,13 +137,15 @@ def monta_raiz_skills(raw: str) -> Path:
     (root / "orchestration/evaluation-protocol.json").write_text(json.dumps(PROTOCOL), encoding="utf-8")
     (root / "orchestration/registry.json").write_text(
         (ROOT / "orchestration/registry.json").read_text(encoding="utf-8"), encoding="utf-8")
-    (root / "docs").symlink_to(ROOT / "docs", target_is_directory=True)
+    for nome in (n for n in LIDOS_PELO_TESTER if n != "execution"):
+        shutil.copytree(ROOT / nome, root / nome, symlinks=True)
     (root / "execution").mkdir()
     for _sub in sorted((ROOT / "execution").iterdir()):
         if _sub.name == "skills":
             shutil.copytree(_sub, root / "execution/skills")
         else:
-            (root / "execution" / _sub.name).symlink_to(_sub, target_is_directory=True)
+            # copytree garante que rglob segue o conteudo em Python 3.14+
+            shutil.copytree(_sub, root / "execution" / _sub.name, symlinks=True)
     return root
 
 

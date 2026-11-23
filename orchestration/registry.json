@@ -297,6 +297,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -407,6 +408,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -470,6 +472,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -583,6 +586,25 @@
       },
       "projection": "user"
     },
+    "model-honor.sh": {
+      "kind": "hook_instrument",
+      "source": "evidence/hooks/model-honor.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "SubagentStop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/model-honor.sh"
+          }
+        }
+      },
+      "projection": "user"
+    },
     "output-budget.sh": {
       "kind": "hook_guidance",
       "source": "execution/hooks/output-budget.sh",
@@ -603,6 +625,30 @@
           },
           "E_C": {
             "status": "absent"
+          }
+        }
+      },
+      "projection": "user"
+    },
+    "pending-ask.sh": {
+      "kind": "hook_gate",
+      "source": "evidence/hooks/pending-ask.sh",
+      "state": "candidate",
+      "installed": true,
+      "activation": "Stop",
+      "evidence": {
+        "dossier": null,
+        "status": "absent",
+        "dimensions": {
+          "E_M": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/pending-ask.sh"
+          },
+          "E_S": {
+            "status": "paid",
+            "by": "executed_suite",
+            "ref": "tests/unit/pending-ask.sh"
           }
         }
       },
@@ -689,6 +735,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },
@@ -991,6 +1038,7 @@
       "exposure": {
         "level": "experimental_auto",
         "eval_id": "EA-0001",
+        "arm": "B_sistema_deployado",
         "runtime": {
           "claude_code": "2.1.226"
         },

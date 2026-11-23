@@ -54,15 +54,16 @@ artefatos de transporte e workflows temporários devem ser removidos no mesmo PR
 ## Fluxo recomendado
 
 ```bash
-python3 orchestration/render.py
-bash install/manifest.sh install/manifest.lock
-python3 orchestration/render.py --check
-python3 tests/unit/methodology.py
-bash tests/unit/repository-hygiene.sh
-bash tests/unit/runtime-ports.sh
-bash tests/unit/managed.sh
-bash tests/mutation/install.sh
-bash scripts/status.sh
+ROOT="$(git rev-parse --show-toplevel)"
+python3 "$ROOT/orchestration/render.py"
+bash "$ROOT/install/manifest.sh" "$ROOT/install/manifest.lock"
+python3 "$ROOT/orchestration/render.py" --check
+python3 "$ROOT/tests/unit/methodology.py"
+bash "$ROOT/tests/unit/repository-hygiene.sh"
+bash "$ROOT/tests/unit/runtime-ports.sh"
+bash "$ROOT/tests/unit/managed.sh"
+bash "$ROOT/tests/mutation/install.sh"
+bash "$ROOT/scripts/status.sh"
 ```
 
 A bateria completa de `tests/unit/` roda com `bash tests/unit/run.sh` (despacho por disco de

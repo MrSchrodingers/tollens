@@ -4,11 +4,13 @@
 # evidence/experiments/2026-09-02-pareado-harness-x-estado-inicial.md, escrito antes desta primeira
 # execucao. Este arquivo NAO decide nada: ele executa o que la esta e grava JSONL cru.
 #
-# Uso:  bash evidence/experiments/pareado.sh <N_por_celula> [saida.jsonl]
+# Uso: cd "$(git rev-parse --show-toplevel)" && bash evidence/experiments/pareado.sh <N_por_celula> [saida.jsonl]
 set -uo pipefail
 N="${1:-1}"
-SAIDA="${2:-$PWD/evidence/experiments/resultados.jsonl}"
-RAIZ="$PWD"
+# ISSUE #38 (G32). RAIZ era `$PWD`: portabilidade dependia do cwd de quem chama, nao do
+# repositorio. Enraiza na raiz do proprio script (dois niveis acima de evidence/experiments/).
+RAIZ="$(cd "$(dirname "$0")/../.." && pwd)"
+SAIDA="${2:-$RAIZ/evidence/experiments/resultados.jsonl}"
 command -v claude >/dev/null 2>&1 || { echo "NAO VERIFICADO: 'claude' ausente do PATH." >&2; exit 2; }
 command -v unshare >/dev/null 2>&1 || { echo "NAO VERIFICADO: 'unshare' ausente." >&2; exit 2; }
 

@@ -87,6 +87,12 @@ evpolicy = json.loads((ROOT / "orchestration/evidence-policy.json").read_text(en
 OBRIGACOES = evpolicy["proof_obligations"]
 DIMENSOES = set(evpolicy["dimensions"])
 
+# G108 (issue #52). `evidence-policy.json:runtime_exposure.arm_vocabulary_source` aponta para
+# `evaluation-protocol.json#design.arms` em vez de repetir o vocabulario aqui - o mesmo criterio
+# de F1/CC8: dois arquivos independentes, nenhum contendo a string do outro.
+evalprotocol = json.loads((ROOT / "orchestration/evaluation-protocol.json").read_text(encoding="utf-8"))
+_EXPO_ARM_VOCAB = set((evalprotocol.get("design") or {}).get("arms") or {})
+
 # F1, ACHADO DO PORTAO FINAL, E A TERCEIRA RECORRENCIA DA MESMA FAMILIA. A onda 14 removeu
 # `D_MAX` porque a constante morava no arquivo que o PR edita. A onda 15 removeu o rebaixamento
 # de `kind` pela mesma razao. E entao carregou a TABELA DE OBRIGACOES do disco e a usou para
@@ -1101,6 +1107,12 @@ def _exposure_falhas(nome: str, cap: dict) -> list[str]:
         if faltando:
             falhas.append(f"{nome}: experimental_auto sem {faltando}")
             return falhas
+        # G108 (issue #52): exigir o campo `arm` (verificado acima, em `faltando`) nao basta -
+        # um valor inventado passaria por truthiness. O braco declarado tem de pertencer as
+        # chaves de `design.arms`, unica fonte de vocabulario (arm_vocabulary_source).
+        if "arm" in _EXPO_EA_CAMPOS and _EXPO_ARM_VOCAB and exp.get("arm") not in _EXPO_ARM_VOCAB:
+            falhas.append(f"{nome}: arm {exp.get('arm')!r} fora do vocabulario {sorted(_EXPO_ARM_VOCAB)}")
+            return falhas
         venc_bruto = exp.get("expires_at")
         try:
             venc = datetime.date.fromisoformat(venc_bruto)
@@ -1138,6 +1150,32 @@ check(bool(_falhas_negativo),
 check(not _falhas_positivo,
       "controle positivo: fragmento sintetico conforme (candidate+manual) nao e acusado"
       + ("" if not _falhas_positivo else f" - {_falhas_positivo}"))
+
+# G108 (issue #52). PRIMEIRO LEITOR de `design.arms`: exigir o campo `arm` (CC8 acima) so testa
+# truthiness - um braco inventado passaria. Sem checagem de vocabulario, o dossie EA-0001 poderia
+# declarar qualquer string e passar; com ela, so as chaves de `evaluation-protocol.json#design.arms`
+# sao aceitas. Caso positivo e negativo evitam verde vazio (mesmo padrao dos fragmentos CC8 acima).
+_frag_arm_valido = {
+    "kind": "skill", "state": "candidate", "installed": True,
+    "exposure": {
+        "level": "experimental_auto", "eval_id": "EA-0001", "arm": "A_router_puro",
+        "runtime": {"claude_code": "2.1.226"}, "model": {"name": "opus-5"},
+        "started_at": "2026-09-09", "expires_at": "2099-01-01",
+    },
+}
+_frag_arm_invalido = {
+    **_frag_arm_valido,
+    "exposure": {**_frag_arm_valido["exposure"], "arm": "braco_que_nao_existe_no_protocolo"},
+}
+_falhas_arm_valido = _exposure_falhas("__g108_arm_valido__", _frag_arm_valido)
+_falhas_arm_invalido = _exposure_falhas("__g108_arm_invalido__", _frag_arm_invalido)
+check(not _falhas_arm_valido,
+      "controle positivo: arm pertencente a `design.arms` nao e acusado"
+      + ("" if not _falhas_arm_valido else f" - {_falhas_arm_valido}"))
+check(any("fora do vocabulario" in f for f in _falhas_arm_invalido),
+      "controle negativo: arm fora de `design.arms` e acusado por vocabulario"
+      + ("" if any("fora do vocabulario" in f for f in _falhas_arm_invalido)
+         else f" - nao foi acusado, o comparador estaria vacuo - {_falhas_arm_invalido}"))
 
 # ---------------------------------------------------------------------------------------
 print("== CC9. evidencia envelhece quando runtime, modelo, artefato ou policy mudam (ADR 0046) ==")

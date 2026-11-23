@@ -911,8 +911,9 @@ Artefatos temporários de transporte, arquivos de bootstrap e fixtures órfãs n
 A configuração versionada junto ao projeto é o modo preferido porque política e wrappers de runtime acompanham a revisão do código.
 
 ```bash
-python3 orchestration/render.py --check
-bash tests/unit/runtime-ports.sh
+ROOT="$(git rev-parse --show-toplevel)"
+python3 "$ROOT/orchestration/render.py" --check
+bash "$ROOT/tests/unit/runtime-ports.sh"
 ```
 
 Para validação ampla, execute os checks definidos em `.github/workflows/verify-pr.yml`.
@@ -922,19 +923,22 @@ Para validação ampla, execute os checks definidos em `.github/workflows/verify
 Dry run:
 
 ```bash
-bash install/apply.sh --dry-run
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/install/apply.sh" --dry-run
 ```
 
 Aplicar:
 
 ```bash
-bash install/apply.sh
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/install/apply.sh"
 ```
 
 Verificar:
 
 ```bash
-bash install/verify.sh
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/install/verify.sh"
 ```
 
 ### 13.3 Instalação global do Claude no Windows
@@ -1117,9 +1121,14 @@ conjuncao deles sustenta a afirmacao de que uma politica governa um runtime:
 `INSTALADO` e igualdade de digest entre uma entrada do manifesto e um arquivo em disco.
 `IMPOSTO` e a propriedade de o ator governado nao conseguir reescrever o artefato.
 `ATIVADO` e a observacao de que o runtime carregou ou disparou o artefato durante uma sessao.
-O `install/verify.sh` passou a medir as tres e a derivar `governed=managed`; a afirmacao
-sobre a projecao de usuario e descricao insuficiente do sistema. Essa insuficiencia esta
-registrada como achado aberto.
+O `install/verify.sh` publica tres vereditos separados - `USER_PROJECTION`,
+`MANAGED_PROJECTION`, `RUNTIME_ACTIVATION` - e so deriva `governed=managed` quando os
+escopos que decidem (a arvore de politica `/opt/tollens`, delegada a
+`apply-managed.sh --verify`, e o conteudo de capacidade em `/etc/claude-code`) foram de
+fato medidos e conferem com a fonte canonica; qualquer escopo que nao possa medir sai
+`NAO VERIFICADO`, nunca dissolvido num agregado verde. `ATIVADO` continua sendo um
+indicio gravado pelo proprio ator governado, nunca prova, e nao discrimina qual
+capacidade carregou (issue #39).
 
 ### 16.2 A rede de precedencia
 

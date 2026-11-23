@@ -37,19 +37,28 @@
 # rotulo de elegibilidade, D/E/F = nao decidiveis sem dQ/E_U). Nenhum caso produz depreciacao
 # a partir de ausencia de artefato.
 #
-# Uso: bash evidence/telemetry/medir-skills.sh [dir-de-projetos] [dir-de-skills] [mapa-artefatos] [base-artefatos]
+# Uso: cd "$(git rev-parse --show-toplevel)" && bash evidence/telemetry/medir-skills.sh [dir-de-projetos] [dir-de-skills] [mapa-artefatos] [base-artefatos]
 set -uo pipefail
 PROJ="${1:-$HOME/.claude/projects}"
 SKILLS="${2:-$HOME/.claude/skills}"
 ARTMAP="${3:-$(dirname "$0")/artefatos-de-skill.json}"
-ARTBASE="${4:-$PWD}"
+# ISSUE #38 (G32). Negativo silencioso: `${4:-$PWD}` fazia o VEREDITO de depreciacao mudar com
+# o cwd de quem chama, sem erro nenhum. Enraiza como a linha acima ja faz para ARTMAP - na raiz
+# do repositorio relativa ao proprio script, nunca no cwd do chamador.
+# ISSUE #53 (G109), sobre a correcao acima: enraizar resolve o VEREDITO (nao muda mais com o
+# cwd), mas nao bastava - a saida nao dizia que o CASO A/B de cada skill MAPEADA e funcao dessa
+# base. ARTBASE_EXPLICITA registra se quem chamou passou o 4o argumento ou recebeu o padrao, e
+# a saida (abaixo) declara os dois: qual base esta em uso e que ela decide o caso das mapeadas.
+if [ "$#" -ge 4 ]; then ARTBASE_EXPLICITA=1; else ARTBASE_EXPLICITA=0; fi
+ARTBASE="${4:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
-python3 - "$PROJ" "$SKILLS" "$ARTMAP" "$ARTBASE" <<'PY'
+python3 - "$PROJ" "$SKILLS" "$ARTMAP" "$ARTBASE" "$ARTBASE_EXPLICITA" <<'PY'
 import json, pathlib, collections, re, sys
 
 proj, skills_dir, artmap_path, artbase = (
     pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]),
     pathlib.Path(sys.argv[3]), pathlib.Path(sys.argv[4]))
+artbase_explicita = sys.argv[5] == '1'
 
 instaladas = sorted(d.name for d in skills_dir.glob('*') if (d / 'SKILL.md').exists())
 nomes = set(instaladas)
@@ -155,6 +164,13 @@ frac_sub = f"{round(100 * n_sub / n_transcripts)}%" if n_transcripts else "0%"
 print(f"transcripts: {n_transcripts} total = {n_main} principais + {n_sub} de subagente ({frac_sub})")
 print(f"skills instaladas: {len(instaladas)}")
 print(f"base de artefato em uso (ARTBASE): {artbase}")
+origem_base = ("passada explicitamente pelo chamador (4o argumento)" if artbase_explicita else
+               "NAO DECLARADA pelo chamador - padrao fixo na raiz do repositorio, nunca no cwd")
+mapeadas = sorted(n for n in artefatos if n in nomes)
+if mapeadas:
+    print(f"DEPENDENCIA: a base acima foi {origem_base}. A classificacao (A-F, abaixo) de cada "
+          f"skill MAPEADA ({', '.join(mapeadas)}) e funcao dela - e a unica parte deste "
+          f"relatorio que pode mudar se a base mudar; nenhuma outra coluna depende de ARTBASE.")
 print("OPORTUNIDADE: sum(E_s) nao e medido por este instrumento; oportunidade nao e estimada; "
       "Recall_s e Precision_s de selecao (orchestration/evaluation-protocol.json) nao sao "
       "computados aqui.")
@@ -202,17 +218,23 @@ for tot, s, tm, ts, c, me, ns, cb in linhas:
             detalhe = (f"artefato mapeado ausente ({artefatos[s]}) - testemunha ausente, NAO "
                        f"equivale a zero oportunidade")
         else:
-            caso, rotulo = 'B', 'ROUTING FAILURE'
+            caso, rotulo = 'B', 'ROUTING FAILURE OU USO NAO MEDIDO'
             detalhe = f"artefato encontrado em disco: {a} - testemunha de oportunidade"
     casos[caso] += 1
     print(f"  {s}: {detalhe} -> CASO {caso}: {rotulo}")
 
 print()
-print(f"CASO B (ROUTING FAILURE, NAO depreciar): {casos['B']} skill(s). Antes de arquivar, a")
-print("testemunha de oportunidade presente ainda nao e prova definitiva de inutilidade:")
+print(f"CASO B (ROUTING FAILURE OU USO NAO MEDIDO, NAO depreciar): {casos['B']} skill(s). Antes")
+print("de arquivar, a testemunha de oportunidade presente ainda nao e prova definitiva de")
+print("inutilidade - tres ramos, NAO dois:")
 print("  (a) a skill e nova? Nao houve tempo de uso.")
 print("  (b) o gatilho da `description` esta errado? Ela nunca dispara mesmo sendo util.")
 print("  Depreciar por (b) e jogar fora capacidade por defeito de roteamento.")
+if casos['B'] > 0:
+    print("  (c) o artefato foi produzido PELA PROPRIA skill, por um canal NAO MEDIDO de uso? "
+          "O cabecalho deste script documenta blind spots de contagem nos dois canais - se for")
+    print("      o caso, a presenca reflete numerador subcontado, nao falha de roteamento; o")
+    print("      rotulo B nao decide entre (b) e (c) sozinho, so restringe as hipoteses a essas duas.")
 print()
 print("CASOS D/E/F: NAO DECIDIVEIS - dQ (UtilidadeMarginal = Q_com - Q_sem, dimensao E_U) "
       "ausente. Fato medido: E_U=absent em 8/8 skills vivas do registry (defesa-de-tese e "

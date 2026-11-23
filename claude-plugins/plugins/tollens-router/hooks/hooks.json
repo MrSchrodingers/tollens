@@ -1,0 +1,4 @@
+{
+  "description": "Modulo de hooks do tollens-router (R2)",
+  "modules": ["./register.js"]
+}

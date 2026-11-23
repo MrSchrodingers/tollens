@@ -13,6 +13,8 @@ hook	execution/hooks/lentes.sh	hooks/lentes.sh	06a7085ac89f505953e5402572678e385
 hook	execution/hooks/output-budget.sh	hooks/output-budget.sh	62a321cc6b504d2f2520a7ff8db045cb765671eb530dc5827fba206e8b0c3fcb
 hook	execution/hooks/poka-yoke-lint.sh	hooks/poka-yoke-lint.sh	1fc83e6b1c085de08588722c3b05cbd97bd4045ac5c6fefb445d520ffb636981
 hook	execution/hooks/read-budget.sh	hooks/read-budget.sh	14d705cde6401a47abf6b8f006504457fef04e662f864190ed032953f943cbed
+hook	evidence/hooks/model-honor.sh	hooks/model-honor.sh	f83f381ab7ca454b6aea82d04362285a086e74459e5f0c4913d2f98f125e4462
+hook	evidence/hooks/pending-ask.sh	hooks/pending-ask.sh	35f5607b11f37f87bd4143494a3b9811089b9e6ef8942f82066cf87e839bc111
 hook	evidence/hooks/subagent-contract.sh	hooks/subagent-contract.sh	3bcfe696fc53e15859fb5219d643e9ee78baa5b9e77d7a3801ccdaf7367ad531
 hook	evidence/hooks/subagent-probe.sh	hooks/subagent-probe.sh	9dd4623a90042f2beada89177e4619b78bed5582154bd6c8878cb54d82c3567a
 hook	evidence/hooks/verify-gate.sh	hooks/verify-gate.sh	abcd2e0bb6b1d6262751c18ef1ecd578087c40679333db25b9a9f44593b322ef
@@ -27,7 +29,7 @@ agent	execution/agents/refutador.md	agents/refutador.md	fe0ec857ba7fa01c4abaead7
 agent	execution/agents/revisor-codigo.md	agents/revisor-codigo.md	f082a92643fd293bcb5ebfdb2f066ebfaafe5e860f483d0d595e244b43bb9743
 agent	execution/agents/revisor-frontend.md	agents/revisor-frontend.md	c8ff2223a8570e950c95f1b74f474a8978a18d014ee4e06c062c890f776a2672
 agent	execution/agents/tdd.md	agents/tdd.md	c6be3b0981af0dcc6bb0c323ab5873ac81afbd1295995a72e7624ccd557661c2
-skill	execution/skills/depreciar	skills/depreciar	d9b0afe5694eec707ee3baf2aabaf424a87532aae210e37f8934e4817e988c0c
+skill	execution/skills/depreciar	skills/depreciar	bde6eb1abc3097570cc0db4d34847a0911483ed6e8d8532595ca63878ae087d6
 skill	execution/skills/design-system-proposal	skills/design-system-proposal	93a5852f67977b61607c7dd6c3cbf4839ef516880c256d0d73d92f0313124009
 skill	execution/skills/forge	skills/forge	34ed31b2096993416a317a7cf4008d0152422104f953c12f7211d580f23962a8
 skill	execution/skills/graphify	skills/graphify	4e2ba651342dbb5a3dcb3b440f2ea64db1c3ecd5e4636840987d09a4b2344bf3
@@ -51,3 +53,4 @@ doctool	execution/document-tools/make_hostile_fixture.py	tollens/document-tools/
 doctool	execution/document-tools/probe_sheet.py	tollens/document-tools/probe_sheet.py	acc8fdf6ef0a7f878f7f3a1076d663f4b6c4e5cf66c09b15169a1c8c6ea00fa7
 doctool	execution/document-tools/profile_sheet.py	tollens/document-tools/profile_sheet.py	3cf2012f9ec22fa6be5cbebfaeb88cf760e15b35da53e8e06abdef476a69128f
 doctool	execution/document-tools/query_sheet.py	tollens/document-tools/query_sheet.py	47df0d5d93ecef50b929348422ac83845349d173039958d876c01b58bdd2e3cf
+plugin	claude-plugins	claude-plugins	6f3c43c931a02109a675f02e27a17fe88e45b6ceb0d47d20ccabfb38b6aa6e1d

@@ -101,9 +101,9 @@ restore_managed
 python3 - "$ORIG_M" <<'PY'
 import sys
 p=sys.argv[1]; s=open(p,encoding='utf-8').read()
-alvo='if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then\n'
+alvo='if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then\n  if [ -n "${TOLLENS_MANAGED_WORKER:-}" ]; then\n'
 if s.count(alvo)!=1: raise SystemExit(f'ANCORA MI4 NAO CASOU ({s.count(alvo)})')
-s=s.replace(alvo,'if false; then  # MUTANTE: remove trust preflight\n',1)
+s=s.replace(alvo,'if false; then  # MUTANTE: remove trust preflight\n  if [ -n "${TOLLENS_MANAGED_WORKER:-}" ]; then\n',1)
 open(p,'w',encoding='utf-8').write(s)
 PY
 out="$(bash "$REG_TRUST" 2>&1)"; rc=$?

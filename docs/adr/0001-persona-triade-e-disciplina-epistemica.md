@@ -5,7 +5,7 @@
   Analitico. Mantido como registro historico; nao reflete a config vigente.
 - Data: 2026-06-15
 - Escopo: configuracao global do usuario (`~/.claude/`), todos os projetos
-- Decisores: operador (daniel@debt.com.br) + sessao principal
+- Decisores: operador (mrschrodingers@gmail.com) + sessao principal
 
 ## Contexto
 

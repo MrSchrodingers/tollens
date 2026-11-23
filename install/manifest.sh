@@ -207,6 +207,13 @@ PYEOF
   # arquivo E, hoje: a fonte contra a qual `install/verify.sh` compara o DIGEST do kernel em vigor.
   # Se ele sumir, a verificacao de conteudo do kernel deixa de existir em silencio - e por isso
   # falhar alto aqui continua sendo o certo.
+  # ONDA 34 (ADR 0049): marketplace de plugins da organizacao. Diretorio inteiro, instalado so no
+  # escopo managed (root:root); apply.sh e verify.sh de usuario ignoram o tipo `plugin`.
+  if [ ! -f claude-plugins/.claude-plugin/marketplace.json ] || [ ! -d claude-plugins/plugins/tollens-router ]; then
+    echo "ERRO: claude-plugins/ incompleto (marketplace.json ou plugins/tollens-router ausente)." >&2
+    exit 1
+  fi
+  emit plugin claude-plugins claude-plugins
   if [ ! -f execution/config/CLAUDE.md ]; then
     echo "ERRO: execution/config/CLAUDE.md ausente - fonte canonica do kernel managed." >&2
     exit 1

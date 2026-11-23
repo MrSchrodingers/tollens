@@ -203,7 +203,12 @@ chk "guarda de bloco de codigo: mencao DENTRO de bloco de codigo nao conta" "${M
 # ================================================================================================
 echo "== defeito adjacente (plano 1.7): a mensagem de uso aponta para o caminho real =="
 chk "1.7: 'Uso:' cita evidence/telemetry/medir-skills.sh, nao scripts/medir-skills.sh" \
-    "$(grep -c 'Uso: bash evidence/telemetry/medir-skills.sh' "$SCRIPT")" 1
+    "$(grep -cE '^# Uso:.*evidence/telemetry/medir-skills\.sh' "$SCRIPT")" 1
+chk "1.7 CONTROLE: 'Uso:' nao cita mais o caminho antigo scripts/medir-skills.sh" \
+    "$(grep -c 'scripts/medir-skills.sh' "$SCRIPT")" 0
+# ISSUE #38 (G32): a mensagem de uso declara raiz explicita, para nao valer so no cwd do autor.
+chk "G32: 'Uso:' declara raiz portatil (git rev-parse --show-toplevel) antes do comando" \
+    "$(grep -c '^# Uso:.*git rev-parse --show-toplevel' "$SCRIPT")" 1
 
 # ================================================================================================
 echo "== N1..N5: assimetria invertida (artefato e proxy de oportunidade, nunca denominador) =="
@@ -236,6 +241,9 @@ chk "N3b: base COM artefato tampouco produz veredito de depreciacao" \
     "$(grep -c 'CANDIDATAS A DEPRECIACAO' <<<"$OUT_NA")" 0
 
 # N3c - CONTROLE ANTIVACUIDADE: o proxy ainda INFORMA (muda o caso), so nao decide sozinho.
+# Ressalva (issue #53/G109, ver N6 abaixo): esta diferenca so e legitima porque OUT_NA/OUT_NB
+# passam a base EXPLICITAMENTE (4o argumento = baseA/baseB) - com a base OMITIDA, ARTBASE ja
+# nao usa mais o cwd (G32) e o caso NAO muda entre chamadas, por desenho; N6a prova esse lado.
 CA="$(grep -oE 'CASO [A-F]' <<<"$OUT_NA" | head -1)"
 CB="$(grep -oE 'CASO [A-F]' <<<"$OUT_NB" | head -1)"
 chk "N3c CONTROLE: artefato presente (B, oportunidade testemunhada) != ausente (A, sem informacao)" \
@@ -258,9 +266,56 @@ chk "N5: declara que os casos D/E/F sao NAO DECIDIVEIS sem dQ (E_U ausente)" \
     "$(grep -qiE '(D/E/F|casos? D).*(NAO DECIDIVEL|nao decidivel|indecidivel)|dQ .*(ausente|nao medid)' <<<"$OUT_NB" \
        && echo sim || echo nao)" sim
 
+# ================================================================================================
+echo "== N6/N7 (issue #53/G109): a base ja nao depende do cwd (G32) - falta declarar a dependencia"
+echo "   que SOBRA (a da propria base) e distinguir routing-failure de uso por canal nao medido =="
+# MEDIDO antes desta correcao: a suposicao original da issue (ARTBASE default = $PWD) ja tinha
+# sido corrigida por outra frente (issue #38/G32, medir-skills.sh:48 enraiza na raiz do
+# repositorio, nunca no cwd) - por isso N6a/N6a2 abaixo ja passavam mesmo antes deste bloco
+# existir; ficam aqui como guarda de regressao. O que faltava, e falhava, era a TRANSPARENCIA:
+# a saida nao dizia que a classificacao das skills mapeadas e funcao da base em uso (N6c1/c2/c3)
+# nem distinguia routing-failure de uso por canal nao medido (N7a/b) - measured RED antes desta
+# onda, GREEN depois.
+N6="$T/n6"; mkdir -p "$N6/skills" "$N6/proj" "$N6/cwdA/out" "$N6/cwdB"
+skillmd "$N6/skills/skill-map" "gera relatorio em out/relatorio.md"
+touch "$N6/proj/.keep"
+echo '{"skill-map":"out/relatorio.md"}' > "$N6/mapa.json"
+echo x > "$N6/cwdA/out/relatorio.md"
+# cwdB fica vazio de proposito - mesmo mapa, disco diferente
+
+# N6a/N6a2 - SEM base explicita (4o argumento omitido), variando so o cwd de quem chama.
+OUT_N6CWDA="$(cd "$N6/cwdA" && bash "$SCRIPT" "$N6/proj" "$N6/skills" "$N6/mapa.json" 2>&1)"
+OUT_N6CWDB="$(cd "$N6/cwdB" && bash "$SCRIPT" "$N6/proj" "$N6/skills" "$N6/mapa.json" 2>&1)"
+L6A="$(grep 'skill-map:' <<<"$OUT_N6CWDA")"
+L6B="$(grep 'skill-map:' <<<"$OUT_N6CWDB")"
+chk "N6a: sem base explicita, o CASO da skill NAO muda com o cwd de quem chama" \
+    "$([ -n "$L6A" ] && [ "$L6A" = "$L6B" ] && echo igual || echo dif)" igual
+chk "N6a2: sem base explicita, a classificacao inteira e identica entre dois cwd" \
+    "$([ "$OUT_N6CWDA" = "$OUT_N6CWDB" ] && echo igual || echo dif)" igual
+
+# N6b - CONTROLE ANTIVACUIDADE: com base EXPLICITA, presente != ausente. Sem este controle, uma
+# "correcao" que esvaziasse o proxy (nunca consultar o disco) tambem deixaria N6a/N6a2 verdes.
+chk "N6b CONTROLE: com base EXPLICITA, presente != ausente (o proxy nao foi esvaziado)" \
+    "$([ "$OUT_NA" != "$OUT_NB" ] && echo dif || echo igual)" dif
+
+# N6c1/N6c2 - a saida DECLARA a dependencia, nos dois sentidos (base omitida e base explicita).
+chk "N6c1: sem base explicita, a saida declara que a base NAO foi declarada pelo chamador" \
+    "$(grep -qiE 'base.*NAO DECLARADA pelo chamador' <<<"$OUT_N6CWDA" && echo sim || echo nao)" sim
+chk "N6c2: com base explicita, a saida declara que a classificacao depende dessa base" \
+    "$(grep -qiE 'classificacao.*e funcao dela|classificacao.*depende' <<<"$OUT_NA" && echo sim || echo nao)" sim
+# N6c3 - CONTROLE: a linha de declaracao cita a base USADA (funcao da entrada, nao string fixa).
+chk "N6c3 CONTROLE: a declaracao de dependencia cita a base efetivamente usada" \
+    "$(grep -qF "$N/baseA" <<<"$OUT_NA" && echo sim || echo nao)" sim
+
+# N7a/N7b - o ramo (c) 'uso por canal nao medido' so aparece quando ha CASO B.
+chk "N7a: com CASO B presente (artefato encontrado), a saida nomeia o ramo de canal nao medido" \
+    "$(grep -qiE 'canal (nao|NAO) medid' <<<"$OUT_NA" && echo sim || echo nao)" sim
+chk "N7b CONTROLE: sem CASO B (base sem artefato, CASO A), esse ramo NAO e impresso" \
+    "$(grep -qiE 'canal (nao|NAO) medid' <<<"$OUT_NB" && echo sim || echo nao)" nao
+
 echo
 echo "================ PASS=$P  FAIL=$F ================"
-EXPECTED=32
+EXPECTED=42
 if [ "$P" -ne "$EXPECTED" ]; then
   echo "CONTAGEM INESPERADA: PASS=$P, esperado $EXPECTED. Caso removido ou nao executado."
   exit 1

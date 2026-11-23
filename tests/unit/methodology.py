@@ -121,6 +121,16 @@ check(design["repeated_trials_required_for_stochastic_agents"] is True, "agentes
 check(design["record_execution_order"] is True, "ordem de execucao registrada")
 check(design["skill_selection_evaluated_separately"] is True, "retrieval/selecao nao se confunde com utilidade")
 
+# G108 (issue #52). Um resultado sem braco declarado nao pode ser lido como estimativa de
+# A_router_puro: `arms` fixa o vocabulario que `capability-conformance.py` (CC8) confere contra
+# o `exposure.arm` de cada capability, e `arm_must_be_recorded_per_trial` torna o registro
+# obrigatorio por trial, nao opcional.
+arms = design["arms"]
+check(set(arms) == {"A_router_puro", "B_sistema_deployado"}, "vocabulario de bracos fechado")
+check(arms["A_router_puro"]["routing_nudges"] == "off", "braco A e router puro, sem nudge de routing")
+check(all("estimand" in b for b in arms.values()), "cada braco declara o que estima")
+check(design["arm_must_be_recorded_per_trial"] is True, "registro de braco obrigatorio por trial")
+
 metrics = protocol["metrics"]
 check({"requirement_pass_rate", "paired_correctness_delta"} <= set(metrics["primary"]), "metricas primarias preservam requisito e delta pareado")
 check({"token_cost", "wall_clock_latency", "tool_calls", "test_runs"} <= set(metrics["secondary"]), "custo, latencia e atividade medidos")
@@ -285,6 +295,117 @@ for _src in _FONTES:
 check(not comandos_mortos, "todo comando publicado em skill/agente/metodo aponta para arquivo existente"
       + ("" if not comandos_mortos else f" - mortos: {comandos_mortos}"))
 check(len(_FONTES) >= 20, f"ha fontes de instrucao a conferir (medido: {len(_FONTES)})")
+
+# ------------------------------------------------------------------------------------------
+# G32 (issue #38). A checagem acima ("comando publicado tem de existir") resolve o caminho
+# contra ROOT - assume tacitamente que quem executa esta na raiz do repositorio, sem jamais
+# declarar essa convencao nem a verificar. Dai a assimetria da issue #38: o comando publicado
+# e verdadeiro no cwd do autor e falso fora dele, e o proprio portao e cego a diferenca porque
+# tambem resolve a partir da raiz. Dois modos de falha, mesma causa: positivo ruidoso (comando
+# nao acha o arquivo de outro cwd) e negativo silencioso, mais grave (o proprio script enraiza
+# no `$PWD` de quem chamou - `ARTBASE="${4:-$PWD}"` em medir-skills.sh, `RAIZ="$PWD"` em
+# pareado.sh - e o cwd muda a RESPOSTA do script, nao so o erro).
+#
+# ESCOPO E TAXA DE FALSO POSITIVO, medidos ANTES de apertar (criterio de aceite 2): a regra
+# cobre (A) cabecalhos `# Uso:`/`# Usage:` em `*.sh` e (B) blocos cercados de instrucao VIVA em
+# `*.md`. Ficam de fora, por medicao: docs/adr/**, evidence/observations/** e
+# evidence/corpus/** (registro datado - reescrever e falsificar evidencia, doutrina do ADR
+# 0032, que ja mediu so 7% de sinal numa varredura ampla sem este recorte) e .github/** (fora
+# do escopo do criterio de veto desta issue). As invocacoes repo-relativas que aparecem no
+# CORPO executavel de tests/install/control/scripts nunca entram aqui por desenho: o regex de
+# cabecalho abaixo so casa comentario `# Uso:`/`# Usage:`, nunca uma linha de codigo, e essas
+# invocacoes internas ja tem cwd definido pelo proprio chamador (`dirname "$0"`/variavel
+# resolvida) - nao sao instrucao copiavel por um operador. A secao "## 17." dos dois README
+# (registro de uma sessao de execucao ja ocorrida) recebe a mesma doutrina de registro datado
+# apesar de estar fora de docs/adr/: e reconhecida pelo proprio titulo da secao, nao por
+# caminho de arquivo, porque so uma fatia de README.md/README.pt-BR.md e registro. Medido sobre
+# a arvore pre-onda-29 com este recorte: 19 achados, 4 falsos positivos (as duas ocorrencias da
+# secao 17 e dois blocos cujo contexto de raiz ja existia em prosa/bloco anterior e que a
+# correcao desta onda fecha em vez de mascarar) - 21,1% do bruto, contra ~48% sem o recorte.
+_G32_EXCL = ("docs/adr/", "evidence/observations/", "evidence/corpus/", ".github/", ".git/")
+_G32_USO_PREFIXO = re.compile(r"^\s*#\s*(?:Uso|Usage):")
+_G32_USO = re.compile(r"^\s*#\s*(?:Uso|Usage):\s*(.+)$")
+_G32_CDL = re.compile(r'^\s*\$?\s*cd\s+"?(\$\([^)]+\)|[^\s"]+)')
+_G32_PORTATIL = re.compile(r'git rev-parse --show-toplevel|BASH_SOURCE|dirname "?\$0')
+_G32_SECAO_REGISTRO = re.compile(r"^##\s+17\.")
+_G32_SECAO_QUALQUER = re.compile(r"^##\s+\d")
+
+_g32_cabecalhos = []
+_g32_sem_raiz_cabecalho = []
+for _src in sorted(ROOT.rglob("*.sh")):
+    _rel = _src.relative_to(ROOT).as_posix()
+    if _rel.startswith(_G32_EXCL):
+        continue
+    for _n, _linha in enumerate(_src.read_text(encoding="utf-8").splitlines(), start=1):
+        if not _G32_USO_PREFIXO.match(_linha):
+            continue
+        _g32_cabecalhos.append(f"{_rel}:{_n}")
+        _m = _G32_USO.match(_linha)
+        if not _m:
+            continue  # "Uso:" sem conteudo na mesma linha (formato multi-linha) - nada a exigir aqui
+        _c = _m.group(1)
+        if not [x for x in _CMD.findall(_c) if x.split("/", 1)[0] in _TOPO]:
+            continue  # nao publica comando repo-relativo deste repositorio
+        if _G32_PORTATIL.search(_c) or _G32_CDL.match(_c.strip()):
+            continue  # raiz explicita na propria linha publicada
+        _g32_sem_raiz_cabecalho.append(f"{_rel}:{_n}: {_c.strip()[:88]}")
+
+check(not _g32_sem_raiz_cabecalho,
+      "cabecalho Uso:/Usage: que publica comando repo-relativo declara raiz explicita "
+      "(git rev-parse --show-toplevel, BASH_SOURCE/dirname \"$0\", ou cd) - issue #38"
+      + ("" if not _g32_sem_raiz_cabecalho else f" - sem raiz: {_g32_sem_raiz_cabecalho}"))
+check(len(_g32_cabecalhos) >= 7, f"ha cabecalhos Uso:/Usage: a conferir (medido: {len(_g32_cabecalhos)})")
+
+_g32_blocos_examinados = []  # todo bloco fechado fora de excl/registro - populacao, nao achado
+_g32_sem_raiz_bloco = []
+_g32_raiz_quebrada = []
+for _src in sorted(ROOT.rglob("*.md")):
+    _rel = _src.relative_to(ROOT).as_posix()
+    if _rel.startswith(_G32_EXCL):
+        continue
+    _dentro, _buf, _ini, _registro = False, [], 0, False
+    for _n, _linha in enumerate(_src.read_text(encoding="utf-8").splitlines(), start=1):
+        if not _dentro:
+            if _G32_SECAO_REGISTRO.match(_linha):
+                _registro = True
+            elif _G32_SECAO_QUALQUER.match(_linha):
+                _registro = False
+        if _linha.strip().startswith("```"):
+            if _dentro:
+                if not _registro:
+                    _g32_blocos_examinados.append(f"{_rel}:{_ini}")
+                _hits = sorted({c for x in _buf for c in _CMD.findall(x) if c.split("/", 1)[0] in _TOPO})
+                if _hits and not _registro:
+                    _raiz = None
+                    for x in _buf:
+                        _mm = _G32_CDL.match(x)
+                        if _mm:
+                            _raiz = _mm.group(1).strip("\"'")
+                            break
+                    if _raiz is None:
+                        _g32_sem_raiz_bloco.append(f"{_rel}:{_ini} -> {_hits[:2]}")
+                    elif not _G32_PORTATIL.search(_raiz):
+                        _alvo = Path(os.path.expanduser(_raiz))
+                        _motivo = "nao existe nesta maquina" if not _alvo.is_dir() else "absoluto de uma maquina, nao portatil"
+                        _g32_raiz_quebrada.append(f"{_rel}:{_ini} cd {_raiz} -> {_motivo}")
+                _buf = []
+            else:
+                _ini = _n
+            _dentro = not _dentro
+            continue
+        if _dentro:
+            _buf.append(_linha)
+
+check(not _g32_sem_raiz_bloco,
+      "bloco .md de instrucao viva que publica comando repo-relativo declara raiz (`cd` "
+      "portatil ou existente) - issue #38"
+      + ("" if not _g32_sem_raiz_bloco else f" - sem raiz: {_g32_sem_raiz_bloco}"))
+check(not _g32_raiz_quebrada,
+      "raiz declarada em bloco .md resolve de fato (portatil ou existente nesta maquina) - "
+      "issue #38, achado que motivou a regra (`cd ~/tollens` nao existia fora da maquina do "
+      "autor)" + ("" if not _g32_raiz_quebrada else f" - quebrada: {_g32_raiz_quebrada}"))
+check(len(_g32_blocos_examinados) >= 10,
+      f"ha blocos .md a conferir (medido: {len(_g32_blocos_examinados)})")
 
 # REFERENCIA POR NUMERO DE SECAO AO CLAUDE.md E PROIBIDA. Medido em 2026-08-17: havia 8
 # referencias vivas, e a numeracao ja tinha mudado sob todas elas - `Diretriz 13`/`13.1` (3x)

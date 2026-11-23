@@ -19,7 +19,7 @@
 # publica `ATIVACAO: INDICIO N evento(s)` lendo esse log, entao a afirmacao de governanca do
 # repositorio dependia de um instrumento que aplicar o repositorio destruia.
 #
-# Uso: bash install/hooks-spec.sh <base>
+# Uso: cd "$(git rev-parse --show-toplevel)" && bash install/hooks-spec.sh <base>
 #   <base> e string LITERAL embutida no JSON. Para o escopo de usuario e '$HOME/.claude/hooks',
 #   com o `$HOME` deliberadamente NAO expandido aqui: quem expande e o runtime, no momento da
 #   execucao. Para o escopo managed e um caminho absoluto root-owned.
@@ -69,10 +69,12 @@ cat <<'JSON' | jq --arg b "$BASE" \
   ],
   "Stop": [{"hooks":[
       {"type":"command","command":"bash @BASE@/verify-gate.sh","timeout":200},
+      {"type":"command","command":"bash @BASE@/pending-ask.sh","timeout":10},
       {"type":"command","command":"bash @BASE@/ds4-notify.sh","timeout":5}]}],
   "SubagentStop": [
     {"hooks":[{"type":"command","command":"bash @BASE@/subagent-probe.sh"}]},
     {"hooks":[{"type":"command","command":"bash @BASE@/subagent-contract.sh"}]},
+    {"hooks":[{"type":"command","command":"bash @BASE@/model-honor.sh","timeout":10}]},
     {"hooks":[{"type":"command","command":"bash @BASE@/ds4-notify.sh","timeout":5}]}
   ],
   "SubagentStart": [{"hooks":[

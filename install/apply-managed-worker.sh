@@ -37,7 +37,7 @@ REPO="$PWD"
 # MANAGED_MANIFEST e override SO PARA TESTE: `tests/unit/managed.sh` precisa exercitar o caso
 # "deploy incompleto" sem mutar o manifesto real - se a suite morresse no meio, o repositorio
 # ficaria com o manifesto sabotado no disco.
-MAN="${MANAGED_MANIFEST:-install/manifest.lock}"
+MAN="install/manifest.lock"
 PREFIX="${MANAGED_PREFIX:-/}"
 PREFIX="${PREFIX%/}"                 # normaliza: "/" vira "", evitando "//etc"
 # CANONICALIZA o prefixo: sem isto, `MANAGED_PREFIX=/tmp/x/opt/..` faz $OPT conter `..` e a
@@ -56,23 +56,52 @@ ETC="$PREFIX/etc/claude-code"
 SETTINGS="$ETC/managed-settings.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1   # prefixo vazio = raiz de verdade
 
+# REAL tem UM caminho de calculo: realpath -m do prefixo (`//`, `/.` e `/tmp/..` resolvem para `/`).
+# O supervisor calcula igual e exporta o resultado; divergir significa que um dos dois acreditaria
+# estar sob prefixo de ensaio enquanto o outro escreve na raiz real. Recusa, sem escrever nada.
+if [ -n "${TOLLENS_SUPERVISOR_PREFIX+x}" ] && [ "$TOLLENS_SUPERVISOR_PREFIX" != "$PREFIX" ]; then
+  echo "ERRO: prefixo divergente entre supervisor ('$TOLLENS_SUPERVISOR_PREFIX') e worker ('$PREFIX'). Nada foi escrito." >&2
+  exit 78
+fi
+# Variaveis que existem SO PARA TESTE (manifesto alternativo, falha injetada, politica alternativa)
+# nao valem na raiz real: la sao recusadas, nao ignoradas em silencio.
+if [ "$REAL" -eq 1 ]; then
+  if [ -n "${MANAGED_MANIFEST:-}${MANAGED_FAILPOINT:-}${MANAGED_ROUTER_POLICY_SRC:-}" ]; then
+    echo "ERRO: MANAGED_MANIFEST, MANAGED_FAILPOINT e MANAGED_ROUTER_POLICY_SRC sao so de ensaio e sao recusadas sobre a raiz real." >&2
+    exit 78
+  fi
+else
+  MAN="${MANAGED_MANIFEST:-$MAN}"
+fi
+
 MODO="deploy"
 # ONDA 12. Este `case` inspeciona apenas "$1", e o worker e invocavel DIRETO (documentado, e via
 # TOLLENS_MANAGED_WORKER). Medido: `apply-managed.sh --revert --dry-run` chegava aqui com argc=2 e
 # executava um revert REAL e privilegiado, descartando o `--dry-run` em silencio - justamente o
 # habito de seguranca do operador sendo engolido no unico caminho que roda como root. O supervisor
 # passou a contar antes do `exec`; aqui a checagem se repete porque o worker tem entrada propria.
+#
+# ONDA 34 (ADR 0049). Unico par aceito com dois argumentos: `--liberar-opus --dry-run`, tratado
+# por igualdade exata. Qualquer outro excesso segue recusado.
+OPUS_DRY=0
+REVERT_FORCAR=0
+if [ "$#" -eq 2 ] && [ "$1" = "--liberar-opus" ] && [ "$2" = "--dry-run" ]; then
+  OPUS_DRY=1; set -- --liberar-opus
+fi
 [ "$#" -le 1 ] || { echo "ERRO: argumentos em excesso ($#): $*" >&2; exit 64; }
 case "${1:-}" in
   --dry-run) MODO="dry" ;;
   --enforce) MODO="enforce" ;;
   --revert)  MODO="revert" ;;
+  --revert-forcar) MODO="revert"; REVERT_FORCAR=1 ;;
   --verify)  MODO="verify" ;;
+  --liberar-opus)  MODO="opus" ;;
+  --revert-router) MODO="revert-router" ;;
   "")        MODO="deploy" ;;
-  *) echo "uso: $0 [--dry-run|--enforce|--revert|--verify]" >&2; exit 64 ;;
+  *) echo "uso: $0 [--dry-run|--enforce|--revert|--revert-forcar|--verify|--liberar-opus [--dry-run]|--revert-router]" >&2; exit 64 ;;
 esac
 
-if [ "$REAL" -eq 1 ] && [ "$MODO" != "dry" ] && [ "$MODO" != "verify" ] && [ "$(id -u)" -ne 0 ]; then
+if [ "$REAL" -eq 1 ] && [ "$MODO" != "dry" ] && [ "$MODO" != "verify" ] && [ "$OPUS_DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
   echo "ERRO: '$MODO' sobre a raiz real exige root. Rode com sudo, ou use MANAGED_PREFIX=<dir> para ensaiar." >&2
   exit 77
 fi
@@ -86,7 +115,20 @@ destino_managed(){ printf '%s\n' "${1#tollens/}"; }
 # `lib` entrou na onda 25: a POLITICA precisa das bibliotecas que seus hooks chamam. Sem isso o
 # `verify-gate.sh` chegava a /opt/tollens sem o `lint-delta.py` que o ramo `delta` invoca, e
 # declarava lacuna a cada parada - portao instalado que nao verifica nada.
-tipos_politica(){ awk -F'\t' '!/^#/ && ($1=="hook" || $1=="adapter" || $1=="doctool" || $1=="lib")' "$MAN"; }
+tipos_politica(){ awk -F'\t' '!/^#/ && ($1=="hook" || $1=="adapter" || $1=="doctool" || $1=="lib" || $1=="plugin")' "$MAN"; }
+
+# ONDA 34 (ADR 0049): marketplace do roteador. Os tres nomes abaixo precisam coincidir com
+# claude-plugins/.claude-plugin/marketplace.json e plugins/tollens-router/.claude-plugin/plugin.json.
+ROUTER_MARKET="tollens-tools"
+ROUTER_ID="tollens-router@$ROUTER_MARKET"
+ROUTER_POLICY_SRC="claude-plugins/plugins/tollens-router/router-policy.json"
+# Override SO PARA TESTE (tests/unit/managed-router.sh: politica reprovada). Ignorado em raiz real:
+# la a fonte da politica e a do repositorio ja validado como root:root (ADR 0026).
+[ "$REAL" -eq 0 ] && ROUTER_POLICY_SRC="${MANAGED_ROUTER_POLICY_SRC:-$ROUTER_POLICY_SRC}"
+ROUTER_POLICY="$ETC/router-policy.json"
+# Liberacao do Opus: ID da versao 5.5 (um prefixo de versao permite a versao nomeada e as que a
+# estendem). Os tokens negados removidos de deniedModels sao os que casam `opus`.
+OPUS_ID="claude-opus-5-5"
 
 # ===================== CONFINAMENTO DE CAMINHO (auditoria de 2026-08-04) =====================
 # DEFEITO CRITICO CORRIGIDO, com PoC executada. O manifesto e um ARQUIVO DO REPOSITORIO, isto e,
@@ -144,12 +186,194 @@ plano(){
   done
 }
 
+# ===================== ONDA 34: ROTEADOR E LIBERACAO DO OPUS (ADR 0049) =====================
+# O managed-settings.json vivo foi editado a mao (availableModels, deniedModels, hooks de outro
+# repositorio). O gerador antigo reescrevia o arquivo inteiro e apagava tudo isso. Daqui em diante,
+# sobre um arquivo JA marcado `_managed_by: tollens`, o gerador PRESERVA toda chave que nao e dele
+# e os hooks que a especificacao nao declara. Sobre arquivo de terceiro o comportamento antigo
+# vale (backup .pre-tollens e substituicao).
+atual_e_tollens(){ [ -f "$SETTINGS" ] && jq -e '._managed_by == "tollens"' "$SETTINGS" >/dev/null 2>&1; }
+
+# grupos de hook do arquivo atual cujos comandos a especificacao nova NAO declara. $1 = hooks novos.
+hooks_externos(){
+  atual_e_tollens || { echo '{}'; return 0; }
+  jq -c --argjson novo "$1" '
+    ([$novo | .. | objects | select(has("command")) | .command] | unique) as $conhecidos
+    | (.hooks // {})
+    | with_entries(.value |= [ .[] | .hooks |= map(select((.command // null) as $c | ($conhecidos | index($c)) | not))
+                               | select((.hooks | length) > 0) ])
+    | with_entries(select(.value | length > 0))' "$SETTINGS"
+}
+junta_hooks(){ jq -nc --argjson a "$1" --argjson b "$2" 'reduce ($b | to_entries[]) as $e ($a; .[$e.key] = ((.[$e.key] // []) + $e.value))'; }
+
+# $1 = hooks (spec + externos), $2 = true|false (enforce solicitado). O enforce ja ativo NAO e rebaixado.
+gera_settings(){
+  local base='{}'
+  atual_e_tollens && base="$(cat "$SETTINGS")"
+  jq -n --argjson b "$base" --argjson h "$1" --argjson enf "$2" --arg rp "$REPO" \
+        --arg ad "$OPT/adapters/code" --arg dd "$OPT/adapters/documents" \
+        --arg pid "$ROUTER_ID" --arg mk "$ROUTER_MARKET" --arg mp "$OPT/claude-plugins" '
+    ($b | del(.hooks, .allowManagedHooksOnly)) as $r
+    | $r + {_managed_by: "tollens",
+            allowManagedHooksOnly: ($enf or ($b.allowManagedHooksOnly == true)),
+            hooks: $h,
+            env: (($r["env"] // {}) + {CLAUDE_ADAPTERS_DIR: $ad, DOC_ADAPTERS_DIR: $dd, TOLLENS_REPO: $rp}),
+            enabledPlugins: (($r.enabledPlugins // {}) + {($pid): true}),
+            extraKnownMarketplaces: (($r.extraKnownMarketplaces // {}) + {($mk): {source: {source: "directory", path: $mp}}}),
+            prependPlugins: ([$pid, "sec-default@builtin"] + ($b.prependPlugins // [])
+                             | reduce .[] as $x ([]; if index($x) then . else . + [$x] end))}'
+}
+
+# Politica do roteador: conteudo embarcado, mantendo o `mode` ja instalado (o operador o muda no passo D).
+politica_json(){
+  local m=""
+  [ -f "$ROUTER_POLICY" ] && m="$(jq -r '.mode // empty' "$ROUTER_POLICY" 2>/dev/null)"
+  case "$m" in
+    shadow|enforce|off) jq -S --arg m "$m" '.mode = $m' "$ROUTER_POLICY_SRC" ;;
+    *) jq -S . "$ROUTER_POLICY_SRC" ;;
+  esac
+}
+
+# Em raiz real o motor roda COMO ROOT. Um `node` do ator (nvm, PATH herdado por `sudo env PATH=$PATH` ou
+# `sudo -E`) seria execucao de codigo do ator como root. $1 = caminho do executavel. Exige o binario
+# resolvido (realpath) e todo diretorio ate `/` pertencentes a root e sem escrita de grupo/outros.
+# Imprime o caminho RESOLVIDO em stdout: quem executa usa esse caminho, nunca o nome. Um symlink do
+# ator para um binario de root e aceito porque o que roda e o alvo resolvido, cuja cadeia inteira passou.
+node_raiz(){
+  local d own mode resolvido
+  d="$(realpath -e "$1" 2>/dev/null)" || return 1
+  resolvido="$d"
+  while :; do
+    read -r own mode < <(stat -c '%U %a' "$d" 2>/dev/null) || return 1
+    if [ "$own" != "root" ] || [ $(( 8#$mode & 8#022 )) -ne 0 ]; then
+      echo "ERRO: '$d' (dono=$own, modo=$mode) esta no caminho do node ($1), e ele nao e de root ou e gravavel por outros." >&2
+      echo "      Em raiz real o motor roda como root e exige um node root-owned em caminho de sistema, instalado" >&2
+      echo "      pelo operador (pacote da distribuicao). Nao use 'sudo -E' nem 'sudo env PATH=\$PATH'." >&2
+      return 1
+    fi
+    [ "$d" = "/" ] && break
+    d="$(dirname "$d")"
+  done
+  printf '%s\n' "$resolvido"
+}
+
+# validatePolicy do motor, com `now`. $1 = arquivo de politica, $2 = engine.mjs. Exit 0 so com ok:true.
+valida_politica(){
+  command -v node >/dev/null 2>&1 || { echo "ERRO: node ausente - a politica do roteador nao pode ser validada." >&2; return 1; }
+  local nb
+  nb="$(command -v node)"
+  # MANAGED_NODE_ROOT=1 so ENDURECE (permite ensaiar a recusa sob prefixo); nunca afrouxa a raiz real.
+  if [ "$REAL" -eq 1 ] || [ "${MANAGED_NODE_ROOT:-}" = "1" ]; then
+    nb="$(node_raiz "$nb")" || return 1
+  else
+    nb="$(realpath -e "$nb")" || return 1
+  fi
+  # Ambiente higienizado: sem NODE_OPTIONS, NODE_PATH nem PATH herdados (sob `sudo -E` o ambiente do ator
+  # chegaria ao motor como root). Caminho absoluto resolvido, nunca o nome.
+  /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "$nb" --input-type=module -e '
+    const [, pol, eng] = process.argv;
+    const fs = await import("node:fs");
+    const { validatePolicy } = await import(eng);
+    const r = validatePolicy(JSON.parse(fs.readFileSync(pol, "utf8")), { now: Date.now() });
+    if (!r.ok) { console.error(JSON.stringify(r.erros)); process.exit(1); }
+    if (r.degradaPara) console.error("AVISO: politica degrada para " + r.degradaPara + " (vencida ou enforce sem tier medido)");
+  ' "$1" "file://$2"
+}
+
+# settings com o Opus liberado: so availableModels e deniedModels mudam.
+opus_json(){
+  jq --arg id "$OPUS_ID" '
+    def tokens: ascii_downcase | [scan("[a-z]+")];
+    # entrada com token `fable` NUNCA sai, mesmo se tambem tiver `opus` (Fable segue negado, ADR 0012)
+    def tem_opus: tokens | (index("opus") != null) and (index("fable") == null);
+    (if has("availableModels") then .availableModels |= (if index($id) then . else . + [$id] end) else . end)
+    | (if has("deniedModels") then .deniedModels |= map(select(type != "string" or (tem_opus | not))) else . end)' "$SETTINGS"
+}
+
+mostra_diff(){ # $1=rotulo $2=JSON atual (ou {}) $3=JSON novo
+  local d
+  d="$(diff -u --label "atual:$1" --label "novo:$1" <(printf '%s\n' "$2") <(printf '%s\n' "$3") || true)"
+  if [ -n "$d" ]; then printf '%s\n' "$d"; else echo "  (sem mudanca em $1)"; fi
+}
+
+dry_diff(){ # nunca escreve: so le, e compara em memoria (process substitution usa pipe)
+  local sp ext hj novo atual polnova polatual
+  sp="$(bash install/hooks-spec.sh "$OPT/hooks")" || return 1
+  ext="$(hooks_externos "$sp")" || return 1
+  hj="$(junta_hooks "$sp" "$ext")" || return 1
+  echo "--- componentes de politica em $OPT"
+  while IFS=$'\t' read -r _t origem destino sha; do
+    alvo="$OPT/$(destino_managed "$destino")"
+    if [ ! -e "$alvo" ]; then printf '  INSTALA   %s\n' "$(destino_managed "$destino")"; continue; fi
+    if [ -d "$alvo" ]; then cur="$(cd "$alvo" && find . -type f -exec sha256sum {} + | LC_ALL=C sort -k2 | sha256sum | cut -d' ' -f1)"
+    else cur="$(sha256sum "$alvo" | cut -d' ' -f1)"; fi
+    if [ "$cur" = "$sha" ]; then printf '  igual     %s\n' "$(destino_managed "$destino")"
+    else printf '  ATUALIZA  %s\n' "$(destino_managed "$destino")"; fi
+  done < <(tipos_politica)
+  echo "--- hooks externos preservados (comandos que a especificacao nao declara)"
+  printf '%s' "$ext" | jq -r '.[] | .[] | .hooks[] | "  " + (.command // "?")' 2>/dev/null | sort -u
+  echo "--- managed-settings.json"
+  if [ -f "$SETTINGS" ]; then atual="$(jq -S . "$SETTINGS" 2>/dev/null || echo '{}')"; else atual='{}'; fi
+  novo="$(gera_settings "$hj" false | jq -S .)" || return 1
+  mostra_diff "$SETTINGS" "$atual" "$novo"
+  echo "--- router-policy.json"
+  if [ -f "$ROUTER_POLICY" ]; then polatual="$(jq -S . "$ROUTER_POLICY" 2>/dev/null || echo '{}')"; else polatual='{}'; fi
+  polnova="$(politica_json)" || return 1
+  mostra_diff "$ROUTER_POLICY" "$polatual" "$polnova"
+}
+
+if [ "$MODO" = "opus" ]; then
+  atual_e_tollens || { echo "ERRO: $SETTINGS ausente ou sem a marca _managed_by=tollens. Instale antes (passo A)." >&2; exit 1; }
+  novo="$(opus_json)" || { echo "ERRO: nao foi possivel calcular a liberacao." >&2; exit 1; }
+  if [ "$OPUS_DRY" -eq 1 ]; then
+    echo "PLANO (nada sera escrito): liberacao do Opus ($OPUS_ID em availableModels; opus fora de deniedModels)"
+    mostra_diff "$SETTINGS" "$(jq -S . "$SETTINGS")" "$(printf '%s' "$novo" | jq -S .)"
+    exit 0
+  fi
+  if [ "$(printf '%s' "$novo" | jq -S -c .)" = "$(jq -S -c . "$SETTINGS")" ]; then
+    echo "Opus ja liberado: nada a fazer."; exit 0
+  fi
+  _ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$SETTINGS" "$SETTINGS.pre-liberar-opus.$_ts" || { echo "ERRO: backup falhou; nada mudou." >&2; exit 1; }
+  _tmp="$ETC/.managed-settings.json.opus.$$"
+  printf '%s\n' "$novo" > "$_tmp" && jq -e . "$_tmp" >/dev/null 2>&1 && chmod 0644 "$_tmp" \
+    && { [ "$REAL" -eq 0 ] || chown root:root "$_tmp"; } && mv -f "$_tmp" "$SETTINGS" \
+    || { rm -f "$_tmp"; echo "ERRO: escrita da liberacao falhou; backup em $SETTINGS.pre-liberar-opus.$_ts" >&2; exit 1; }
+  echo "Opus liberado. Backup: $SETTINGS.pre-liberar-opus.$_ts"
+  echo "Fable segue negado; fable-guard.sh e sentinela inalterados."
+  exit 0
+fi
+
+if [ "$MODO" = "revert-router" ]; then
+  # Inverso do que ESTE roteador instala: arvore do plugin, politica e as chaves de plugin. Nao toca
+  # hooks, modelos nem o resto de /opt/tollens (diferente de --revert, que remove tudo).
+  atual_e_tollens || { echo "ERRO: $SETTINGS ausente ou sem a marca _managed_by=tollens; nada removido." >&2; exit 1; }
+  _tmp="$ETC/.managed-settings.json.rr.$$"
+  jq --arg pid "$ROUTER_ID" --arg mk "$ROUTER_MARKET" '
+      (if has("enabledPlugins") then .enabledPlugins |= del(.[$pid]) else . end)
+    | (if has("extraKnownMarketplaces") then .extraKnownMarketplaces |= del(.[$mk]) else . end)
+    | (if has("prependPlugins") then .prependPlugins |= map(select(. != $pid)) else . end)
+    | (if (.enabledPlugins // {}) == {} then del(.enabledPlugins) else . end)
+    | (if (.extraKnownMarketplaces // {}) == {} then del(.extraKnownMarketplaces) else . end)
+    | (if (.prependPlugins // []) == ["sec-default@builtin"] then del(.prependPlugins) else . end)' "$SETTINGS" > "$_tmp" \
+    && jq -e . "$_tmp" >/dev/null 2>&1 && chmod 0644 "$_tmp" \
+    && { [ "$REAL" -eq 0 ] || chown root:root "$_tmp"; } \
+    || { rm -f "$_tmp"; echo "ERRO: nao foi possivel recalcular o settings; nada removido." >&2; exit 1; }
+  mv -f "$_tmp" "$SETTINGS" || { rm -f "$_tmp"; echo "ERRO: instalacao do settings falhou." >&2; exit 1; }
+  rm -rf "$OPT/claude-plugins" "$ROUTER_POLICY"
+  echo "roteador removido: chaves de plugin, $OPT/claude-plugins e $ROUTER_POLICY. Hooks e modelos intactos."
+  exit 0
+fi
+# =============================================================================================
+
 if [ "$MODO" = "dry" ]; then
   echo "PLANO (nada sera escrito). prefixo='${PREFIX:-/}'"
   plano
   n=$(tipos_politica | wc -l)
   echo "  $n componentes de politica; settings managed em $SETTINGS"
   echo "  allowManagedHooksOnly: NAO seria ativado neste modo (use --enforce, depois de verificar)"
+  echo "=== DIFF do que mudaria (calculado em memoria; nenhuma escrita) ==="
+  dry_diff || { echo "ERRO: diff indisponivel" >&2; exit 1; }
   exit 0
 fi
 
@@ -167,11 +391,24 @@ if [ "$MODO" = "revert" ]; then
     echo "      depois de ler o conteudo - este script nao apaga o que nao criou." >&2
     exit 1
   fi
+  # ONDA 34 (ADR 0049). So e restaurado por padrao um `.pre-tollens` que o proprio tollens escreveu. O
+  # `.pre-tollens` vivo e de 2026-08-12 (`_managed_by=evidence-gate`, hooks em /opt/evidence-gate, que nao
+  # existe): restaura-lo troca a politica atual por uma antiga e o `rm -rf` abaixo apaga hooks que nao
+  # estao no repositorio. Recusa ANTES de remover qualquer coisa; `--revert-forcar` e a saida explicita.
+  if [ "$REVERT_FORCAR" -ne 1 ] && [ -f "$SETTINGS.pre-tollens" ] \
+     && ! jq -e '._managed_by == "tollens"' "$SETTINGS.pre-tollens" >/dev/null 2>&1; then
+    echo "ERRO: '$SETTINGS.pre-tollens' nao tem _managed_by=tollens: restaura-lo substitui a politica atual por uma" >&2
+    echo "      anterior ao tollens e '$OPT' e removido por inteiro (inclui hooks fora do repositorio)." >&2
+    echo "      Nada foi removido. Para desfazer so o roteador: --revert-router. Para restaurar mesmo assim," >&2
+    echo "      depois de ler o arquivo: --revert-forcar." >&2
+    exit 1
+  fi
   if [ -f "$SETTINGS" ]; then rm -f "$SETTINGS"; echo "removido: $SETTINGS"; fi
   if [ -f "$SETTINGS.pre-tollens" ]; then
     mv -f "$SETTINGS.pre-tollens" "$SETTINGS"; echo "restaurado o managed-settings.json anterior"
   fi
   if [ -d "$OPT" ]; then rm -rf "$OPT"; echo "removido: $OPT"; fi
+  if [ -f "$ROUTER_POLICY" ]; then rm -f "$ROUTER_POLICY"; echo "removido: $ROUTER_POLICY"; fi
   rmdir "$ETC" 2>/dev/null && echo "removido (vazio): $ETC"
   echo "REVERTIDO. Os hooks de escopo de usuario em ~/.claude voltam a valer."
   exit 0
@@ -295,9 +532,15 @@ while IFS=$'\t' read -r _tipo origem destino _sha; do
   fi
   case "$alvo" in
     *.sh|*/document-tools/*) chmod 0755 "$alvo" ;;
-    *)                       chmod 0644 "$alvo" ;;
+    *)                       if [ -d "$alvo" ]; then chmod 0755 "$alvo"; else chmod 0644 "$alvo"; fi ;;
   esac || { echo "ERRO: chmod do staging falhou: $alvo" >&2; exit 1; }
 done < <(tipos_politica)
+# Plugin: o contrato de modos e exato (arquivos 0644, *.sh 0755); a fonte do repo pode trazer 0755.
+if [ -d "$STAGE/claude-plugins" ]; then
+  find "$STAGE/claude-plugins" -type f \! -name '*.sh' -exec chmod 0644 {} + \
+    && find "$STAGE/claude-plugins" -type f -name '*.sh' -exec chmod 0755 {} + \
+    || { echo "ERRO: chmod do plugin no staging falhou" >&2; exit 1; }
+fi
 find "$STAGE" -type d -exec chmod 0755 {} + || { echo "ERRO: chmod de diretorio do staging falhou" >&2; exit 1; }
 # POSSE APLICADA NO STAGING, e nao depois da publicacao: se `chown` falhasse com a arvore ja
 # ativa, o resultado seria uma politica ativa com arquivos do ator - o oposto da garantia.
@@ -360,6 +603,24 @@ ENFORCE=false; [ "$MODO" = "enforce" ] && ENFORCE=true
 # corresponde a um hook presente - e essa checagem e justamente a que impede ativar apontando
 # para o vazio.
 HOOKS_JSON="$(bash install/hooks-spec.sh "$OPT/hooks")" || exit 1
+# ONDA 34: hooks que ja estavam registrados e a especificacao nao declara (ex.: secret-guard,
+# budget-guard, quality-gate, de outro repositorio) sao PRESERVADOS, com o arquivo quando ele
+# vive em $OPT/hooks. Sem isto a troca da arvore e do arquivo apagava guardas ativas.
+EXT="$(hooks_externos "$HOOKS_JSON")" || { echo "ERRO: leitura dos hooks externos falhou; nada foi alterado." >&2; exit 1; }
+HOOKS_JSON="$(junta_hooks "$HOOKS_JSON" "$EXT")" || exit 1
+while IFS= read -r _cmd; do
+  _p="${_cmd#bash }"
+  case "$_p" in
+    "$OPT"/hooks/*)
+      _rel="${_p#"$OPT"}"
+      if [ -f "$OPT$_rel" ] && [ ! -e "$STAGE$_rel" ]; then
+        cp -p "$OPT$_rel" "$STAGE$_rel" && chmod 0755 "$STAGE$_rel" \
+          || { echo "ERRO: preservacao do hook externo falhou: $_p" >&2; exit 1; }
+        if [ "$REAL" -eq 1 ]; then chown root:root "$STAGE$_rel" || exit 1; fi
+        echo "  hook externo preservado: $_p"
+      fi ;;
+  esac
+done < <(printf '%s' "$EXT" | jq -r '[..|objects|select(has("command"))|.command]|unique[]')
 
 # PORTAO DE POPULACAO CONTRA A FONTE QUE DECLARA O CONSUMO.
 #
@@ -387,7 +648,7 @@ HOOKS_JSON="$(bash install/hooks-spec.sh "$OPT/hooks")" || exit 1
 AUSENTES=0
 while IFS= read -r _cmd; do
   _p="${_cmd#bash }"
-  _p_stage="$STAGE${_p#"$OPT"}"
+  case "$_p" in "$OPT"/*) _p_stage="$STAGE${_p#"$OPT"}" ;; *) _p_stage="$_p" ;; esac
   [ -f "$_p_stage" ] || { echo "  HOOK DECLARADO NA POLITICA E AUSENTE NO DISCO: $_p" >&2; AUSENTES=$((AUSENTES+1)); }
 done < <(printf '%s' "$HOOKS_JSON" | jq -r '[..|objects|select(has("command"))|.command]|unique[]')
 if [ "$AUSENTES" -ne 0 ]; then
@@ -434,11 +695,7 @@ SET_NOVO="$ETC/.managed-settings.json.novo.$$"
 SET_ROLLBACK="$ETC/.managed-settings.json.rollback.$$"
 trap 'rm -rf "$STAGE" "$SET_NOVO" "$SET_ROLLBACK" 2>/dev/null || true' EXIT
 
-if ! jq -n --argjson h "$HOOKS_JSON" --argjson enf "$ENFORCE" --arg rp "$REPO" \
-      --arg ad "$OPT/adapters/code" --arg dd "$OPT/adapters/documents" \
-      '{_managed_by:"tollens", allowManagedHooksOnly:$enf, hooks:$h,
-        env:{CLAUDE_ADAPTERS_DIR:$ad, DOC_ADAPTERS_DIR:$dd, TOLLENS_REPO:$rp}}' \
-      > "$SET_NOVO" || ! jq -e . "$SET_NOVO" >/dev/null 2>&1; then
+if ! gera_settings "$HOOKS_JSON" "$ENFORCE" > "$SET_NOVO" || ! jq -e . "$SET_NOVO" >/dev/null 2>&1; then
   echo "ERRO: managed-settings.json nao pode ser gerado ou nao e JSON valido." >&2
   echo "      NADA foi alterado: nem a arvore ativa, nem a politica." >&2
   exit 1
@@ -446,6 +703,28 @@ fi
 chmod 0644 "$SET_NOVO" || { echo "ERRO: chmod da politica nova falhou; nada foi alterado." >&2; exit 1; }
 if [ "$REAL" -eq 1 ]; then
   chown root:root "$SET_NOVO" || { echo "ERRO: chown da politica nova falhou; nada foi alterado." >&2; exit 1; }
+fi
+
+# ONDA 34: politica do roteador, validada ANTES de qualquer escrita ativa, a partir do que sera
+# publicado (o motor e a politica do staging).
+POL_NOVO="$ETC/.router-policy.json.novo.$$"
+POL_ROLLBACK="$ETC/.router-policy.json.rollback.$$"
+trap 'rm -rf "$STAGE" "$SET_NOVO" "$SET_ROLLBACK" "$POL_NOVO" "$POL_ROLLBACK" 2>/dev/null || true' EXIT
+politica_json > "$POL_NOVO" && jq -e . "$POL_NOVO" >/dev/null 2>&1 \
+  || { echo "ERRO: politica do roteador nao pode ser gerada; nada foi alterado." >&2; exit 1; }
+valida_politica "$POL_NOVO" "$STAGE/claude-plugins/plugins/tollens-router/engine.mjs" \
+  || { echo "ERRO: politica do roteador reprovada em validatePolicy; nada foi alterado." >&2; exit 1; }
+chmod 0644 "$POL_NOVO" || { echo "ERRO: chmod da politica do roteador falhou; nada foi alterado." >&2; exit 1; }
+if [ "$REAL" -eq 1 ]; then chown root:root "$POL_NOVO" || { echo "ERRO: chown da politica do roteador falhou." >&2; exit 1; }; fi
+TEM_POL=0
+if [ -f "$ROUTER_POLICY" ]; then
+  cp -p "$ROUTER_POLICY" "$POL_ROLLBACK" || { echo "ERRO: copia de rollback da politica do roteador falhou; nada mudou." >&2; exit 1; }
+  TEM_POL=1
+fi
+# Backup datado do settings atual, so quando o conteudo muda (reaplicar nao acumula backups).
+if atual_e_tollens && [ "$(jq -S -c . "$SETTINGS")" != "$(jq -S -c . "$SET_NOVO")" ]; then
+  cp -p "$SETTINGS" "$SETTINGS.pre-roteador.$(date -u +%Y%m%dT%H%M%SZ)" \
+    || { echo "ERRO: backup do settings falhou; nada mudou." >&2; exit 1; }
 fi
 
 # COPIA DE ROLLBACK da politica atual. Distinta do backup `.pre-tollens`, que tem outra
@@ -491,7 +770,20 @@ desfaz(){  # devolve o estado ativo INTEIRO ao que era: arvore E politica
     rm -f "$SETTINGS" 2>/dev/null || true
   fi
   [ "$FEZ_PRE" -eq 1 ] && rm -f "$SETTINGS.pre-tollens" 2>/dev/null || true
+  if [ "$TEM_POL" -eq 1 ] && [ -f "$POL_ROLLBACK" ]; then
+    mv -f "$POL_ROLLBACK" "$ROUTER_POLICY" 2>/dev/null || echo "      ATENCAO: o rollback da politica do roteador FALHOU." >&2
+  elif [ "$TEM_POL" -eq 0 ]; then
+    rm -f "$ROUTER_POLICY" 2>/dev/null || true
+  fi
 }
+
+# SINAL NA JANELA DOS RENAMES. A troca da arvore e do settings sao renames separados; INT, TERM ou HUP
+# entre eles deixaria arvore nova com politica velha. O handler roda depois do `mv` em curso (rename e
+# atomico) e chama `desfaz`. Fora da janela (EM_COMMIT=0) so sai, e o trap de EXIT limpa o staging. Quando
+# ha supervisor, ele tambem desfaz ao ver o worker terminar com rc != 0; este trap cobre o worker direto.
+# NAO COBERTO: SIGKILL e queda de energia (ver comentario acima).
+EM_COMMIT=0
+trap 'if [ "$EM_COMMIT" -eq 1 ]; then echo "ERRO: sinal na fase de commit; restaurando o estado anterior." >&2; desfaz; fi; exit 143' INT TERM HUP
 
 # FAILPOINT - existe SO para teste (tests/unit/managed.sh, MG17/MG18). Sem a variavel definida
 # e um no-op. Nao concede autoridade alguma: o unico efeito possivel e provocar uma falha e o
@@ -499,6 +791,9 @@ desfaz(){  # devolve o estado ativo INTEIRO ao que era: arvore E politica
 # deterministica - e foi justamente a ausencia desse caso que deixou o defeito acima passar.
 falha_se(){ [ "${MANAGED_FAILPOINT:-}" = "$1" ] && { echo "ERRO: falha injetada no ponto '$1'." >&2; return 0; }; return 1; }
 
+sinal_se(){ [ "${MANAGED_FAILPOINT:-}" = "$1" ] && kill -TERM $$; return 0; }   # so teste; recusada em raiz real
+
+EM_COMMIT=1
 if [ -d "$OPT" ]; then
   mv -f "$OPT" "$ANTERIOR" \
     || { echo "ERRO: nao foi possivel afastar a arvore ativa; nada mudou." >&2; exit 1; }
@@ -509,22 +804,29 @@ if ! mv -f "$STAGE" "$OPT"; then
   echo "ERRO: a publicacao da arvore falhou." >&2; desfaz; exit 1
 fi
 if falha_se publicar-opt; then desfaz; exit 1; fi
+sinal_se sinal-apos-publicar
 
 if ! mv -f "$SET_NOVO" "$SETTINGS"; then
   echo "ERRO: a instalacao da politica falhou APOS a publicacao da arvore." >&2
   desfaz; exit 1
 fi
 if falha_se instalar-politica; then desfaz; exit 1; fi
+if ! mv -f "$POL_NOVO" "$ROUTER_POLICY"; then
+  echo "ERRO: a instalacao da politica do roteador falhou." >&2; desfaz; exit 1
+fi
 
+EM_COMMIT=0
 # COMMIT CONFIRMADO. So agora o material de rollback pode ser descartado - antes disto, qualquer
 # saida do script passa por `desfaz` ou pelo trap, e ambos precisam dele.
 rm -rf "$ANTERIOR" 2>/dev/null || true
-rm -f "$SET_ROLLBACK" 2>/dev/null || true
+rm -f "$SET_ROLLBACK" "$POL_ROLLBACK" 2>/dev/null || true
 RAIZ="$OPT"   # publicado: validar volta a significar validar a arvore ativa
 
-if [ "$MODO" = "enforce" ]; then
+if [ "$MODO" = "enforce" ] || [ "$(jq -r '.allowManagedHooksOnly' "$SETTINGS" 2>/dev/null)" = "true" ]; then
   echo "allowManagedHooksOnly=true - hooks de escopo de USUARIO e de PLUGIN estao agora bloqueados."
-  echo "Reverter: sudo bash install/apply-managed.sh --revert"
+  echo "(hooks de plugin passam so se o plugin estiver em enabledPlugins do managed: o roteador esta.)"
+  echo "Desfazer o roteador: sudo bash install/apply-managed.sh --revert-router. NAO use --revert sobre um"
+  echo ".pre-tollens antigo: ele recusa por padrao (ver docs/runbooks/roteador-instalacao.md, Rollback)."
 else
   echo "allowManagedHooksOnly=false - por enquanto os hooks managed SOMAM aos de usuario."
   echo "Cada hook rodara DUAS vezes ate a ativacao. Isso e esperado e mensuravel; e o passo que"

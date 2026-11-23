@@ -6,13 +6,27 @@ REPO="$(cd "$SELF_DIR/.." && pwd -P)" || exit 1
 DEFAULT_WORKER="$SELF_DIR/apply-managed-worker.sh"
 
 RAW_PREFIX="${MANAGED_PREFIX:-}"
-case "$RAW_PREFIX" in
-  ""|/) PREFIX="" ;;
-  *) PREFIX="${RAW_PREFIX%/}" ;;
-esac
+# MESMA normalizacao do worker (realpath -m): `//`, `/.` e `/tmp/..` resolvem para a raiz real. Antes,
+# o supervisor via REAL=0 nesses valores enquanto o worker via REAL=1, e a checagem de raiz de confianca
+# era pulada. O resultado e exportado e o worker recusa qualquer divergencia.
+if [ -z "$RAW_PREFIX" ]; then
+  PREFIX=""
+else
+  PREFIX="$(realpath -m -- "$RAW_PREFIX" 2>/dev/null)" || { echo "ERRO: MANAGED_PREFIX nao pode ser normalizado." >&2; exit 2; }
+  PREFIX="${PREFIX%/}"
+fi
+export TOLLENS_SUPERVISOR_PREFIX="$PREFIX"
 OPT="${PREFIX}/opt/tollens"
 SETTINGS="${PREFIX}/etc/claude-code/managed-settings.json"
+ROUTER_POLICY="${PREFIX}/etc/claude-code/router-policy.json"
 REAL=0; [ -z "$PREFIX" ] && REAL=1
+
+# Root sobre a raiz real nao herda o PATH do chamador: um `sudo` que preserve o PATH do ator deixaria jq, cp,
+# bash e node do ator rodarem como root. O PATH fixo tambem e o que o node_raiz do worker consulta.
+if [ "$REAL" -eq 1 ] && [ "$(id -u)" -eq 0 ]; then
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  export PATH
+fi
 
 # PRIVILEGED TRUST BOUNDARY.
 # A real-root deployment must never execute a helper from a checkout writable by the governed
@@ -54,11 +68,12 @@ WORKER="${TOLLENS_MANAGED_WORKER:-$DEFAULT_WORKER}"
 # A CONTAGEM VEM ANTES DO `case`: o ramo --verify|--revert faz `exec` e nunca alcancava uma
 # checagem posterior. Medido pelo auditor: `--revert --dry-run` chegava ao worker com argc=2, e o
 # worker so inspeciona "$1" - um revert REAL e privilegiado com o --dry-run engolido em silencio.
-[ "$#" -le 1 ] || {
-  printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run|--enforce|--verify|--revert]\n' "$#" "$0" >&2
+# ONDA 34: unico par aceito, por igualdade exata: `--liberar-opus --dry-run`.
+[ "$#" -le 1 ] || [ "$*" = "--liberar-opus --dry-run" ] || {
+  printf 'ERRO: argumentos em excesso (%s)\nuso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar|--liberar-opus [--dry-run]|--revert-router]\n' "$#" "$0" >&2
   exit 2
 }
-case "${1:-}" in
+case "$*" in
   # ONDA 14. `--dry-run` PASSA A SAIR AQUI, antes de qualquer maquinaria transacional.
   #
   # A onda 13 corrigiu a mensagem falsa ("managed transaction committed" num ensaio) com um
@@ -75,7 +90,9 @@ case "${1:-}" in
   #
   # A correcao nao e estreitar a frase: e tornar a frase desnecessaria. Ensaio nao abre
   # transacao, entao nao atravessa o mecanismo transacional.
-  --verify|--revert|--dry-run)
+  # --liberar-opus e --revert-router mexem so no settings (escrita atomica com backup datado) e,
+  # no segundo, na arvore do plugin; nao precisam do snapshot de /opt/tollens inteiro.
+  --verify|--revert|--revert-forcar|--dry-run|--liberar-opus|"--liberar-opus --dry-run"|--revert-router)
     exec "$WORKER" "$@"
     ;;
   --enforce|"")
@@ -83,17 +100,23 @@ case "${1:-}" in
     # snapshot e rollback ao redor. --enforce DEPENDE desse rollback; nao mova para o `exec`.
     : ;;
   --help|-h)
-    printf 'uso: %s [--dry-run|--enforce|--verify|--revert]\n  sem argumento: aplica o escopo managed (exige root)\n' "$0"; exit 0 ;;
+    printf 'uso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar]\n  sem argumento: aplica o escopo managed (exige root)\n' "$0"; exit 0 ;;
   *)
-    printf 'ERRO: argumento desconhecido: %s\nuso: %s [--dry-run|--enforce|--verify|--revert]\n' "$1" "$0" >&2; exit 2 ;;
+    printf 'ERRO: argumento desconhecido: %s\nuso: %s [--dry-run|--enforce|--verify|--revert|--revert-forcar]\n' "$1" "$0" >&2; exit 2 ;;
 esac
 
-REC="$(mktemp -d "${TMPDIR:-/tmp}/tollens-recovery.XXXXXX")" || exit 1
-cleanup(){ rm -rf "$REC" 2>/dev/null || true; }
+# Material de recuperacao em diretorio FIXO sob o alvo (mesmo filesystem), nunca em $TMPDIR: sob
+# `sudo -E` o TMPDIR do ator redirecionaria a copia de rollback para um local que ele controla.
+OPT_PAI="$PREFIX/opt"; CRIOU_PAI=0
+if [ ! -d "$OPT_PAI" ]; then mkdir -p "$OPT_PAI" || exit 1; CRIOU_PAI=1; fi
+REC="$(mktemp -d "$OPT_PAI/.tollens-recovery.XXXXXX")" || exit 1
+# remove tambem o diretorio-pai que ESTE processo criou, se ficar vazio (um deploy reprovado nao deixa rastro)
+cleanup(){ rm -rf "$REC" 2>/dev/null || true; [ "$CRIOU_PAI" -eq 1 ] && rmdir "$OPT_PAI" 2>/dev/null; return 0; }
 trap cleanup EXIT
 
 HAD_OPT=0
 HAD_SETTINGS=0
+HAD_POL=0
 if [ -d "$OPT" ]; then
   HAD_OPT=1
   cp -a "$OPT" "$REC/opt" || exit 1
@@ -102,16 +125,23 @@ if [ -f "$SETTINGS" ]; then
   HAD_SETTINGS=1
   cp -a "$SETTINGS" "$REC/settings.json" || exit 1
 fi
+if [ -f "$ROUTER_POLICY" ]; then
+  HAD_POL=1
+  cp -a "$ROUTER_POLICY" "$REC/router-policy.json" || exit 1
+fi
 
 rollback(){
   local bad=0
   rm -rf "$OPT" 2>/dev/null || bad=1
-  rm -f "$SETTINGS" 2>/dev/null || bad=1
+  rm -f "$SETTINGS" "$ROUTER_POLICY" 2>/dev/null || bad=1
   if [ "$HAD_OPT" -eq 1 ]; then
     mkdir -p "$(dirname "$OPT")" && cp -a "$REC/opt" "$OPT" || bad=1
   fi
   if [ "$HAD_SETTINGS" -eq 1 ]; then
     mkdir -p "$(dirname "$SETTINGS")" && cp -a "$REC/settings.json" "$SETTINGS" || bad=1
+  fi
+  if [ "$HAD_POL" -eq 1 ]; then
+    mkdir -p "$(dirname "$ROUTER_POLICY")" && cp -a "$REC/router-policy.json" "$ROUTER_POLICY" || bad=1
   fi
   if [ "$bad" -ne 0 ]; then
     trap - EXIT

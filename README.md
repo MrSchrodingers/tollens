@@ -911,8 +911,9 @@ Temporary transport artifacts, bootstrap files, and orphan root fixtures are rej
 Repository-local configuration is preferred because policy and runtime wrappers remain versioned with the codebase.
 
 ```bash
-python3 orchestration/render.py --check
-bash tests/unit/runtime-ports.sh
+ROOT="$(git rev-parse --show-toplevel)"
+python3 "$ROOT/orchestration/render.py" --check
+bash "$ROOT/tests/unit/runtime-ports.sh"
 ```
 
 For broad validation, execute the checks defined by `.github/workflows/verify-pr.yml`.
@@ -922,19 +923,22 @@ For broad validation, execute the checks defined by `.github/workflows/verify-pr
 Dry run:
 
 ```bash
-bash install/apply.sh --dry-run
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/install/apply.sh" --dry-run
 ```
 
 Apply:
 
 ```bash
-bash install/apply.sh
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/install/apply.sh"
 ```
 
 Verify:
 
 ```bash
-bash install/verify.sh
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/install/verify.sh"
 ```
 
 ### 13.3 Claude global installation on Windows
@@ -1118,9 +1122,14 @@ their conjunction supports the claim that a policy governs a runtime:
 `INSTALLED` is a digest equality between a manifest entry and a file on disk.
 `ENFORCED` is the property that the governed actor cannot rewrite the artifact.
 `ACTIVATED` is an observation that the runtime loaded or fired the artifact during a
-session. `install/verify.sh` now measures all three and derives `governed=managed`; the
-true statement about the user projection and an insufficient description of the system.
-That insufficiency is tracked as an open finding.
+session. `install/verify.sh` publishes three separate verdicts - `USER_PROJECTION`,
+`MANAGED_PROJECTION`, `RUNTIME_ACTIVATION` - and derives `governed=managed` only when the
+scopes that decide (the `/opt/tollens` policy tree, delegated to
+`apply-managed.sh --verify`, and the `/etc/claude-code` capability content) were actually
+measured and match the canonical source; any scope it cannot measure is reported
+`NOT_VERIFIED`, never folded into a passing aggregate. `ACTIVATED` remains an indicium
+logged by the governed actor, never proof, and it does not discriminate which capability
+loaded (issue #39).
 
 ### 16.2 The scope lattice
 

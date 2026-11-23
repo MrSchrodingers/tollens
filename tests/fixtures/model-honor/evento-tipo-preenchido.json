@@ -1,0 +1,19 @@
+{
+  "agent_id": "a1111111111111111",
+  "agent_type": "implementador",
+  "background_tasks": [],
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "SubagentStop",
+  "last_assistant_message": "",
+  "permission_mode": "bypassPermissions",
+  "session_crons": [],
+  "session_id": "11111111-aaaa-4bbb-8ccc-111111111111",
+  "stop_hook_active": false,
+  "agent_transcript_path": "@RAIZ@/-proj/11111111-aaaa-4bbb-8ccc-111111111111/subagents/agent-a1111111111111111.jsonl",
+  "transcript_path": "@RAIZ@/pai/sessao.jsonl",
+  "cwd": "",
+  "prompt_id": "",
+  "scratchpad_dir": ""
+}

@@ -14,6 +14,37 @@ confirme a ativacao de fato. Este registro NAO afirma que o router selecionou ne
 skills - `tests/unit/capability-conformance.py` (CC8) verifica a DECLARACAO no artefato, nao o
 evento de runtime. Ler isto como prova de ativacao repeteria G6a (ADR 0036).
 
+## Braco declarado (G108, issue #52)
+
+As cinco capabilities desta lista declaram `exposure.arm: B_sistema_deployado`
+(`orchestration/evaluation-protocol.json#design.arms`). O valor e B, nao A, porque o nudge de
+`execution/hooks/graphify-scout-mode.sh` estava ativo (`TOLLENS_ROUTING_NUDGES` nao desligado) na
+maioria das sessoes medidas para este registro - ver "Resposta ao criterio 3" abaixo. Um registro
+de braco B nao sustenta afirmacao sobre `A_router_puro` (description-only sem nudge); estima
+"skill + nudge produzem uso", nao "a description roteia sozinha".
+
+## Resposta ao criterio 3 (o nudge estava ativo nas sessoes medidas?)
+
+Medido cruzando `evidence/telemetry/medir-skills.sh` (88 chamadas de Skill observadas nos
+transcripts) com a presenca do nudge `[GRAFO]` no mesmo transcript:
+
+- 66/88 chamadas ocorreram em transcript com o nudge presente, sendo 28 na variante com
+  `graphify-out/graph.json` (ramo `if` do hook) e 38 sem ele (ramo `elif`, "Repo sem knowledge
+  graph...");
+- 22/88 ocorreram em transcript sem o nudge;
+- 0/88 chamadas correspondem a alguma das cinco skills deste repositorio (`design-system-proposal`,
+  `graphify`, `grill-me`, `prd-to-plan`, `write-a-prd`) - o denominador de 88 e sobre skills em
+  geral, nao sobre estas cinco.
+
+Isso refuta a premissa de que o nudge exige `graph.json`: o ramo `elif` de
+`graphify-scout-mode.sh` fala tambem sem o arquivo (ver correcao em
+`docs/method/skill-evaluation-protocol.md`).
+
+Limite declarado, para nao inventar precisao: a presenca de `[GRAFO]` foi apurada POR TRANSCRIPT,
+nao por turno. Isso prova que o nudge foi entregue naquela sessao; NAO prova que foi entregue no
+mesmo turno da chamada de Skill. "O nudge estava ativo na maioria das sessoes medidas" e
+VERIFICADO; "estava ativo no turno exato de cada chamada" e NAO VERIFICADO.
+
 ## Por que estas cinco, e por que agora
 
 As cinco ja eram, antes desta onda, as excecoes de `activation.model_invocable_exceptions` em

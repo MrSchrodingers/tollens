@@ -41,10 +41,10 @@ esac
 if [ "$DRY" -eq 1 ]; then
   echo "== plano (nada sera escrito) =="
   LOCK_D="$DEST/tollens/managed-files.lock"
-  NOVO_D="$(awk -F"\t" '!/^#/{print $3}' "$MAN")"
+  NOVO_D="$(awk -F"\t" '!/^#/ && $1!="plugin"{print $3}' "$MAN")"
   n=0
   while IFS=$'\t' read -r tipo origem destino digest; do
-    case "$tipo" in ''|'#'*) continue;; esac
+    case "$tipo" in ''|'#'*|plugin) continue;; esac
     if [ -e "$DEST/$destino" ]; then printf '  [dry] atualiza  %s\n' "$destino"
     else printf '  [dry] instala   %s\n' "$destino"; fi
     n=$((n+1))
@@ -91,7 +91,7 @@ confinado(){ # $1=candidato $2=raiz
 }
 RUINS=0
 while IFS=$'\t' read -r tipo origem destino digest; do
-  case "$tipo" in ''|'#'*) continue;; esac
+  case "$tipo" in ''|'#'*|plugin) continue;; esac
   case "$destino" in ""|/*|../*|*/../*|*/..|"..") echo "  DESTINO INVALIDO: [$destino]"; RUINS=$((RUINS+1)); continue;; esac
   case "$origem"  in ""|/*|../*|*/../*|*/..|"..") echo "  ORIGEM INVALIDA: [$origem]";  RUINS=$((RUINS+1)); continue;; esac
   confinado "$DEST/$destino" "$DEST" || { echo "  DESTINO ESCAPA DE $DEST: [$destino]"; RUINS=$((RUINS+1)); }
@@ -105,7 +105,7 @@ fi
 
 N=0
 while IFS=$'\t' read -r tipo origem destino digest; do
-  case "$tipo" in ''|'#'*) continue;; esac
+  case "$tipo" in ''|'#'*|plugin) continue;; esac
   alvo="$DEST/$destino"
   mkdir -p "$(dirname "$alvo")"
   # ONDA 12, defeito PRE-EXISTENTE achado ao provar outra coisa: `cp -a` nao tinha retorno
@@ -130,7 +130,7 @@ echo "componentes instalados: $N"
 # resolvia o drift que o verify apontava. Remove apenas o que ESTE instalador gerenciou antes -
 # nunca arquivo desconhecido em ~/.claude, que pode pertencer a outro sistema.
 LOCK="$DEST/tollens/managed-files.lock"
-NOVO="$(awk -F"\t" '!/^#/{print $3}' "$MAN")"
+NOVO="$(awk -F"\t" '!/^#/ && $1!="plugin"{print $3}' "$MAN")"
 if [ -f "$LOCK" ]; then
   while IFS= read -r antigo; do
     [ -n "$antigo" ] || continue
@@ -187,6 +187,11 @@ bash install/verify.sh; _VRC=$?
 case "$_VRC" in
   0) exit 0 ;;
   1) exit 1 ;;   # projecao de USUARIO divergente: e deste script, propaga
+  2) printf '\nA projecao de usuario esta instalada. O escopo managed (politica /opt e/ou\n'
+     printf 'capacidade em /etc) NAO PODE ser medido nesta chamada - o motivo esta acima, em\n'
+     printf '"GOVERNANCA GLOBAL". Isto e recusa de verificar, nao divergencia; nao e\n'
+     printf 'consertavel por este instalador, que so escreve a projecao de usuario.\n'
+     exit 0 ;;
   3) printf '\nA projecao de usuario esta instalada. A fase managed NAO esta implantada nesta\n'
      printf 'maquina - enquanto isso, a politica em vigor e gravavel pelo ator governado.\n'
      printf 'Para implantar (exige root e arvore de origem root:root, ver docs/adr/0026):\n'

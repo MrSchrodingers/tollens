@@ -86,19 +86,19 @@ E a distincao que decide como tratar pre-requisito ausente:
 ## 4. Como rodar
 
 ```bash
-cd ~/tollens
+ROOT="$(git rev-parse --show-toplevel)"
 
-bash scripts/status.sh && cat docs/status.generated.md   # estado por execucao real
-bash install/verify.sh                                    # conformidade repo <-> ~/.claude
-bash install/apply-managed.sh --verify                    # conformidade do escopo managed
+bash "$ROOT/scripts/status.sh" && cat "$ROOT/docs/status.generated.md"   # estado por execucao real
+bash "$ROOT/install/verify.sh"                                          # conformidade repo <-> ~/.claude
+bash "$ROOT/install/apply-managed.sh" --verify                          # conformidade do escopo managed
 
 # suites - UMA POR VEZ (o lock reprova corrida com exit 3)
 for s in supply-chain document-tools reprodutibilidade managed propriedades \
-         claims concorrencia regressao-gate; do bash tests/unit/$s.sh || break; done
-bash tests/unit/run.sh   # bateria completa de tests/unit/*.sh e *.py, despacho por disco
-bash tests/mutation/run.sh
-bash tests/mutation/contrato.sh
-bash tests/mutation/install.sh
+         claims concorrencia regressao-gate; do bash "$ROOT/tests/unit/$s.sh" || break; done
+bash "$ROOT/tests/unit/run.sh"   # bateria completa de tests/unit/*.sh e *.py, despacho por disco
+bash "$ROOT/tests/mutation/run.sh"
+bash "$ROOT/tests/mutation/contrato.sh"
+bash "$ROOT/tests/mutation/install.sh"
 
 gh run list --limit 3
 ```
@@ -119,12 +119,13 @@ hooks: o gate le a tabela de adaptadores, e tabela gravavel desliga o gate sem t
 Falta a ativacao, que exige `sudo` com senha:
 
 ```bash
-sudo bash install/apply-managed.sh              # deploy, SEM ativar
-sudo bash install/apply-managed.sh --verify     # 30 componentes, 0 divergentes, 0 gravaveis
+ROOT="$(git rev-parse --show-toplevel)"
+sudo bash "$ROOT/install/apply-managed.sh"              # deploy, SEM ativar
+sudo bash "$ROOT/install/apply-managed.sh" --verify     # 30 componentes, 0 divergentes, 0 gravaveis
 # medir aqui: cada hook deve rodar DUAS vezes (managed + usuario). Se nao dobrar, PARE.
-sudo bash install/apply-managed.sh --enforce    # so depois de a medicao dobrar
+sudo bash "$ROOT/install/apply-managed.sh" --enforce    # so depois de a medicao dobrar
 # medir de novo: deve voltar a UMA vez, com os caminhos vindo de /opt.
-sudo bash install/apply-managed.sh --revert     # desfaz por completo
+sudo bash "$ROOT/install/apply-managed.sh" --revert     # desfaz por completo; recusa se o .pre-tollens nao for do tollens (--revert-forcar restaura mesmo assim)
 ```
 
 **ARMADILHA, e o instalador ja a trata:** `allowManagedHooksOnly` bloqueia hook de usuario E de

@@ -162,7 +162,8 @@
       "deprecated": ["off"],
       "rejected": ["off"]
     },
-    "experimental_auto_requires": ["eval_id", "runtime", "model", "started_at", "expires_at"],
+    "experimental_auto_requires": ["eval_id", "runtime", "model", "started_at", "expires_at", "arm"],
+    "arm_vocabulary_source": "orchestration/evaluation-protocol.json#design.arms",
     "eval_id_resolves_under": ["evidence/experiments", "evidence/claims"],
     "limit": "Vocabulario e mapa declaram o que a GOVERNANCA autoriza. Nenhum campo aqui, nem `runtime`/`model` declarados no bloco `exposure` de uma capability, e conferido contra o runtime que de fato executa a sessao - o mesmo limite ja assumido em `staleness.limit` para dossie de skill. `expires_at` vencido reprova por PASSAGEM DE TEMPO, sem mudanca de codigo: efeito pretendido, nao falha de manutencao."
   }
