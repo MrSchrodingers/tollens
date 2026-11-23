@@ -61,14 +61,14 @@ estado(){ ( cd "$PFX" && find . -type f -not -name '*.pre-*' -print0 | sort -z |
 snap(){ ( cd "$PFX" && find . -printf '%p %y %s %m %T@\n' | sort | sha256sum | cut -c1-64 ); }
 run(){ MANAGED_PREFIX="$PFX" bash "$AM" "$@" >"$T/out" 2>&1; echo $?; }
 
-echo "== R1. ensaio nao escreve (I5) e mostra o diff"
+echo "== R21. ensaio nao escreve (I5) e mostra o diff"
 a="$(snap)"; rc="$(run --dry-run)"; b="$(snap)"
 chk "I5 dry-run: rc 0 e nada escrito" "$rc/$([ "$b" = "$a" ] && echo igual)" "0/igual"
 chk "I5 dry-run mostra o diff do settings" "$(grep -c '^+++ novo:.*managed-settings.json' "$T/out")" 1
 a="$(snap)"; rc="$(run --liberar-opus --dry-run)"; b="$(snap)"
 chk "I5 liberar-opus --dry-run: rc 0 e nada escrito" "$rc/$([ "$b" = "$a" ] && echo igual)" "0/igual"
 
-echo "== R2. instalacao em shadow preserva modelos e guardas externas (I1)"
+echo "== R22. instalacao em shadow preserva modelos e guardas externas (I1)"
 rc="$(run)"
 chk "I1 deploy rc 0 e availableModels/deniedModels/env de modelo intactos" "$rc/$(modelos "$S")" "0/$(modelos "$T/vivo.json")"
 chk "I1 allowManagedHooksOnly nao rebaixado" "$(jq -r .allowManagedHooksOnly "$S")" true
@@ -77,7 +77,7 @@ chk "I1 todo comando do vivo segue registrado (inclui o externo fora de \$OPT)" 
 chk "I1 quality-gate segue no Stop, budget-count no SubagentStart, e os 3 arquivos vao para a arvore nova" \
   "$(jq -r '([.hooks.Stop[].hooks[].command]|map(select(endswith("quality-gate.sh")))|length)|tostring' "$S")/$(jq -r '([.hooks.SubagentStart[].hooks[].command]|map(select(endswith("budget-count.sh")))|length)|tostring' "$S")/$(find "$OPT/hooks" \( -name budget-guard.sh -o -name budget-count.sh -o -name quality-gate.sh \) -perm 0755 | wc -l | tr -d ' ')" "1/1/3"
 
-echo "== R3. chaves de mod da organizacao e hooks do roteador"
+echo "== R23. chaves de mod da organizacao e hooks do roteador"
 chk "enabledPlugins" "$(jq -c .enabledPlugins "$S")" '{"tollens-router@tollens-tools":true}'
 chk "prependPlugins mantem sec-default" "$(jq -c .prependPlugins "$S")" '["tollens-router@tollens-tools","sec-default@builtin"]'
 chk "marketplace aponta o diretorio do plugin" "$(jq -r '.extraKnownMarketplaces["tollens-tools"].source|.source+":"+.path' "$S")" "directory:$OPT/claude-plugins"
@@ -86,7 +86,7 @@ chk "marketplace.json: nome e fonte relativa" \
   "$(jq -r '.name+"|"+(.plugins[]|select(.name=="tollens-router")|.source)' "$MK")" "tollens-tools|./plugins/tollens-router"
 chk "model-honor em SubagentStop e pending-ask em Stop" "$(jq -r '([.hooks.SubagentStop[].hooks[].command]|map(select(endswith("model-honor.sh")))|length|tostring)+"/"+([.hooks.Stop[].hooks[].command]|map(select(endswith("pending-ask.sh")))|length|tostring)' "$S")" 1/1
 
-echo "== R4. politica instalada (I8)"
+echo "== R24. politica instalada (I8)"
 chk "politica instalada em modo shadow" "$(jq -r .mode "$POL")" shadow
 V='const [, pol, eng, agora] = process.argv; const fs = await import("node:fs"); const { validatePolicy } = await import(eng);
 const r = validatePolicy(JSON.parse(fs.readFileSync(pol, "utf8")), { now: Date.parse(agora) });
@@ -99,7 +99,7 @@ rc="$(run)"
 chk "reaplicar preserva o mode escolhido pelo operador" "$rc/$(jq -r .mode "$POL")" "0/enforce"
 jq '.mode="shadow"' "$POL" > "$T/pol.sh" && cp "$T/pol.sh" "$POL"
 
-echo "== R5. modos de arquivo e conformidade (I3)"
+echo "== R25. modos de arquivo e conformidade (I3)"
 chk "I3 plugin: arquivos 0644, diretorios 0755, nada gravavel por grupo/outros" "$(find "$OPT/claude-plugins" \( -perm /022 -o -type f \! -perm 0644 -o -type d \! -perm 0755 \) | wc -l | tr -d ' ')" 0
 rc="$(run --verify)"
 chk "verify conforme apos instalar" "$rc" 0
@@ -113,14 +113,14 @@ rc="$(run --verify)"
 chk "I3 verify acusa marketplace removido" "$rc" 1
 run >/dev/null
 
-echo "== R6. idempotencia (I4)"
+echo "== R26. idempotencia (I4)"
 a="$(estado)"; sa="$(jq -S -c . "$S")"; nb="$(ls "$ETC" | grep -c 'pre-roteador')"
 rc="$(run)"
 chk "I4 arvore identica (rc 0)" "$rc/$(estado)" "0/$a"
 chk "I4 settings identico" "$(jq -S -c . "$S")" "$sa"
 chk "I4 sem backup novo" "$(ls "$ETC" | grep -c 'pre-roteador')" "$nb"
 
-echo "== R7. liberacao do Opus (I2)"
+echo "== R27. liberacao do Opus (I2)"
 cp -p "$S" "$T/antes-opus.json"
 rc="$(run --liberar-opus)"
 chk "B liberar-opus rc" "$rc" 0
@@ -135,7 +135,7 @@ rc="$(run --liberar-opus)"
 chk "I2 recusa settings sem a marca tollens (inalterado)" "$rc/$(cmp -s "$T/terceiro.json" "$S" && echo igual)" "1/igual"
 cp -p "$T/marcado.json" "$S"
 
-echo "== R8. reversao do roteador (I6)"
+echo "== R28. reversao do roteador (I6)"
 cp -p "$S" "$T/pre-rr.json"
 rc="$(run --revert-router)"
 chk "I6 revert-router: rc 0, plugin e politica removidos" "$rc/$([ -e "$OPT/claude-plugins" ] || [ -e "$POL" ] && echo resta || echo removidos)" "0/removidos"
@@ -144,7 +144,7 @@ chk "I6 tudo fora das 3 chaves de plugin permanece identico (conteudo, nao so ch
 BK="$(ls "$ETC"/managed-settings.json.pre-roteador.* | head -1)"
 chk "I6 backup pre-roteador e o arquivo vivo original" "$(cmp -s "$T/vivo.json" "$BK" && echo igual)" igual
 
-echo "== R9. manifesto (I7) e escopo de usuario"
+echo "== R29. manifesto (I7) e escopo de usuario"
 L="$(awk -F'\t' '$1=="plugin"' install/manifest.lock)"
 chk "I7 manifesto tem a linha plugin" "$(printf '%s' "$L" | cut -f2,3 | tr '\t' '>')" "claude-plugins>claude-plugins"
 chk "I7 digest do manifesto = digest da arvore" "$(printf '%s' "$L" | cut -f4)" \
@@ -153,7 +153,7 @@ chk "apply.sh de usuario nao planeja o plugin" "$(CLAUDE_HOME="$T/home" bash ins
 rc="$(MANAGED_PREFIX="$PFX" bash "$AM" --liberar-opus --revert >/dev/null 2>&1; echo $?)"
 chk "supervisor recusa par de argumentos nao previsto" "$rc" 2
 
-echo "== R10. --revert recusa .pre-tollens que nao e do tollens (A1)"
+echo "== R30. --revert recusa .pre-tollens que nao e do tollens (A1)"
 # O .pre-tollens vivo e de 2026-08-12 (_managed_by evidence-gate, hooks em caminho inexistente). Reverter
 # para ele troca a politica atual por uma antiga, sem guardas e sem modelos negados, e apaga /opt/tollens.
 cont(){ ( cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64 ); }
@@ -168,7 +168,7 @@ PB="$T/raizB"; runp "$PB" >/dev/null
 printf '{"_managed_by":"tollens","hooks":{}}\n' > "$PB/etc/claude-code/managed-settings.json.pre-tollens"
 chk "A1 controle: .pre-tollens do proprio tollens segue revertendo sem flag e remove a politica do roteador" "$(runp "$PB" --revert)/$([ -e "$PB/etc/claude-code/router-policy.json" ] && echo resta || echo removida)" "0/removida"
 
-echo "== R11. o motor so roda com node de root em raiz real (A2)"
+echo "== R31. o motor so roda com node de root em raiz real (A2)"
 # Sob sudo o motor roda como root: um node do ator (nvm, PATH herdado) seria execucao de codigo do ator
 # como root. A checagem vale em raiz real e, nos ensaios, quando MANAGED_NODE_ROOT=1 (so endurece).
 mkdir -p "$T/fakebin" "$T/semnode"
@@ -187,14 +187,14 @@ PE0="$T/raizC3"; mkdir -p "$PE0"
 rc="$(PATH="$T/semnode" MANAGED_PREFIX="$PE0" bash "$AM" >"$T/out" 2>&1; echo $?)"
 chk "A2 node ausente do PATH: rc 1 e nada instalado" "$rc/$([ -e "$PE0/etc/claude-code/managed-settings.json" ] && echo instalou || echo nada)" "1/nada"
 
-echo "== R12. liberacao do Opus por token, com corpus adversarial (I2)"
+echo "== R32. liberacao do Opus por token, com corpus adversarial (I2)"
 PD="$T/raizD"; mkdir -p "$PD/etc/claude-code"
 jq -n '{_managed_by:"tollens", availableModels:["sonnet"],
         deniedModels:["opus","claude-opus-4-1","opus[1m]","claude-3-opus-20240229","opusplan","claude-fable-opus","fable","claude-fable-5","claude-fable-5-1m"]}' > "$PD/etc/claude-code/managed-settings.json"
 rc="$(runp "$PD" --liberar-opus)"
 chk "I2 tira so entradas com token opus; fable e entrada mista com fable permanecem negados" "$rc/$(jq -c .deniedModels "$PD/etc/claude-code/managed-settings.json")" '0/["opusplan","claude-fable-opus","fable","claude-fable-5","claude-fable-5-1m"]'
 
-echo "== R13. politica do roteador reprovada deixa o estado intocado (I8)"
+echo "== R33. politica do roteador reprovada deixa o estado intocado (I8)"
 PF="$T/raizF"; runp "$PF" >/dev/null
 printf '{}\n' > "$T/pol-invalida.json"
 a="$(cont "$PF")"
@@ -203,7 +203,7 @@ chk "I8 politica reprovada em validatePolicy: rc != 0 e nada mudou" "$([ "$rc" -
 rc="$(MANAGED_ROUTER_POLICY_SRC="$REPO/claude-plugins/plugins/tollens-router/router-policy.json" MANAGED_PREFIX="$PF" bash "$AM" >"$T/out" 2>&1; echo $?)"
 chk "I8 controle: a politica valida pelo mesmo caminho de override passa" "$rc" 0
 
-echo "== R14. prefixo normalizado igual no supervisor e no worker (M1)"
+echo "== R34. prefixo normalizado igual no supervisor e no worker (M1)"
 # `//`, `/.` e `/tmp/..` resolvem para a raiz real. O supervisor via REAL=0 e o worker REAL=1: a checagem de
 # raiz de confianca do supervisor era pulada e o worker escrevia na raiz real. O stub abaixo substitui o
 # worker so para ler o que o supervisor exporta; o worker real so e rodado em --verify (somente leitura).
@@ -218,7 +218,7 @@ mkdir -p "$T/raizM"
 rc="$(TOLLENS_SUPERVISOR_PREFIX=/outro MANAGED_PREFIX="$T/raizM" bash "$REPO/install/apply-managed-worker.sh" --dry-run >/dev/null 2>&1; echo $?)"
 chk "M1 worker recusa prefixo divergente do supervisor (78)" "$rc" 78
 
-echo "== R15. ambiente e caminho do node validador (M2, M3, M4)"
+echo "== R35. ambiente e caminho do node validador (M2, M3, M4)"
 printf 'require("fs").writeFileSync("%s/pwn.marker", "x");\n' "$T" > "$T/pwn.js"
 PN="$T/raizN"; mkdir -p "$PN"
 rc="$(NODE_OPTIONS="--require $T/pwn.js" MANAGED_PREFIX="$PN" bash "$AM" >"$T/out" 2>&1; echo $?)"
@@ -236,12 +236,12 @@ done
 unset -f stat
 chk "M4 diretorio de root gravavel por grupo/outros, ou binario gravavel, e recusado" "$r" 1111
 
-echo "== R16. variaveis so de ensaio sao recusadas na raiz real (BAIXO)"
+echo "== R36. variaveis so de ensaio sao recusadas na raiz real (BAIXO)"
 rc1="$(MANAGED_PREFIX=/ MANAGED_FAILPOINT=x bash "$REPO/install/apply-managed-worker.sh" --verify >/dev/null 2>&1; echo $?)"
 rc2="$(MANAGED_PREFIX=/ MANAGED_MANIFEST=/nao/existe bash "$REPO/install/apply-managed-worker.sh" --verify >/dev/null 2>&1; echo $?)"
 chk "MANAGED_FAILPOINT e MANAGED_MANIFEST recusados em raiz real (78)" "$rc1/$rc2" "78/78"
 
-echo "== R17. sinal na janela dos renames restaura o estado (M5)"
+echo "== R37. sinal na janela dos renames restaura o estado (M5)"
 PG="$T/raizG"; runp "$PG" >/dev/null
 a="$(cont "$PG")"
 rc="$(MANAGED_FAILPOINT=sinal-apos-publicar MANAGED_PREFIX="$PG" bash "$REPO/install/apply-managed-worker.sh" >"$T/out" 2>&1; echo $?)"
