@@ -325,7 +325,7 @@ check(len(_FONTES) >= 20, f"ha fontes de instrucao a conferir (medido: {len(_FON
 _G32_EXCL = ("docs/adr/", "evidence/observations/", "evidence/corpus/", ".github/", ".git/")
 _G32_USO_PREFIXO = re.compile(r"^\s*#\s*(?:Uso|Usage):")
 _G32_USO = re.compile(r"^\s*#\s*(?:Uso|Usage):\s*(.+)$")
-_G32_CDL = re.compile(r"^\s*\$?\s*cd\s+(\S+)")
+_G32_CDL = re.compile(r'^\s*\$?\s*cd\s+"?(\$\([^)]+\)|[^\s"]+)')
 _G32_PORTATIL = re.compile(r'git rev-parse --show-toplevel|BASH_SOURCE|dirname "?\$0')
 _G32_SECAO_REGISTRO = re.compile(r"^##\s+17\.")
 _G32_SECAO_QUALQUER = re.compile(r"^##\s+\d")
@@ -396,15 +396,6 @@ for _src in sorted(ROOT.rglob("*.md")):
         if _dentro:
             _buf.append(_linha)
 
-# PENDENCIA DECLARADA, NAO CONTORNADA: execution/skills/depreciar/SKILL.md:28 permanece SEM
-# raiz. A correcao (adicionar `ROOT="$(git rev-parse --show-toplevel)"` ao bloco) muda o
-# conteudo do arquivo e, com ele, o sha256 da arvore `execution/skills/depreciar` fixado em
-# install/manifest.lock:30 - medido: aplicar a correcao derruba tests/unit/reprodutibilidade.sh
-# ("R3. manifesto committado reflete a arvore"), tests/unit/verify-escopos.sh (6 casos) e
-# tests/unit/contrato-de-instalador.sh (CI8, 5 casos), porque o manifesto so pode ser
-# regenerado editando install/manifest.lock - vetado nesta tarefa. Nao ha forma de corrigir
-# este item sem tocar no arquivo vetado, entao ele fica FAIL ate uma onda que possa regenerar o
-# manifesto junto.
 check(not _g32_sem_raiz_bloco,
       "bloco .md de instrucao viva que publica comando repo-relativo declara raiz (`cd` "
       "portatil ou existente) - issue #38"
