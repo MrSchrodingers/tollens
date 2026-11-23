@@ -26,6 +26,7 @@ tarefa elegivel ocorreu, e silencio nesse caso e o comportamento CORRETO.
 ## Passo 1 - MEDIR, os dois canais
 
 ```
+cd "$(git rev-parse --show-toplevel)"
 bash evidence/telemetry/medir-skills.sh
 ```
 
