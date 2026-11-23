@@ -25,6 +25,11 @@ O README referencia este arquivo em vez de duplicar numeros.
 | `tests/unit/cobertura.sh` | 36 | 0 |
 | `tests/unit/contrato-de-instalador.sh` | 53 | 0 |
 | `tests/unit/hooks-de-guarda.sh` | variavel (base) | 0 |
+| `tests/unit/model-honor.sh` | 49 | 0 |
+| `tests/unit/pending-ask.sh` | variavel (base) | 0 |
+| `tests/unit/router-engine.sh` | variavel (base) | 0 |
+| `tests/unit/router-mod.sh` | variavel (base) | 0 |
+| `tests/unit/managed-router.sh` | 55 | 0 |
 | `tests/unit/capability-conformance.py` | variavel (base) | 0 |
 | `tests/unit/run.sh` | variavel (ambiente) | 0 |
 | `tests/unit/managed-root-trust.sh` | variavel (sudo) | 0 |
@@ -80,10 +85,11 @@ assercao).
 | adapter | 11 |
 | agent | 10 |
 | doctool | 5 |
-| hook | 15 |
+| hook | 17 |
 | lib | 1 |
+| plugin | 1 |
 | skill | 8 |
-| **total** | **50** |
+| **total** | **53** |
 
 ## Limites declarados
 
