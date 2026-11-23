@@ -58,9 +58,11 @@ MUTANTS = [
 # executa nao tinha controle negativo. `tests/mutation/run.sh` faz o baseline certo nos arneses
 # `.sh`; so este, em Python, nao fazia.
 #
-# Correcao em duas partes: a raiz passa a espelhar por symlink o que o tester le (leitura apenas),
-# e o CONTROLE NEGATIVO roda primeiro - raiz nao mutada tem de sair 0, senao o arnes se declara
-# vacuo e reprova em vez de reportar 16/16.
+# Correcao em duas partes: a raiz passa a copiar (shutil.copytree) o que o tester le, isolando
+# as execucoes no TemporaryDirectory, e o CONTROLE NEGATIVO roda primeiro - raiz nao mutada tem
+# de sair 0, senao o arnes se declara vacuo e reprova em vez de reportar 16/16.
+# NOTA: copytree foi escolhido sobre symlink_to porque Python 3.13+ nao segue symlinks de
+# diretorio no rglob por padrao; symlinks de ARQUIVO dentro dos dirs copiados sao mantidos.
 # ONDA 34: `ha cabecalhos Uso:/Usage: a conferir (medido >= 4)` exige pelo menos 4 arquivos
 # .sh com `# Uso:`, mas apenas execution/document-tools/doctool.sh esta em execution/. Os
 # outros tres (evidence/experiments/pareado.sh, evidence/telemetry/medir-skills.sh,
@@ -122,12 +124,12 @@ for name, target, path, value in MUTANTS:
 
 # G107 (issue #51). Os 16 mutantes acima alteram um escalar em policy/protocol; nenhum toca o
 # defeito que G107 nomeia, que vive em PROSA sob execution/skills, no proprio universo de
-# RESOLUCAO do tester. `monta_raiz` simlinka `execution` inteiro (leitura), entao nao ha como
-# reintroduzir o defeito sem escrever no repositorio real. Este bloco isola so
-# `execution/skills` como COPIA gravavel - as demais fontes (`execution/agents`, `docs`,
-# `orchestration`) continuam simlink/copia read-only da arvore real - e reintroduz `/tdd` num
-# arquivo do clone. Segue o precedente do ADR 0032 ("reintroduzido o defeito num clone via
-# TOLLENS_ROOT, a assercao reprova; o clone limpo fica verde").
+# RESOLUCAO do tester. `monta_raiz` copia execution/ inteiro via copytree para o tempdir, entao
+# reintroduzir o defeito exigiria escrever no proprio clone. Este bloco isola so
+# `execution/skills` como copia gravavel independente - as demais fontes (`execution/agents`,
+# `docs`, `orchestration`) estao em copias fisicas no tempdir (isoladas do repositorio real) -
+# e reintroduz `/tdd` num arquivo do clone. Segue o precedente do ADR 0032 ("reintroduzido o
+# defeito num clone via TOLLENS_ROOT, a assercao reprova; o clone limpo fica verde").
 def monta_raiz_skills(raw: str) -> Path:
     root = Path(raw)
     (root / "orchestration").mkdir()
