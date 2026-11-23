@@ -61,7 +61,13 @@ MUTANTS = [
 # Correcao em duas partes: a raiz passa a espelhar por symlink o que o tester le (leitura apenas),
 # e o CONTROLE NEGATIVO roda primeiro - raiz nao mutada tem de sair 0, senao o arnes se declara
 # vacuo e reprova em vez de reportar 16/16.
-LIDOS_PELO_TESTER = ("execution", "docs")
+# ONDA 34: `ha cabecalhos Uso:/Usage: a conferir (medido >= 4)` exige pelo menos 4 arquivos
+# .sh com `# Uso:`, mas apenas execution/document-tools/doctool.sh esta em execution/. Os
+# outros tres (evidence/experiments/pareado.sh, evidence/telemetry/medir-skills.sh,
+# install/hooks-spec.sh) estao em evidence/ e install/ - ausentes do arnes. Resultado medido
+# antes da correcao: medido=1, threshold=4, baseline VERMELHO. Adicionar evidence, install,
+# tests ao arnes resolve o baseline sem ampliar a populacao de mutantes.
+LIDOS_PELO_TESTER = ("execution", "docs", "evidence", "install", "tests")
 
 
 def monta_raiz(raw: str, policy: dict, protocol: dict) -> Path:
@@ -75,7 +81,10 @@ def monta_raiz(raw: str, policy: dict, protocol: dict) -> Path:
     (root / "orchestration/registry.json").write_text(
         (ROOT / "orchestration/registry.json").read_text(encoding="utf-8"), encoding="utf-8")
     for nome in LIDOS_PELO_TESTER:
-        (root / nome).symlink_to(ROOT / nome, target_is_directory=True)
+        # Python 3.13+ nao segue symlinks de diretorio no rglob por padrao; usar copytree
+        # garante que ROOT.rglob("*.sh") e ROOT.rglob("*.md") encontrem todos os arquivos
+        # independente da versao do Python.
+        shutil.copytree(ROOT / nome, root / nome, symlinks=True)
     return root
 
 
@@ -126,7 +135,8 @@ def monta_raiz_skills(raw: str) -> Path:
     (root / "orchestration/evaluation-protocol.json").write_text(json.dumps(PROTOCOL), encoding="utf-8")
     (root / "orchestration/registry.json").write_text(
         (ROOT / "orchestration/registry.json").read_text(encoding="utf-8"), encoding="utf-8")
-    (root / "docs").symlink_to(ROOT / "docs", target_is_directory=True)
+    for nome in ("docs", "evidence", "install", "tests"):
+        shutil.copytree(ROOT / nome, root / nome, symlinks=True)
     (root / "execution").mkdir()
     for _sub in sorted((ROOT / "execution").iterdir()):
         if _sub.name == "skills":
