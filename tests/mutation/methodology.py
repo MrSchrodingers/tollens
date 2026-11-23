@@ -135,14 +135,15 @@ def monta_raiz_skills(raw: str) -> Path:
     (root / "orchestration/evaluation-protocol.json").write_text(json.dumps(PROTOCOL), encoding="utf-8")
     (root / "orchestration/registry.json").write_text(
         (ROOT / "orchestration/registry.json").read_text(encoding="utf-8"), encoding="utf-8")
-    for nome in ("docs", "evidence", "install", "tests"):
+    for nome in (n for n in LIDOS_PELO_TESTER if n != "execution"):
         shutil.copytree(ROOT / nome, root / nome, symlinks=True)
     (root / "execution").mkdir()
     for _sub in sorted((ROOT / "execution").iterdir()):
         if _sub.name == "skills":
             shutil.copytree(_sub, root / "execution/skills")
         else:
-            (root / "execution" / _sub.name).symlink_to(_sub, target_is_directory=True)
+            # copytree garante que rglob segue o conteudo em Python 3.14+
+            shutil.copytree(_sub, root / "execution" / _sub.name, symlinks=True)
     return root
 
 

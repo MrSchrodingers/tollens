@@ -354,7 +354,7 @@ check(not _g32_sem_raiz_cabecalho,
       "cabecalho Uso:/Usage: que publica comando repo-relativo declara raiz explicita "
       "(git rev-parse --show-toplevel, BASH_SOURCE/dirname \"$0\", ou cd) - issue #38"
       + ("" if not _g32_sem_raiz_cabecalho else f" - sem raiz: {_g32_sem_raiz_cabecalho}"))
-check(len(_g32_cabecalhos) >= 4, f"ha cabecalhos Uso:/Usage: a conferir (medido: {len(_g32_cabecalhos)})")
+check(len(_g32_cabecalhos) >= 7, f"ha cabecalhos Uso:/Usage: a conferir (medido: {len(_g32_cabecalhos)})")
 
 _g32_blocos_examinados = []  # todo bloco fechado fora de excl/registro - populacao, nao achado
 _g32_sem_raiz_bloco = []
